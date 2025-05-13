@@ -1,0 +1,274 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 引入开源中文字体 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.1.0/style.css');
+
+@layer base {
+  /* 全局基础样式 */
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-size: 100%; /* 使用相对字体大小 */
+  }
+
+  /* 响应式字体大小调整 */
+  @media screen and (max-width: 1280px) {
+    html {
+      font-size: 93.75%; /* 15px */
+    }
+  }
+
+  @media screen and (max-width: 1024px) {
+    html {
+      font-size: 87.5%; /* 14px */
+    }
+  }
+
+  :root {
+    /* 莫兰迪色系主色调（饱和度更高版本） */
+    --primary: #7a8cb8;      /* 莫兰迪蓝灰色（饱和度增强） */
+    --primary-dark: #5a6d9a;  /* 深莫兰迪蓝灰（饱和度增强） */
+    --primary-light: #9eaed2; /* 浅莫兰迪蓝灰（饱和度增强） */
+    --secondary: #f2f2f2;     /* 莫兰迪浅灰（略微增亮） */
+    --secondary-light: #fafafa;
+    --font-family: 'LXGW WenKai', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    
+    /* 莫兰迪色系面板背景色（饱和度更高版本） */
+    --bg-docs: #f0dbc8;    /* 文档来源：莫兰迪米橙色（饱和度增强） */
+    --bg-notes: #c9e6df;   /* 笔记本：莫兰迪薄荷绿（饱和度增强） */
+    --bg-chat: #f0d6d6;    /* AI聊天：莫兰迪淡粉色（饱和度增强） */
+    
+    /* 定义面板边框和阴影变量，使面板分界柔和 */
+    --panel-border: #c5c0bb;
+    --panel-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  body {
+    color: rgb(var(--foreground-rgb));
+    background: rgb(var(--background-rgb));
+    background: rgb(var(--background-rgb));
+    font-family: var(--font-family);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 确保所有文本使用相同字体 */
+  h1, h2, h3, h4, h5, h6, p, span, div, button, input, textarea, a {
+    font-family: var(--font-family);
+  }
+
+  /* 确保主应用容器填满屏幕 */
+  #__next {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* 使用rem单位进行响应式设计 */
+  button {
+    padding: 0.5rem 1rem;
+  }
+  
+  input, select, textarea {
+    padding: 0.5rem;
+    font-size: 1rem;
+  }
+  
+  h1 {
+    font-size: 2rem;
+    line-height: 2.25rem;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+  
+  h3 {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+  
+  p {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
+@layer utilities {
+  /* 自定义工具类 */
+  .fill-screen {
+    height: 100vh;
+    width: 100vw;
+  }
+  
+  .fill-content {
+    height: calc(100vh - 4rem); /* 使用rem替代固定的64px */
+  }
+  
+  /* 使用相对单位rem代替固定像素值 */
+  .compact-text-lg {
+    font-size: 1.125rem;
+  }
+  
+  .compact-text-md {
+    font-size: 1rem;
+  }
+  
+  .compact-text-sm {
+    font-size: 0.875rem;
+  }
+  
+  .compact-text-xs {
+    font-size: 0.75rem;
+  }
+  
+  .compact-margin {
+    margin: 0.5rem;
+  }
+  
+  .compact-padding {
+    padding: 0.75rem;
+  }
+  
+  /* 增强三个面板的背景色和阴影效果 */
+  .bg-docs-panel {
+    background-color: var(--bg-docs);
+    box-shadow: var(--panel-shadow);
+    border-color: #e0c2a3; /* 莫兰迪米橙色边框（饱和度增强） */
+  }
+  
+  .bg-notes-panel {
+    background-color: var(--bg-notes);
+    box-shadow: var(--panel-shadow);
+    border-color: #a8d2c9; /* 莫兰迪薄荷绿边框（饱和度增强） */
+  }
+  
+  .bg-chat-panel {
+    background-color: var(--bg-chat);
+    box-shadow: var(--panel-shadow);
+    border-color: #e0b9b9; /* 莫兰迪淡粉色边框（饱和度增强） */
+  }
+  
+  /* 响应式边距 */
+  .responsive-padding {
+    padding: 1vw;
+  }
+  
+  .responsive-margin {
+    margin: 1vw;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-lg border p-5 hover:shadow-md transition-shadow;
+  }
+  
+  .btn-primary {
+    @apply bg-blue-600 text-white rounded-md transition-colors hover:bg-blue-700 px-4 py-2 text-base;
+  }
+  
+  .btn-secondary {
+    @apply bg-white text-gray-800 border border-gray-300 rounded-md transition-colors hover:bg-gray-50 px-4 py-2 text-base;
+  }
+
+  .btn-outlined {
+    @apply bg-transparent border border-blue-600 text-blue-600 rounded-md transition-colors hover:bg-blue-50 px-4 py-2 text-base;
+  }
+}
+
+/* 聊天预览覆盖层样式 */
+.chat-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  background-color: white;
+}
+
+@media (min-width: 768px) {
+  .chat-overlay {
+    /* 在桌面视图下，聊天窗口通常有固定尺寸和位置 */
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+/* CKEditor 填满容器的样式 */
+.ck.ck-editor {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  width: 100% !important;
+  border: none !important;
+  background-color: var(--bg-notes) !important;
+}
+
+.ck.ck-editor__main {
+  flex: 1 !important;
+  height: 100% !important;
+  overflow: auto !important;
+  position: relative !important; /* Ensure child absolute positioning is relative to this */
+  border: none !important;
+}
+
+.ck.ck-editor__editable {
+  min-height: 100% !important; /* Ensure it takes at least full height of parent */
+  border: none !important;
+  background-color: var(--bg-notes) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 1rem !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  overflow: auto !important;
+  box-sizing: border-box !important; /* Ensure padding is included in height/width calculations */
+}
+
+/* 确保CKEditor内容区域即使为空也能占满空间 */
+
+.ck.ck-editor__editable > .ck-placeholder:first-child {
+  display: flex !important;
+  align-items: flex-start !important;
+}
+
+/* 确保CKEditor内容区域在没有内容时也能占满空间 */
+.ck.ck-editor__editable.ck-editor__editable_inline {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: none !important;
+  overflow: auto !important;
+  width: 100% !important; /* Ensure width is also full */
+  box-sizing: border-box !important;
+}
+
+/* 确保CKEditor内容区域的根元素占满空间 */
+.ck.ck-editor__editable > .ck-content {
+  flex-grow: 1 !important; /* Allow content to grow and fill available space */
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important; /* Ensure width is also full */
+  box-sizing: border-box !important; /* Include padding and border in the element's total width and height */
+  border: none !important;
+}

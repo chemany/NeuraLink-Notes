@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 引入开源中文字体 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.1.0/style.css');
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+  
+  /* 莫兰迪色系主色调（饱和度更高版本） */
+  --primary: #7a8cb8;      /* 莫兰迪蓝灰色（饱和度增强） */
+  --primary-dark: #5a6d9a;  /* 深莫兰迪蓝灰（饱和度增强） */
+  --primary-light: #9eaed2; /* 浅莫兰迪蓝灰（饱和度增强） */
+  --secondary: #f2f2f2;     /* 莫兰迪浅灰（略微增亮） */
+  --secondary-light: #fafafa;
+  --font-family: 'LXGW WenKai', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  
+  /* 莫兰迪色系面板背景色（饱和度更高版本） */
+  --bg-docs: #f0dbc8;    /* 文档来源：莫兰迪米橙色（饱和度增强） */
+  --bg-notes: #c9e6df;   /* 笔记本：莫兰迪薄荷绿（饱和度增强） */
+  --bg-chat: #f0d6d6;    /* AI聊天：莫兰迪淡粉色（饱和度增强） */
+  
+  /* 定义面板边框和阴影变量，使面板分界柔和 */
+  --panel-border: #c5c0bb;
+  --panel-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 基本布局 */
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body,
+#__next,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aaa;
+}
+
+/* 辅助类 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 增强三个面板的背景色和阴影效果 */
+.bg-docs-panel {
+  background-color: var(--bg-docs);
+  box-shadow: var(--panel-shadow);
+  border-color: var(--primary-dark); /* 统一使用加深的边框颜色 */
+  border-width: 1px;
+}
+
+.bg-notes-panel {
+  background-color: var(--bg-notes);
+  box-shadow: var(--panel-shadow);
+  border-color: var(--primary-dark); /* 统一使用加深的边框颜色 */
+  border-width: 1px;
+}
+
+.bg-chat-panel {
+  background-color: var(--bg-chat);
+  box-shadow: var(--panel-shadow);
+  border-color: var(--primary-dark); /* 统一使用加深的边框颜色 */
+  border-width: 1px;
+}
+
+/* 聊天预览覆盖层样式 */
+.chat-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 50;
+  background-color: white;
+}

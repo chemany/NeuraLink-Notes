@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // 确保这里是 sqlite
+  url      = env("DATABASE_URL")
+}
+
+// 文件夹模型
+model Folder {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  notebooks Notebook[] // 关联到多个笔记本
+}
+
+// 笔记本模型
+model Notebook {
+  id        String   @id @default(cuid()) // 主键，自动生成唯一ID
+  title     String
+  createdAt DateTime @default(now()) // 创建时间
+  updatedAt DateTime @updatedAt // 更新时间
+
+  documents Document[] // 关联到多个文档 (一对多关系)
+  notes     String? // 关联到多个记事本笔记
+  richNotes Note[]     // 关联到多个新的富文本笔记
+
+  // 添加文件夹关联
+  folderId String? // 可选的文件夹ID
+  folder   Folder? @relation(fields: [folderId], references: [id])
+
+  @@index([folderId])
+}
+
+// 文档模型
+model Document {
+  id          String   @id @default(cuid())
+  fileName    String
+  status      String // 或者使用自定义枚举类型
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  textContent String? // <--- 移除 @db.Text
+
+  // --- 修改以下字段 ---
+  mimeType      String?
+  textChunks    String? // <--- 将 String[] 修改为 String
+  embeddings    Json? // 这个保持不变，Json 类型通常可以映射到 TEXT
+  statusMessage String?
+
+  // 在这里添加 fileSize 字段
+  fileSize Int // 文件大小 (以字节为单位)
+
+  // 在这里添加 filePath 字段 <-- 新增字段
+  filePath String? // 存储文件的路径
+  
+  // 添加向量化标记字段
+  isVectorized Boolean @default(false) // 标记文档是否已经向量化
+
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId])
+}
+
+// 记事本笔记模型
+model NotePadNote {
+  id        String   @id @default(cuid())
+  title     String?
+  content   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notebookId String
+
+  @@index([notebookId])
+}
+
+// 新的富文本笔记模型
+model Note {
+  id           String   @id @default(cuid())
+  title        String?
+  contentJson  Json?    // 用于存储 Tiptap/ProseMirror 的 JSON 输出
+  contentHtml  String?  // 用于存储 HTML 内容的冗余或备用
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
+
+  @@index([notebookId])
+}
+
+// 同步配置模型
+model SyncConfig {
+  id       String  @id @default(cuid())
+  name     String
+  type     String // "webdav" 或 "s3"
+  isActive Boolean @default(true)
+
+  // WebDAV特定字段
+  webdavUrl      String?
+  webdavUsername String?
+  webdavPassword String?
+  webdavPath     String?
+
+  // S3特定字段
+  s3Region    String?
+  s3Bucket    String?
+  s3AccessKey String?
+  s3SecretKey String?
+  s3Endpoint  String?
+  s3Path      String?
+  s3Acl       String?
+
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
