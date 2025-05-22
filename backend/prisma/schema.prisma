@@ -3,6 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -34,14 +35,17 @@ model UserSettings {
   userId String @unique // 关联到用户ID
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // LLM 相关设置 (示例)
-  llmModel      String? @default("default_llm")
-  llmApiKey     String? // 注意：敏感信息处理，考虑更安全的存储方式或不直接存储
-  
-  // 向量化相关设置 (示例)
-  vectorizationModel String? @default("default_vector_model")
-  chunkSize          Int?    @default(1000)
-  chunkOverlap       Int?    @default(200)
+  // 存储 LLMSettings 对象
+  llmSettings Json?
+
+  // 存储 EmbeddingModelSettings 对象
+  embeddingSettings Json?
+
+  // 存储 RerankingSettings 对象
+  rerankingSettings Json?
+
+  // 存储 UISettings 对象
+  uiSettings Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -58,7 +62,14 @@ model Folder {
   userId String // 外键关联到用户
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // --- 添加这部分来实现父子文件夹关系 ---
+  parentId  String?    // ? 表示可选，允许根文件夹的 parentId 为 null
+  parent    Folder?    @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children  Folder[]   @relation("FolderHierarchy")
+  // --- 添加结束 ---
+
   @@index([userId])
+  @@index([parentId]) // 为 parentId 添加索引以优化查询
 }
 
 // 笔记本模型

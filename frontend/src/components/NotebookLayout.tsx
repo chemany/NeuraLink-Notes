@@ -1077,7 +1077,7 @@ export default function NotebookLayout({
                   onSave={memoizedTiptapOnSave} 
                   onApiReady={handleApiReady}
                   style={{ height: '100%', minHeight: 0 }}
-               />
+             />
              ) : (
                <div className="h-full flex items-center justify-center text-gray-500">
                  {isClient ? '请选择或创建一个笔记' : '编辑器加载中...'}

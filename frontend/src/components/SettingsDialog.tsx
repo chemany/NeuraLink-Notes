@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSettings, LLMSettings, EmbeddingModelSettings, RerankingSettings } from '@/contexts/SettingsContext';
+import { useSettings, LLMSettings, EmbeddingModelSettings, RerankingSettings, UISettings } from '@/contexts/SettingsContext';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -12,10 +12,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     embeddingSettings, 
     rerankingSettings,
     uiSettings, 
-    updateLLMSettings, 
-    updateEmbeddingSettings, 
-    updateRerankingSettings,
-    updateUISettings, 
+    saveAllSettings,
     resetSettings 
   } = useSettings();
   
@@ -27,7 +24,8 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
   // 使用 local state 来管理临时的表单值
   const [localLLMSettings, setLocalLLMSettings] = useState<LLMSettings>(llmSettings);
   const [localEmbeddingSettings, setLocalEmbeddingSettings] = useState<EmbeddingModelSettings>(embeddingSettings);
-  const [localRerankingSettings, setLocalRerankingSettings] = useState<RerankingSettings>(rerankingSettings); // 使用解构后的 rerankingSettings
+  const [localRerankingSettings, setLocalRerankingSettings] = useState<RerankingSettings>(rerankingSettings);
+  const [localUISettings, setLocalUISettings] = useState<Partial<UISettings & { saveConversation: boolean }>>(uiSettings);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   
   // 仅在客户端渲染组件
@@ -40,7 +38,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     if (isMounted) {
       setLocalLLMSettings(llmSettings);
       setLocalEmbeddingSettings(embeddingSettings);
-      setLocalRerankingSettings(rerankingSettings); // 使用解构后的 rerankingSettings
+      setLocalRerankingSettings(rerankingSettings);
     }
   }, [llmSettings, embeddingSettings, rerankingSettings, isMounted]);
   
@@ -50,10 +48,15 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
       // 当对话框打开或 context 中的值变化时，用 context 的值重置 local state
       setLocalLLMSettings(llmSettings);
       setLocalEmbeddingSettings(embeddingSettings);
-      setLocalRerankingSettings(rerankingSettings); // 使用解构后的 rerankingSettings
+      setLocalRerankingSettings(rerankingSettings);
+      setLocalUISettings(prev => ({
+        ...prev,
+        ...uiSettings,
+        saveConversationHistory: uiSettings.saveConversationHistory
+      }));
       setSaveStatus('idle');
     }
-  }, [llmSettings, embeddingSettings, rerankingSettings, isOpen, isMounted]); // 依赖 context 中的值
+  }, [isOpen, isMounted, llmSettings, embeddingSettings, rerankingSettings, uiSettings]);
   
   // 服务器端渲染时不显示任何内容，避免hydration错误
   if (!isMounted) {
@@ -98,8 +101,40 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     }
   };
 
+  // --- 新增：处理 Reranking 表单变更 ---
+  const handleRerankingChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    const isCheckbox = type === 'checkbox';
+    const checked = (e.target as HTMLInputElement).checked;
+
+    setLocalRerankingSettings((prev: RerankingSettings) => ({
+      ...prev,
+      [name]: isCheckbox ? checked : (type === 'number' ? parseInt(value, 10) || 0 : value) // 解析为整数
+    }));
+  };
+
+  // --- 新增：Reranking 模型选项获取逻辑 ---
+  const getSiliconFlowRerankingOptions = (): { value: string, label: string }[] => {
+    return [
+      { value: 'BAAI/bge-reranker-v2-m3', label: 'BGE Reranker v2 M3' },
+      { value: 'netease-youdao/bce-reranker-base_v1', label: 'BCE Reranker Base v1' }
+    ];
+  };
+
+  // --- 新增：处理 UI 设置变更 ---
+  const handleUISettingsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, checked, type } = e.target;
+    if (type === 'checkbox') {
+      setLocalUISettings(prev => ({
+        ...prev,
+        [name]: checked
+      }));
+    }
+    // Add handling for other UI input types if necessary
+  };
+
   // 保存设置
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaveStatus('saving');
     
     // 确保模型名称格式正确
@@ -117,29 +152,35 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
       fixedEmbeddingSettings.model = 'netease-youdao/bce-embedding-base_v1';
     }
     
-    // 模拟API操作延迟
-    setTimeout(() => {
-      try {
-        updateLLMSettings(localLLMSettings);
-        updateEmbeddingSettings(fixedEmbeddingSettings); // 使用修正后的 Embedding 设置
-        updateRerankingSettings(localRerankingSettings); // <--- 添加这行来保存重排序设置
-        setSaveStatus('saved');
-        
-        // 如果进行了修正，显示一个通知
-        if (fixedEmbeddingSettings.model !== localEmbeddingSettings.model) {
-          console.log(`已自动修正模型名称格式: ${localEmbeddingSettings.model} -> ${fixedEmbeddingSettings.model}`);
-        }
-        
-        // 2秒后关闭对话框
-        setTimeout(() => {
-          onClose();
-          setSaveStatus('idle');
-        }, 1000);
-      } catch (error) {
-        setSaveStatus('error');
-        console.error('保存设置失败', error);
+    // Prepare the payload for saveAllSettings
+    const payloadToSave = {
+      llmSettings: localLLMSettings,
+      embeddingSettings: fixedEmbeddingSettings,
+      rerankingSettings: localRerankingSettings,
+      uiSettings: {
+        darkMode: localUISettings.darkMode,
+        fontSize: localUISettings.fontSize,
+        saveConversationHistory: localUISettings.saveConversationHistory,
+        customEndpoint: localUISettings.customEndpoint,
+      } as UISettings,
+    };
+
+    try {
+      await saveAllSettings(payloadToSave);
+      setSaveStatus('saved');
+      
+      if (fixedEmbeddingSettings.model !== localEmbeddingSettings.model) {
+        console.log(`已自动修正模型名称格式: ${localEmbeddingSettings.model} -> ${fixedEmbeddingSettings.model}`);
       }
-    }, 500);
+      
+      setTimeout(() => {
+        onClose();
+        setSaveStatus('idle');
+      }, 1000);
+    } catch (error) {
+      setSaveStatus('error');
+      console.error('保存设置失败', error);
+    }
   };
 
   const handleReset = () => {
@@ -197,26 +238,6 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
       { value: 'netease-youdao/bce-embedding-base_v1', label: 'BCE-Embedding-Base' },
       { value: 'BAAI/bge-m3', label: 'BGE-M3 (通用模型)' },
       { value: 'Pro/BAAI/bge-m3', label: 'Pro/BGE-M3 (高级版)' }
-    ];
-  };
-
-  // --- 新增：处理 Reranking 表单变更 ---
-  const handleRerankingChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    const isCheckbox = type === 'checkbox';
-    const checked = (e.target as HTMLInputElement).checked;
-
-    setLocalRerankingSettings((prev: RerankingSettings) => ({
-      ...prev,
-      [name]: isCheckbox ? checked : (type === 'number' ? parseInt(value, 10) || 0 : value) // 解析为整数
-    }));
-  };
-
-  // --- 新增：Reranking 模型选项获取逻辑 ---
-  const getSiliconFlowRerankingOptions = (): { value: string, label: string }[] => {
-    return [
-      { value: 'BAAI/bge-reranker-v2-m3', label: 'BGE Reranker v2 M3' },
-      { value: 'netease-youdao/bce-reranker-base_v1', label: 'BCE Reranker Base v1' }
     ];
   };
 
@@ -308,8 +329,10 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                   <div className="flex items-center">
                     <input
                       id="saveConversation"
+                      name="saveConversation"
                       type="checkbox"
-                      checked
+                      checked={localUISettings.saveConversation || false}
+                      onChange={handleUISettingsChange}
                       className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <label htmlFor="saveConversation" className="ml-2 block text-sm text-gray-700">

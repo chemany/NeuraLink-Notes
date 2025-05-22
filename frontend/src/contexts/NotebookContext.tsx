@@ -228,18 +228,19 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
 
   const createNotebook = useCallback(async (title: string, folderId?: string): Promise<Notebook | null> => {
-      if (!isAuthenticated) { // <--- 增加 isAuthenticated 检查
-        setCreateNotebookError("User not authenticated.");
-        toast.error("Please login to create a notebook.");
+      if (!isAuthenticated) { 
+        // setCreateNotebookError("User not authenticated."); // This state's utility might need review
+        toast.error("请登录后创建笔记本。"); 
         return null;
       }
       if (!title.trim()) {
-        setCreateNotebookError("Notebook title cannot be empty.");
+        // setCreateNotebookError("Notebook title cannot be empty."); // This state's utility might need review
+        toast.error("笔记本标题不能为空。"); // <--- Ensured toast for empty title
         return null;
       }
     // console.log(`[NotebookContext] Attempting to create notebook: \"${title}\" ${folderId ? `in folder ${folderId}` : ''}`);
     setIsCreatingNotebook(true);
-    setCreateNotebookError(null);
+    // setCreateNotebookError(null); // If the above states are not directly displayed, no need to clear here
 
     try {
       const newNotebook = await createNotebookApi(title, folderId);
@@ -251,13 +252,13 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     } catch (error) {
       console.error('[NotebookContext] Error creating notebook via API:', error);
       const message = error instanceof Error ? error.message : 'Failed to create notebook.';
-      setCreateNotebookError(message);
+      // setCreateNotebookError(message); // This state's utility might need review
       toast.error(`创建笔记本失败: ${message}`);
       return null;
     } finally {
       setIsCreatingNotebook(false);
     }
-  }, [isAuthenticated, token]); // MODIFIED HERE - removed router from deps if navigation is removed
+  }, [isAuthenticated, token]); // Removed router from dependencies as it was not used
 
   const deleteNotebook = useCallback(async (id: string) => {
     console.log(`[NotebookContext] Attempting to delete notebook: ${id}`);
@@ -461,35 +462,53 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
 
     const deleteFolder = useCallback(async (id: string): Promise<void> => {
-        console.log(`[NotebookContext] Deleting folder ${id}`);
-        try {
-            await deleteFolderApi(id);
-            setFolders(prev => prev.filter(f => f.id !== id));
-            // 将该文件夹下的笔记本移动到根目录
-            setNotebooks(prev => prev.map(n => n.folderId === id ? { ...n, folderId: null } : n));
-            
-            // 添加删除后同步到云端的操作
-            try {
-                const configs = await syncService.getAllConfigs();
-                const activeConfig = configs.find(c => c.isActive);
-                if (activeConfig?.id) {
-                    toast.loading("正在同步文件夹删除操作到云端...", { id: 'sync-folder-delete-toast' });
-                    const syncResult = await syncService.syncToCloud(activeConfig.id);
-                    if (syncResult.success) {
-                        toast.success("文件夹删除操作已同步到云端", { id: 'sync-folder-delete-toast' });
-                    } else {
-                        toast.error(`同步文件夹删除操作失败: ${syncResult.message}`, { id: 'sync-folder-delete-toast' });
-                    }
-                }
-            } catch (syncError) {
-                console.error('[NotebookContext] Error syncing folder deletion to cloud:', syncError);
-                toast.error("同步文件夹删除操作到云端失败", { id: 'sync-folder-delete-toast' });
-            }
-        } catch (error) {
-            console.error('[NotebookContext] Error deleting folder:', error);
-            throw error;
+        if (!isAuthenticated) { // <--- 增加 isAuthenticated 检查
+          toast.error("Please login to delete a folder.");
+          return;
         }
-    }, []);
+        // console.log(`[NotebookContext] Attempting to delete folder: ${id}`);
+        try {
+          await deleteFolderApi(id);
+          setFolders(prevFolders => prevFolders.filter(folder => folder.id !== id));
+          // If the deleted folder was associated with the current notebook, clear that association
+          if (currentNotebook?.folderId === id) {
+            setCurrentNotebookState(prev => prev ? { ...prev, folderId: null } : null);
+            // Optionally, you might want to update the notebook on the backend too if it's open
+            // updateNotebookApi(currentNotebook.id, { folderId: null }); // Example
+          }
+          // console.log(`[NotebookContext] Successfully deleted folder ${id}`);
+        } catch (error) {
+          console.error('[NotebookContext] Error deleting folder:', error);
+          if (error instanceof Error) {
+            const specificApiErrorPrefix = "API Error in deleteFolderApi: ";
+            const specificApiErrorSuffix = " (Status: 400)"; // Assuming 400 for this specific error
+            const coreUserMessage = "文件夹包含笔记本，无法删除。请先移动或删除其中的笔记本。";
+
+            if (error.message.startsWith(specificApiErrorPrefix) && 
+                error.message.endsWith(specificApiErrorSuffix) && 
+                error.message.includes(coreUserMessage)) {
+              
+              const startIndex = specificApiErrorPrefix.length;
+              const endIndex = error.message.length - specificApiErrorSuffix.length;
+              const extractedMessage = error.message.substring(startIndex, endIndex).trim();
+              toast.error(extractedMessage); // Display the extracted user-friendly message
+              // This specific error is now handled, so we don't re-throw it.
+            } else if (error.message.includes(coreUserMessage)) {
+                // Fallback if the exact prefix/suffix doesn't match but core message is there
+                toast.error(coreUserMessage);
+            } else {
+              // For other types of errors, keep the alert and re-throw for now.
+              // This alert can be removed if other errors are expected to be caught by NotebookList or a global handler.
+              alert(`Error in NotebookContext (will re-throw): ${error.message}`); 
+              throw error; 
+            }
+          } else {
+            // For non-Error instances (should be rare with how apiClient is structured)
+            alert('Unknown error in NotebookContext (will re-throw).'); 
+            throw error;
+          }
+        }
+    }, [isAuthenticated, token, currentNotebook?.folderId, currentNotebook?.id]); // <--- 增加 isAuthenticated, token, currentNotebook dependencies
 
      const updateFolder = useCallback(async (id: string, name: string): Promise<void> => {
         console.log(`[NotebookContext] Updating folder ${id} with name: ${name}`);

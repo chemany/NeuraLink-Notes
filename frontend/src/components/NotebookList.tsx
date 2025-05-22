@@ -7,6 +7,7 @@ import NotebookCard from './NotebookCard';
 import FolderItem from './FolderItem';
 import RootFolderItem from './RootFolderItem';
 import ConfirmModal from './ConfirmModal';
+import { toast } from 'react-hot-toast';
 
 // ... (NOTEBOOK_STYLES can remain if used by NotebookCard, otherwise remove)
 
@@ -128,16 +129,23 @@ export default function NotebookList() {
               newSet.delete(deletingFolderId);
               return newSet;
           });
+          toast.success(`文件夹 "${folderToDelete?.name || '选中文件夹'}" 已删除。`);
       } catch (error) {
-          console.error('Failed to delete folder:', error);
+          console.error('Error in NotebookList confirmDeleteFolder catch:', error);
+          if (error instanceof Error) {
+            toast.error(error.message); 
+          } else {
+            toast.error('删除文件夹时发生未知错误。');
+          }
       } finally {
           setDeletingFolderId(null);
           setFolderToDelete(null);
       }
-  }, [deletingFolderId, deleteFolder]);
+  }, [deletingFolderId, deleteFolder, folderToDelete?.name]);
 
 
   const handleCreateNotebook = useCallback(async (folderId?: string) => {
+    console.log('[NotebookList] handleCreateNotebook called. Title:', newNotebookTitle, 'createNotebook exists:', !!createNotebook);
     if (newNotebookTitle.trim() && createNotebook) {
       console.log(`[NotebookList] Creating notebook: ${newNotebookTitle} ${folderId ? `in folder ${folderId}`: ''}`);
       setIsCreatingNotebook(true);
@@ -147,12 +155,21 @@ export default function NotebookList() {
         setNewNotebookTitle('');
       } catch (error) {
         console.error('[NotebookList] Failed to create notebook:', error);
-        alert('创建笔记本失败，请重试');
+        toast.error('创建笔记本失败，请重试。详情请查看控制台。'); 
       } finally {
           setIsCreatingNotebook(false);
       }
+    } else {
+        console.log('[NotebookList] handleCreateNotebook: Condition not met. Title empty or createNotebook missing.');
+        if (!newNotebookTitle.trim()) {
+            toast.error('笔记本标题不能为空。');
+        }
+        if (!createNotebook) {
+            console.error('[NotebookList] createNotebook function from context is missing!');
+            toast.error('创建功能暂不可用，请稍后重试。');
+        }
     }
-  }, [newNotebookTitle, createNotebook, router]);
+  }, [newNotebookTitle, createNotebook]);
 
   const handleDeleteNotebookLocal = useCallback((id: string) => {
       if (!id || !deleteNotebook) return;
@@ -216,6 +233,7 @@ export default function NotebookList() {
                onKeyDown={(e) => e.key === 'Enter' && handleCreateNotebook()}
            />
            <button
+               type="button"
                onClick={() => handleCreateNotebook()}
                disabled={!newNotebookTitle.trim() || isCreatingNotebook}
                className="ml-2 px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-50"

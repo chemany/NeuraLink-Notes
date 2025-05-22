@@ -11,6 +11,8 @@ import {
   Patch,
   UseGuards,
   Request,
+  Query,
+  Logger,
 } from '@nestjs/common';
 import { NotebooksService } from './notebooks.service'; // 导入服务
 import { Notebook } from '@prisma/client'; // 导入类型
@@ -26,16 +28,21 @@ interface AuthenticatedRequest extends Request {
 @Controller('notebooks') // 定义基础路由为 /notebooks
 @UseGuards(JwtAuthGuard) // 应用 JwtAuthGuard 到整个控制器
 export class NotebooksController {
+  private readonly logger = new Logger(NotebooksController.name); // Added logger instance
+
   // 注入 NotebooksService
   constructor(private readonly notebooksService: NotebooksService) {}
 
   @Get() // 处理 GET /notebooks 请求
   @HttpCode(HttpStatus.OK) // 设置成功响应状态码为 200
-  async findAll(@Request() req: AuthenticatedRequest): Promise<Notebook[]> {
+  async findAll(
+    @Request() req: AuthenticatedRequest,
+    @Query('folderId') folderId?: string, // Added folderId query parameter
+  ): Promise<Notebook[]> {
     const userId = req.user.id;
-    console.log('[NotebooksController] Received request for GET /notebooks');
+    this.logger.log(`[NotebooksController] User ${userId} GET /notebooks, folderId: ${folderId}`);
     // 调用服务获取数据
-    return this.notebooksService.findAll(userId);
+    return this.notebooksService.findAll(userId, folderId);
   }
 
   @Post() // 处理 POST /notebooks 请求
@@ -48,8 +55,8 @@ export class NotebooksController {
     @Request() req: AuthenticatedRequest,
   ): Promise<Notebook> {
     const userId = req.user.id;
-    console.log(
-      '[NotebooksController] Received request for POST /notebooks, body:',
+    this.logger.log(
+      `[NotebooksController] User ${userId} POST /notebooks, folderId: ${createNotebookDto.folderId}, body:`,
       createNotebookDto,
     );
     // 调用服务创建笔记本
@@ -59,6 +66,7 @@ export class NotebooksController {
   @Get(':id')
   async findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest): Promise<Notebook | null> {
     const userId = req.user.id;
+    this.logger.log(`[NotebooksController] User ${userId} GET /notebooks/${id}`);
     return this.notebooksService.findOne(id, userId);
   }
 
@@ -66,6 +74,7 @@ export class NotebooksController {
   @HttpCode(HttpStatus.OK)
   async remove(@Param('id') id: string, @Request() req: AuthenticatedRequest): Promise<Notebook> {
     const userId = req.user.id;
+    this.logger.log(`[NotebooksController] User ${userId} DELETE /notebooks/${id}`);
     return this.notebooksService.remove(id, userId);
   }
 
@@ -78,11 +87,11 @@ export class NotebooksController {
     @Request() req: AuthenticatedRequest,
   ): Promise<Notebook> {
     const userId = req.user.id;
-    console.log(
-      `[NotebooksController] Updating notebook ${id} with data:`,
+    this.logger.log(
+      `[NotebooksController] User ${userId} PATCH /notebooks/${id}, folderId: ${updateNotebookDto.folderId}, data:`,
       updateNotebookDto,
     );
-    return this.notebooksService.update(id, userId, updateNotebookDto, undefined);
+    return this.notebooksService.update(id, userId, updateNotebookDto);
   }
 
   // 端点：获取特定笔记本的 notes.json 内容
@@ -93,6 +102,7 @@ export class NotebooksController {
     @Request() req: AuthenticatedRequest
   ): Promise<{ notes: string | null }> {
     const userId = req.user.id;
+    this.logger.log(`[NotebooksController] User ${userId} GET /notebooks/${notebookId}/notesfile`);
     return { notes: await this.notebooksService.getNotebookNotesFromFile(notebookId, userId) };
   }
 
@@ -105,8 +115,9 @@ export class NotebooksController {
     @Request() req: AuthenticatedRequest
   ): Promise<Notebook> {
     const userId = req.user.id;
-    const emptyUpdateDto: UpdateNotebookDto = {};
-    return this.notebooksService.update(notebookId, userId, emptyUpdateDto, notesContent);
+    this.logger.log(`[NotebooksController] User ${userId} POST /notebooks/${notebookId}/notesfile`);
+    const updateDto: UpdateNotebookDto = {};
+    return this.notebooksService.update(notebookId, userId, updateDto, notesContent);
   }
 
   // 未来可以添加其他路由处理方法

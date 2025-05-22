@@ -131,6 +131,13 @@ export default function Home() {
     }
   };
 
+  // New function for the Header button
+  const handleNewNotebookFromHeader = () => {
+    setFolderIdForNewNotebook(null); // Ensure creation at root
+    setNewNotebookTitle('');       // Clear title for a fresh modal
+    setShowCreateModal(true);      // Open the create modal
+  };
+
   const handleCreateFolder = () => {
     if (newFolderName.trim()) {
       createFolder(newFolderName.trim());
@@ -388,8 +395,8 @@ export default function Home() {
     }
   };
 
-  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, folderId: string) => {
-    console.log(`[index] Drop event triggered on folder: ${folderId}`);
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>, folderId: string | null) => {
+    console.log(`[index] Drop event triggered on target: ${folderId === null ? 'root' : folderId}`);
     e.preventDefault();
     e.stopPropagation();
     setDraggedOverFolderId(null);
@@ -437,6 +444,7 @@ export default function Home() {
           showSyncButton={true}
           onSyncClick={() => setShowCloudSyncModal(true)}
           showSettingsIcon={false} // Hide the generic notebook settings cog on the main page
+          onNewNotebookClick={handleNewNotebookFromHeader} // <--- Pass the new handler
         />
         
         <main className="flex-grow p-2"> {/* Reduced padding from p-4 */}
@@ -450,7 +458,13 @@ export default function Home() {
           />
           <div className="space-y-2">
             {/* Section for Root/Unclassified notebooks - Full Width */}
-            <div className="mb-6 p-2 border border-gray-300 rounded-lg bg-gray-50 shadow-sm min-h-[150px]"> {/* 修改 p-4 为 p-2 */}
+            <div 
+              className={`mb-6 p-2 border border-gray-300 rounded-lg bg-gray-50 shadow-sm min-h-[150px] transition-colors duration-150 ${draggedOverFolderId === 'root-drop-target' ? 'bg-green-100 border-2 border-dashed border-green-500' : ''}`}
+              onDragOver={(e) => handleDragOver(e, 'root-drop-target')}
+              onDragEnter={(e) => handleDragEnter(e, 'root-drop-target')}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, null)}
+            >
               <RootFolderItem
                 isSelected={currentlySelectedItemId === null}
                 onSelectFolder={() => handleSelectItem(null)}

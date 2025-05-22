@@ -25,6 +25,7 @@ interface HeaderProps {
   onMainSettingsClick?: () => void;
   showSyncButton?: boolean;
   onSyncClick?: () => void;
+  onNewNotebookClick?: () => void;
 }
 
 export default function Header({ 
@@ -46,6 +47,7 @@ export default function Header({
   onMainSettingsClick,
   showSyncButton = false,
   onSyncClick,
+  onNewNotebookClick,
 }: HeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -248,13 +250,14 @@ export default function Header({
               </button>
             )}
 
-            {showNewNotebookButton && (
-              <Link 
-                href="/"
+            {showNewNotebookButton && onNewNotebookClick && (
+              <button 
+                type="button" 
+                onClick={onNewNotebookClick} 
                 className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-blue-700 transition-colors flex items-center"
               >
                 新建笔记本
-              </Link>
+              </button>
             )}
 
             {showCalendarButton && (

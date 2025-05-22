@@ -29,16 +29,31 @@ export class NotebooksService {
   }
 
   // 获取所有笔记本的方法
-  async findAll(userId: string): Promise<Notebook[]> {
-    this.logger.log(`User ${userId} fetching all notebooks`);
+  async findAll(userId: string, folderId?: string | null): Promise<Notebook[]> {
+    this.logger.log(`User ${userId} fetching notebooks. FolderId filter: ${folderId === undefined ? 'all' : (folderId === null ? 'root' : folderId)}`);
     try {
+      const whereClause: Prisma.NotebookWhereInput = { userId };
+
+      if (folderId !== undefined) { // folderId is explicitly passed
+        whereClause.folderId = folderId; // Handles specific folderId or null for root
+      }
+      // If folderId is undefined, no folderId filter is applied, returning all user's notebooks.
+
       return await this.prisma.notebook.findMany({
-        where: { userId }, // Filter by userId
-        orderBy: { createdAt: 'desc' },
+        where: whereClause,
+        orderBy: { updatedAt: 'desc' }, // Changed from createdAt to updatedAt for more relevant sorting
+         include: { // Optionally include folder info
+           folder: {
+             select: {
+               id: true,
+               name: true,
+             }
+           }
+         }
       });
     } catch (error) {
       this.logger.error(
-        `User ${userId} failed to fetch notebooks: ${error.message}`,
+        `User ${userId} failed to fetch notebooks (folderId: ${folderId}): ${error.message}`,
         error.stack,
       );
       throw new InternalServerErrorException('获取笔记本列表失败');

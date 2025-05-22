@@ -10,54 +10,72 @@ import {
   HttpStatus,
   UseGuards,
   Request,
+  Put,
+  Query,
+  UsePipes,
+  ValidationPipe,
+  Req,
 } from '@nestjs/common';
 import { FoldersService } from './folders.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
 import { UpdateFolderDto } from './dto/update-folder.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { User as UserModel } from '@prisma/client';
+import { Folder, User } from '@prisma/client';
 
 interface AuthenticatedRequest extends Request {
-  user: Omit<UserModel, 'password'> & { id: string };
+  user: Omit<User, 'password'> & { id: string };
 }
 
-@Controller('folders')
 @UseGuards(JwtAuthGuard)
+@Controller('folders')
+@UsePipes(new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+}))
 export class FoldersController {
   constructor(private readonly foldersService: FoldersService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() createFolderDto: CreateFolderDto, @Request() req: AuthenticatedRequest) {
-    const userId = req.user.id;
-    return this.foldersService.create(createFolderDto, userId);
+  async create(
+    @Body() createFolderDto: CreateFolderDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Folder> {
+    return this.foldersService.createFolder(req.user.id, createFolderDto);
   }
 
   @Get()
-  @HttpCode(HttpStatus.OK)
-  findAll(@Request() req: AuthenticatedRequest) {
-    const userId = req.user.id;
-    return this.foldersService.findAll(userId);
+  async findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('parentId') parentId?: string,
+  ): Promise<Folder[]> {
+    return this.foldersService.getFolders(req.user.id, parentId);
   }
 
   @Get(':id')
-  @HttpCode(HttpStatus.OK)
-  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    const userId = req.user.id;
-    return this.foldersService.findOne(id, userId);
+  async findOne(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Folder> {
+    return this.foldersService.getFolderById(req.user.id, id);
   }
 
-  @Patch(':id')
-  @HttpCode(HttpStatus.OK)
-  update(@Param('id') id: string, @Body() updateFolderDto: UpdateFolderDto, @Request() req: AuthenticatedRequest) {
-    const userId = req.user.id;
-    return this.foldersService.update(id, updateFolderDto, userId);
+  @Put(':id')
+  async update(
+    @Param('id') id: string,
+    @Body() updateFolderDto: UpdateFolderDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Folder> {
+    return this.foldersService.updateFolder(req.user.id, id, updateFolderDto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
-    const userId = req.user.id;
-    return this.foldersService.remove(id, userId);
+  async remove(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<Folder> {
+    return this.foldersService.deleteFolder(req.user.id, id);
   }
 }
