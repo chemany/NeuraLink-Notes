@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import type { Document } from '../types/shared_local';
 import { DocumentStatus } from '../types/shared_local';
 import * as documentService from '../services/documentService'; // 导入为命名空间
@@ -676,10 +676,13 @@ export default function DocumentsList({
   const getDocumentContent = async (id: string): Promise<string | null> => {
     console.log(`[getDocumentContent] Fetching content for doc: ${id}`);
     try {
-      // 使用导入的服务函数
       const content = await documentService.getDocumentContent(id);
-      console.log(`[getDocumentContent] Content fetched successfully, length: ${content.length}`);
-      return content;
+      if (content !== null) {
+        console.log(`[getDocumentContent] Content fetched successfully, length: ${content.length}`);
+      } else {
+        console.log(`[getDocumentContent] Content fetched was null for doc: ${id}`);
+      }
+      return content; 
       
     }
     catch (error: any) {
@@ -761,15 +764,18 @@ export default function DocumentsList({
       }
 
       // Call the prop with the Document and the appropriate content/URL
-      if (onPreviewDocument && contentToPreview !== null) {
-         console.log(`[DocumentsList] Calling onPreviewDocument for: ${doc.fileName} with content type: ${typeof contentToPreview}`);
-         onPreviewDocument(doc, contentToPreview, false); 
-      } else if (!onPreviewDocument) {
+      if (onPreviewDocument) {
+        if (contentToPreview !== null) {
+          console.log(`[DocumentsList] Calling onPreviewDocument for: ${doc.fileName} with content type: ${typeof contentToPreview}`);
+          onPreviewDocument(doc, contentToPreview, false); 
+        } else {
+          // This case should ideally be caught by earlier checks that return
+          toast.error("无法准备预览内容 (contentToPreview is null)"); 
+        }
+      } else if (!onPreviewDocument) { // This condition is redundant due to the outer if, but kept for structural similarity for now
         console.warn("[DocumentsList] onPreviewDocument prop not provided.");
-      } else {
-         // Handle case where contentToPreview remained null (should have been caught earlier)
-         toast.error("无法准备预览内容"); 
-      }
+      } 
+      // The original else for (onPreviewDocument && contentToPreview === null) is now handled by the inner else.
 
     } catch (error) {
       console.error(`[DocumentsList] 打开文档预览失败: ${doc.id}`, error);
@@ -932,6 +938,17 @@ export default function DocumentsList({
     }
   };
   
+  const documentsToDisplay = useMemo(() => {
+    // console.log('[DocumentsList] Memoizing documentsToDisplay. All documents:', documents);
+    return documents.filter(doc => doc.status === DocumentStatus.COMPLETED && doc.notebookId === notebookId);
+  }, [documents, notebookId]);
+
+  // useEffect(() => {
+  //   console.log('[DocumentsList] Effective documentsToDisplay changed:', documentsToDisplay.map(d => d.fileName));
+  // }, [documentsToDisplay]);
+
+  // console.log('[DocumentsList] Rendering with documents:', documentsToDisplay.map(d => ({id: d.id, name: d.fileName, status: d.status }))); // Line 111 vicinity
+
   if (!isMounted) {
     return null; // 服务器端渲染不显示
   }
@@ -984,44 +1001,6 @@ export default function DocumentsList({
               {autoRefreshEnabled && <span>，列表将自动更新</span>}
             </div>
           )}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {/* 自动刷新开关 */}
-          <button 
-            onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
-            className={`px-2 py-1 rounded-md flex items-center text-xs ${
-              autoRefreshEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-            }`}
-            title={autoRefreshEnabled ? "自动刷新已启用" : "自动刷新已禁用"}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 mr-1 ${autoRefreshEnabled ? 'text-green-500' : 'text-gray-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
-            {autoRefreshEnabled ? '自动更新' : '手动刷新'}
-          </button>
-          
-          {/* 手动刷新按钮 */}
-        <button 
-            onClick={refetchDocuments}
-          disabled={isLoadingDocuments}
-          className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 flex items-center text-xs"
-          title="刷新文档列表"
-        >
-          {isLoadingDocuments ? (
-            <>
-              <div className="animate-spin h-3 w-3 mr-1 border border-blue-700 border-t-transparent rounded-full"></div>
-              刷新中
-            </>
-          ) : (
-            <>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              刷新
-            </>
-          )}
-        </button>
         </div>
       </div>
       

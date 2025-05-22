@@ -1,5 +1,7 @@
+'use client'; // <--- 添加 "use client" 指令
+
 import React, { createContext, useState, useEffect, useContext, useCallback, useMemo, ReactNode } from 'react';
-import { useRouter } from 'next/navigation'; // Import useRouter
+import { useRouter } from 'next/navigation'; // <--- 更改导入
 import { Document, Notebook, Folder, WhiteboardContent, Note, NotePadNote } from '@/types'; // Use local types
 import { DocumentStatus } from '@/types/shared_local';
 import {
@@ -18,6 +20,7 @@ import {
     updateRichNoteApi,
     deleteRichNoteApi
 } from '@/services/richNoteService';
+import { useAuth } from './AuthContext'; // <--- 导入 useAuth
 
 // Helper function to check if running in browser
 const isBrowser = typeof window !== 'undefined';
@@ -48,7 +51,7 @@ interface NotebookContextType {
 
   // Methods
   setCurrentNotebookById: (id: string | null) => void;
-  createNotebook: (title: string, folderId?: string) => Promise<void>;
+  createNotebook: (title: string, folderId?: string) => Promise<Notebook | null>;
   deleteNotebook: (id: string) => void;
   updateNotebookTitle: (id: string, newTitle: string) => Promise<Notebook>;
   addDocumentToChat: (docId: string) => Promise<Document | null>;
@@ -104,7 +107,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [currentDocuments, setCurrentDocuments] = useState<Document[]>([]); // Specific docs used in chat?
   const [isLoadingDocuments, setIsLoadingDocuments] = useState<boolean>(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
-  const [isLoadingNotebooks, setIsLoadingNotebooks] = useState<boolean>(true); // For initial load
+  const [isLoadingNotebooks, setIsLoadingNotebooks] = useState<boolean>(false); // 修改初始值为 false，由 Auth 状态驱动
   const [notebooksError, setNotebooksError] = useState<string | null>(null);
   const [isCreatingNotebook, setIsCreatingNotebook] = useState<boolean>(false); // Init new state
   const [createNotebookError, setCreateNotebookError] = useState<string | null>(null); // Init new state
@@ -116,97 +119,99 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [notesError, setNotesError] = useState<string | null>(null);
 
   const router = useRouter();
+  const { isAuthenticated, isLoading: isAuthLoading, token } = useAuth(); // <--- 使用 AuthContext
 
-  // --- MODIFIED Effect for initial loading --- 
+  // Effect for initial loading, dependent on authentication status
   useEffect(() => {
     const loadInitialData = async () => {
-      if (isBrowser) {
+      // 只在 AuthContext 加载完毕且用户已认证的情况下加载数据
+      if (isBrowser && !isAuthLoading && isAuthenticated) {
+        // console.log('[NotebookContext] Auth confirmed, starting initial data load...');
         setIsLoadingNotebooks(true);
         setNotebooksError(null);
-        console.log('[NotebookContext] Starting initial load...');
         try {
-          // 获取笔记本
           const initialNotebooks = await fetchNotebooksApi();
-          // Log the fetched data
-          console.log(`[NotebookContext] Fetched notebooks data from API:`, initialNotebooks); 
+          // console.log(`[NotebookContext] Fetched notebooks data from API:`, initialNotebooks);
           setNotebooks(initialNotebooks);
-          console.log(`[NotebookContext] Initial notebooks loaded from API: ${initialNotebooks.length}`);
 
-          // 获取文件夹
           const initialFolders = await getFoldersApi();
           setFolders(initialFolders);
-          console.log(`[NotebookContext] Initial folders loaded from API: ${initialFolders.length}`);
+          // console.log(`[NotebookContext] Initial folders loaded from API: ${initialFolders.length}`);
 
           setIsInitialized(true);
-          console.log('[NotebookContext] Initial load complete from API.');
+          // console.log('[NotebookContext] Initial load complete from API.');
         } catch (error) {
           console.error('[NotebookContext] Error during initial API load:', error);
           const message = error instanceof Error ? error.message : 'Failed to load initial data from server.';
           setNotebooksError(message);
+          // 清空数据以避免显示过时或错误的数据
+          setNotebooks([]);
+          setFolders([]);
           setIsInitialized(false);
         } finally {
           setIsLoadingNotebooks(false);
         }
+      } else if (isBrowser && !isAuthLoading && !isAuthenticated) {
+        // 用户未认证 (且 AuthContext 已加载完毕)
+        // console.log('[NotebookContext] User not authenticated. Clearing notebooks and folders.');
+        setNotebooks([]);
+        setFolders([]);
+        setCurrentNotebookState(null);
+        setDocuments([]);
+        setCurrentNotes([]);
+        setIsInitialized(false); // 或 true，表示"已初始化但无数据"
+        setIsLoadingNotebooks(false); // 确保 loading 状态被重置
       }
     };
 
     loadInitialData();
-  }, []);
+  }, [isAuthenticated, isAuthLoading, token]); // <--- 依赖于 AuthContext 的状态，token 也加入以确保 apiClient 使用最新的 token
 
-  // Effect to load documents when currentNotebook changes
   const fetchDocsForNotebook = useCallback(async (notebookId: string | null) => {
-    if (!notebookId) {
+    if (!notebookId || !isAuthenticated) { // <--- 增加 isAuthenticated 检查
           setDocuments([]);
           setCurrentDocuments([]);
-          console.log('[NotebookContext] Cleared documents because notebookId is null.');
+          // console.log('[NotebookContext] Cleared documents because notebookId is null or user not authenticated.');
       return;
     }
-      console.log(`[NotebookContext] Fetching documents for notebook: ${notebookId}...`);
+      // console.log(`[NotebookContext] Fetching documents for notebook: ${notebookId}...`);
       setIsLoadingDocuments(true);
       setDocumentError(null);
       try {
-          console.log(`[NotebookContext] Calling fetchDocumentsByNotebookId(${notebookId})`);
+          // console.log(`[NotebookContext] Calling fetchDocumentsByNotebookId(${notebookId})`);
           const fetchedDocs = await fetchDocumentsByNotebookId(notebookId);
-          console.log(`[NotebookContext] fetchDocumentsByNotebookId returned:`, fetchedDocs);
+          // console.log(`[NotebookContext] fetchDocumentsByNotebookId returned:`, fetchedDocs);
           setDocuments(fetchedDocs);
-          console.log(`[NotebookContext] Successfully fetched and set ${fetchedDocs.length} documents.`);
-          // Example: Set current documents if needed
-          // setCurrentDocuments(fetchedDocs);
+          // console.log(`[NotebookContext] Successfully fetched and set ${fetchedDocs.length} documents.`);
     } catch (error) {
           console.error(`[NotebookContext] Error fetching documents for notebook ${notebookId}:`, error);
           const message = error instanceof Error ? error.message : 'Failed to load documents';
           setDocumentError(message);
-          // Ensure documents are cleared on error?
-          // setDocuments([]); 
-          // setCurrentDocuments([]);
       } finally {
-          console.log(`[NotebookContext] Setting isLoadingDocuments to false for notebook ${notebookId}.`);
+          // console.log(`[NotebookContext] Setting isLoadingDocuments to false for notebook ${notebookId}.`);
           setIsLoadingDocuments(false);
       }
-  }, []); // Keep dependencies empty unless fetchDocumentsByNotebookId itself changes based on context state
+  }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
 
   useEffect(() => {
       fetchDocsForNotebook(currentNotebook?.id ?? null);
   }, [currentNotebook, fetchDocsForNotebook]);
 
 
-  // --- 新增: 获取笔记的函数 --- 
   const fetchNotesForNotebook = useCallback(async (notebookId: string | null) => {
-    if (!notebookId) {
+    if (!notebookId || !isAuthenticated) { // <--- 增加 isAuthenticated 检查
       setCurrentNotes([]);
-      console.log('[NotebookContext] Cleared notes because notebookId is null.');
+      // console.log('[NotebookContext] Cleared notes because notebookId is null or user not authenticated.');
       return;
     }
-    console.log(`[NotebookContext] Fetching notes for notebook: ${notebookId}...`);
+    // console.log(`[NotebookContext] Fetching notes for notebook: ${notebookId}...`);
     setIsLoadingNotes(true);
     setNotesError(null);
     try {
       const fetchedNotes = await fetchRichNotesByNotebookId(notebookId);
-      // Assuming contentJson from API is already an object or string as defined in Note type
-      // If it's always a string and needs parsing for editor, do it here or in component
       fetchedNotes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setCurrentNotes(fetchedNotes);
-      console.log(`[NotebookContext] Successfully fetched and set ${fetchedNotes.length} rich notes.`);
+      // console.log(`[NotebookContext] Successfully fetched and set ${fetchedNotes.length} rich notes.`);
     } catch (error) {
       console.error(`[NotebookContext] Error fetching rich notes for notebook ${notebookId}:`, error);
       const message = error instanceof Error ? error.message : 'Failed to load rich notes';
@@ -215,42 +220,45 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     } finally {
       setIsLoadingNotes(false);
     }
-  }, []);
+  }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
 
-  // --- Effect: 当 currentNotebook 改变时，加载笔记 --- 
   useEffect(() => {
     fetchNotesForNotebook(currentNotebook?.id ?? null);
   }, [currentNotebook, fetchNotesForNotebook]);
 
 
-  // --- ENTIRELY REPLACE createNotebook useCallback block --- 
-  const createNotebook = useCallback(async (title: string, folderId?: string): Promise<void> => {
+  const createNotebook = useCallback(async (title: string, folderId?: string): Promise<Notebook | null> => {
+      if (!isAuthenticated) { // <--- 增加 isAuthenticated 检查
+        setCreateNotebookError("User not authenticated.");
+        toast.error("Please login to create a notebook.");
+        return null;
+      }
       if (!title.trim()) {
         setCreateNotebookError("Notebook title cannot be empty.");
-        return;
+        return null;
       }
-    console.log(`[NotebookContext] Attempting to create notebook: "${title}" ${folderId ? `in folder ${folderId}` : ''}`);
+    // console.log(`[NotebookContext] Attempting to create notebook: \"${title}\" ${folderId ? `in folder ${folderId}` : ''}`);
     setIsCreatingNotebook(true);
     setCreateNotebookError(null);
 
     try {
       const newNotebook = await createNotebookApi(title, folderId);
-      setNotebooks((prevNotebooks) => [newNotebook, ...prevNotebooks]); // Prepend new notebook
+      setNotebooks((prevNotebooks) => [newNotebook, ...prevNotebooks]);
       setCurrentNotebookState(newNotebook);
-      router.push(`/notebook/${newNotebook.id}`);
-      console.log('[NotebookContext] Successfully created notebook via API:', newNotebook);
+      // router.push(`/notebook/${newNotebook.id}`); // Navigation can be handled by the caller if needed, or kept here
+      // console.log('[NotebookContext] Successfully created notebook via API:', newNotebook);
+      return newNotebook;
     } catch (error) {
-      console.error('[NotebookContext] Failed to create notebook:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      setCreateNotebookError(`Failed to create notebook: ${errorMessage}`);
+      console.error('[NotebookContext] Error creating notebook via API:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create notebook.';
+      setCreateNotebookError(message);
+      toast.error(`创建笔记本失败: ${message}`);
+      return null;
     } finally {
       setIsCreatingNotebook(false);
     }
-  }, [router]); // Dependency: router
-  // --- END OF REPLACEMENT --- 
+  }, [isAuthenticated, token]); // MODIFIED HERE - removed router from deps if navigation is removed
 
-
-  // --- Replace deleteNotebook Placeholder --- 
   const deleteNotebook = useCallback(async (id: string) => {
     console.log(`[NotebookContext] Attempting to delete notebook: ${id}`);
     // Optionally add a loading state specific to deletion if needed
@@ -326,7 +334,6 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
     // Optionally reset loading state here
   }, [notebooks, currentNotebook, router]); // Add dependencies
-  // --- End of Replacement --- 
 
   const updateNotebookTitle = useCallback(async (id: string, newTitle: string): Promise<Notebook> => {
     console.log(`[NotebookContext] 更新笔记本 ${id} 的标题为: ${newTitle}`);
@@ -431,16 +438,27 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
    // --- Placeholder Folder/Note/Whiteboard Methods (Keep structure, TODO: API calls) ---
     const createFolder = useCallback(async (name: string): Promise<Folder> => {
-        console.log(`[NotebookContext] Creating folder with name: ${name}`);
-        try {
-            const newFolder = await createFolderApi(name);
-            setFolders(prev => [...prev, newFolder]);
-            return newFolder;
-        } catch (error) {
-            console.error('[NotebookContext] Error creating folder:', error);
-            throw error;
+        if (!isAuthenticated) {
+          toast.error("Please login to create a folder.");
+          throw new Error("User not authenticated.");
         }
-    }, []);
+        if (!name.trim()) {
+          throw new Error("Folder name cannot be empty.");
+        }
+        console.log(`[NotebookContext] Creating folder: "${name}"`);
+        // 对于会抛出错误的操作，可以不设置 loading/error state 在 context 中，让调用组件处理
+        try {
+          const newFolder = await createFolderApi(name);
+          setFolders((prevFolders) => [newFolder, ...prevFolders]);
+          toast.success(`Folder "${name}" created!`);
+          return newFolder;
+        } catch (error) {
+          console.error('[NotebookContext] Failed to create folder:', error);
+          const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+          toast.error(`Failed to create folder: ${errorMessage}`);
+          throw error; // Re-throw để调用方可以处理
+        }
+    }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
 
     const deleteFolder = useCallback(async (id: string): Promise<void> => {
         console.log(`[NotebookContext] Deleting folder ${id}`);
@@ -494,13 +512,13 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
             toast.error("Notebook ID is missing for creating a note.");
             return null;
         }
+        if (!isAuthenticated) {
+            toast.error("Please login to create a note.");
+            return null;
+        }
         try {
-          const payload = {
-            title: data.title,
-            contentJson: data.contentJson ? JSON.stringify(data.contentJson) : null, // Stringify for API
-            contentHtml: data.contentHtml,
-          };
-          const newNote = await createRichNoteApi(notebookId, payload);
+          // 直接将 data (包含对象类型的 contentJson) 传递给 API 函数
+          const newNote = await createRichNoteApi(notebookId, data);
           setCurrentNotes(prev => [newNote, ...prev].sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
           toast.success(`笔记 "${newNote.title || '未命名'}" 已创建!`);
          return newNote;
@@ -509,7 +527,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
           toast.error(`创建笔记失败: ${error instanceof Error ? error.message : '未知错误'}`);
           return null;
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
     const updateNote = useCallback(async (
       notebookId: string,
@@ -517,48 +535,31 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       updates: Partial<{ title?: string | null; contentJson?: Record<string, any> | null; contentHtml?: string | null }>
     ): Promise<Note | null> => {
         console.log(`[NotebookContext] Updating rich note ${noteId} in notebook ${notebookId}`);
-        // Log the received updates object for debugging circular references
-        console.log('[NotebookContext] Received updates object:', updates);
+        if (!isAuthenticated) {
+            toast.error("Please login to update a note.");
+            return null;
+        }
+        
+        // 调试日志，可以保留或移除
         if (updates && typeof updates.contentJson === 'object' && updates.contentJson !== null) {
             console.log('[NotebookContext] updates.contentJson is an object. Keys:', Object.keys(updates.contentJson));
-            // Avoid stringifying if it's known to be problematic, or try a safe stringify
-            try {
-                console.log('[NotebookContext] Attempting to stringify updates.contentJson safely for logging:', JSON.stringify(updates.contentJson, (key, value) => {
-                    if (value instanceof HTMLElement) return `[HTMLElement: ${value.tagName}]`;
-                    // Add more checks for known problematic types if necessary
-                    return value;
-                }, 2));
-            } catch (e) {
-                console.error('[NotebookContext] Failed to stringify updates.contentJson for logging due to circular structure.');
-            }
         } else {
-            console.log('[NotebookContext] updates.contentJson is not a problematic object or is undefined/null. Value:', updates.contentJson);
+            console.log('[NotebookContext] updates.contentJson is not an object or is undefined/null. Value:', updates.contentJson);
         }
 
         try {
-          const payload = {
-            title: updates.title,
-            // Stringify contentJson if it's provided and is an object
-            contentJson: updates.contentJson !== undefined
-                           ? (updates.contentJson === null ? null : JSON.stringify(updates.contentJson)) // This is where the error occurs
-                           : undefined,
-            contentHtml: updates.contentHtml,
-          };
-          // Filter out undefined fields from payload, as API might not expect them
-          const filteredPayload = Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== undefined));
-
-
-          const updatedNote = await updateRichNoteApi(notebookId, noteId, filteredPayload as any); // Cast if necessary
+          // 直接将 updates (包含对象类型的 contentJson) 传递给 API 函数
+          // API 服务函数 (updateRichNoteApi) 内部会处理 stringify
+          const updatedNote = await updateRichNoteApi(notebookId, noteId, updates);
           setCurrentNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n)
                                       .sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
-          toast.success(`笔记 "${updatedNote.title || '未命名'}" 已更新!`);
           return updatedNote;
         } catch (error) {
           console.error(`[NotebookContext] Failed to update rich note ${noteId}:`, error);
           toast.error(`更新笔记失败: ${error instanceof Error ? error.message : '未知错误'}`);
           return null;
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
     const deleteNote = useCallback(async (notebookId: string, noteId: string): Promise<void> => {
         console.log(`[NotebookContext] Deleting rich note ${noteId} from notebook ${notebookId}`);
@@ -620,7 +621,13 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const getNotePadNotes = useCallback(async (notebookId: string): Promise<NotePadNote[]> => {
         console.log(`[NotebookContext] Fetching simple notes for notebook ${notebookId}`);
+        if (!isAuthenticated) { // <--- 添加认证检查
+            console.warn('[NotebookContext] getNotePadNotes: User not authenticated. Skipping fetch.');
+            toast.error('用户未认证，无法获取便签列表。');
+            return [];
+        }
         try {
+            // getNotePadNotesApi 内部会从 localStorage 获取 token，但依赖 isAuthenticated 和 token 确保此回调在它们变化时更新
             const notes = await getNotePadNotesApi(notebookId);
             return notes;
         } catch (error) {
@@ -628,7 +635,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
             toast.error(`获取便签列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
             return [];
         }
-    }, []);
+    }, [isAuthenticated, token]); // <--- 添加 isAuthenticated 和 token 作为依赖项
 
 
     // --- Placeholder Whiteboard Methods ---
@@ -860,7 +867,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 // Custom hook to use the context
 export const useNotebook = (): NotebookContextType => {
   const context = useContext(NotebookContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useNotebook must be used within a NotebookProvider');
   }
   return context;

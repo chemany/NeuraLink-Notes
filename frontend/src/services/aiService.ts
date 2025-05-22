@@ -639,25 +639,30 @@ export const generateAIResponse = async (
     console.log(`[RAG] 构建的最终上下文长度: ${constructedContext.length} 字符`);
 
     const provider = llmConfig.provider;
-    const prompt = `
-你是分析化学文献的专家AI助手，任务是根据提供的上下文信息（文献片段）精确回答用户问题，并详细整理关键参数。
+    console.log('[generateAIResponse] 使用的文档上下文 (截断部分):', constructedContext.substring(0, 500) + (constructedContext.length > 500 ? '...' : ''));
 
-**重要指令：**
-1.  在整理文献信息时，请务必详细提取并列出以下参数（如果文献中存在，请包含具体数值和单位）：
-    *   **每条文献的整理都要加上编号和概括的文献标题**
-    *   **催化剂制备过程**: 详细步骤、温度、压力、时间、前驱体、载体、活性组分用量、处理方法（如浸渍、沉淀、焙烧、还原等）。
-    *   **反应评价信息**: 反应温度、反应压力、原料组成及流速/用量、催化剂装填量（质量或体积）、反应器类型/尺寸/材质、气体时空速 (GHSV) 或液体时空速 (LHSV)。
-    *   **反应结果**: 转化率 (Conversion)、选择性 (Selectivity)、收率 (Yield)、时空收率 (Space-Time Yield, STY)、催化剂稳定性/寿命、主要副产物。
-2.  请最后一句总结本次回答。回答必须是对你整个回复内容的**关键点总结**，30个字以内。（例：（Ag、Pt、Au）及其合金对反应性能影响）**不要**使用"总结："、"关键点："或"标题："等任何标签文字。
+    // 构建最终的提示词
+    // 基本提示词结构
+    let prompt = `你是一位专业的AI助手，负责根据用户提供的文档内容和问题进行回答和总结。
 
-上下文信息:
+用户问题: "${query}"
+
+相关文档内容:
 ---
-${constructedContext}
+${constructedContext || "没有提供额外的文档上下文。"}
 ---
 
-用户问题: ${query}
+请仔细分析以上信息，并给出清晰、准确的回答。`;
 
-请根据以上信息和指令回答问题：`;
+    // 根据用户最新的要求，添加格式化指令
+    prompt += `
+
+重要：请务必严格按照以下格式组织您的回答，确保"标题："和"正文："各占一行，并且作为明确的标记：
+标题：[这里是您总结的标题]
+正文：[这里是您总结的详细内容]`;
+
+    console.log('[generateAIResponse] 最终构建的提示词 (前500字符):', prompt.substring(0, 500));
+    console.log('[generateAIResponse] 提示词总长度:', prompt.length);
 
     switch (provider) {
         case 'openai':

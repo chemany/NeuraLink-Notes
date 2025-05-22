@@ -8,53 +8,56 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { FoldersService } from './folders.service';
 import { CreateFolderDto } from './dto/create-folder.dto';
+import { UpdateFolderDto } from './dto/update-folder.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { User as UserModel } from '@prisma/client';
+
+interface AuthenticatedRequest extends Request {
+  user: Omit<UserModel, 'password'> & { id: string };
+}
 
 @Controller('folders')
+@UseGuards(JwtAuthGuard)
 export class FoldersController {
   constructor(private readonly foldersService: FoldersService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() createFolderDto: CreateFolderDto) {
-    console.log(
-      '[FoldersController] Received request for POST /folders, body:',
-      createFolderDto,
-    );
-    return this.foldersService.create(createFolderDto);
+  create(@Body() createFolderDto: CreateFolderDto, @Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.foldersService.create(createFolderDto, userId);
   }
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  findAll() {
-    console.log('[FoldersController] Received request for GET /folders');
-    return this.foldersService.findAll();
+  findAll(@Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.foldersService.findAll(userId);
   }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  findOne(@Param('id') id: string) {
-    console.log(`[FoldersController] Received request for GET /folders/${id}`);
-    return this.foldersService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.foldersService.findOne(id, userId);
   }
 
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  update(@Param('id') id: string, @Body('name') name: string) {
-    console.log(
-      `[FoldersController] Received request for PATCH /folders/${id}, name: ${name}`,
-    );
-    return this.foldersService.update(id, name);
+  update(@Param('id') id: string, @Body() updateFolderDto: UpdateFolderDto, @Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.foldersService.update(id, updateFolderDto, userId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('id') id: string) {
-    console.log(
-      `[FoldersController] Received request for DELETE /folders/${id}`,
-    );
-    return this.foldersService.remove(id);
+  remove(@Param('id') id: string, @Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.foldersService.remove(id, userId);
   }
 }

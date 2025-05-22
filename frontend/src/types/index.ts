@@ -72,3 +72,42 @@ export interface Message {
 }
 
 // ... 其他共享类型 ...
+
+// Auth DTOs
+export interface RegisterUserDto {
+  username: string;
+  email: string;
+  password: string; // 密码在注册时是必须的，但通常在其他上下文中可能是可选的或不直接传递
+}
+
+export interface LoginUserDto {
+  email: string;
+  password: string; // 同上
+}
+
+// 可以在这里添加 User 和 UserSettings 的前端类型定义，如果需要的话
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  // 不应包含 password
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserSettings {
+  id: string;
+  userId: string;
+  llmModel?: string | null;
+  llmApiKey?: string | null;
+  llmBasePath?: string | null;
+  vectorModel?: string | null;
+  vectorApiKey?: string | null;
+  vectorBasePath?: string | null;
+  embeddingsProvider?: string | null;
+  embeddingsModel?: string | null;
+  embeddingsApiKey?: string | null;
+  // 添加其他需要的设置字段
+  createdAt: string;
+  updatedAt: string;
+}

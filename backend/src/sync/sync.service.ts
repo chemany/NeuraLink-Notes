@@ -30,6 +30,7 @@ import {
   Folder,
   Document,
 } from '@prisma/client';
+import { NotebooksService } from '../notebooks/notebooks.service';
 
 // 声明模块扩展，让TypeScript知道PrismaClient具有syncConfig
 declare global {
@@ -60,6 +61,7 @@ export class SyncService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private notebooksService: NotebooksService,
   ) {
     // Ensure UPLOAD_PATH is used consistently if it's defined in config
     this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
@@ -1011,10 +1013,10 @@ export class SyncService {
             select: {
               id: true,
               title: true,
-              notes: true,
               folderId: true,
               createdAt: true,
               updatedAt: true,
+              userId: true,
             },
           });
           if (!fullNotebookData) {
@@ -1041,15 +1043,30 @@ export class SyncService {
             `[Sync Upload] Uploaded ${remoteMetaPathRelative}`,
           );
 
-          // Prepare and upload notes.json
-          const notesToUpload = { notes: fullNotebookData.notes || '' };
-          await provider.putFileContents(
-            remoteNotesPathRelative,
-            Buffer.from(JSON.stringify(notesToUpload, null, 2)),
-          );
-          this.logger.verbose(
-            `[Sync Upload] Uploaded ${remoteNotesPathRelative}`,
-          );
+          // Fetch notes.json content using NotebooksService
+          const userIdForNotes = fullNotebookData.userId;
+          if (!userIdForNotes) {
+            this.logger.error(`[Sync Upload] User ID not found for notebook ${notebook.id}. Cannot fetch notes.json. Skipping notes upload.`);
+            // Optionally, upload an empty notes.json or handle as an error
+            await provider.putFileContents(
+              remoteNotesPathRelative,
+              Buffer.from(JSON.stringify({ notes: "" }, null, 2)), // Upload empty notes
+            );
+            this.logger.verbose(
+              `[Sync Upload] Uploaded EMPTY ${remoteNotesPathRelative} due to missing userId.`,
+            );
+          } else {
+            const notesJsonString = await this.notebooksService.getNotebookNotesFromFile(notebook.id, userIdForNotes);
+            const notesToUpload = { notes: notesJsonString || '' };
+
+            await provider.putFileContents(
+              remoteNotesPathRelative,
+              Buffer.from(JSON.stringify(notesToUpload, null, 2)),
+            );
+            this.logger.verbose(
+              `[Sync Upload] Uploaded ${remoteNotesPathRelative}`
+            );
+          }
 
           // Update remoteSyncMeta for the notebook using the fresh timestamp
           if (!updatedRemoteSyncMeta.notebooks)
@@ -1146,16 +1163,18 @@ export class SyncService {
             update: {
               name: folderMeta.name,
               updatedAt: new Date(folderMeta.updatedAt),
+              // userId should not change on update if folder already exists and belongs to this user
             },
             create: {
               id: folderMeta.id,
               name: folderMeta.name,
-              createdAt: new Date(folderMeta.updatedAt),
+              createdAt: new Date(folderMeta.updatedAt), // Use remote updatedAt as createdAt for new ones
               updatedAt: new Date(folderMeta.updatedAt),
+              user: { connect: { id: config.userId } } // + ADDED user connect
             },
           });
           this.logger.verbose(
-            `[Sync Download] Upserted folder ${folderMeta.id} locally.`,
+            `[Sync Download] Upserted folder ${folderMeta.id} locally for user ${config.userId}.`,
           );
         } catch (error) {
           this.logger.error(
@@ -1201,45 +1220,61 @@ export class SyncService {
             const notesContentBuffer = await provider.getFileContents(
               remoteNotesPathRelative,
             );
-            const notesData = JSON.parse(notesContentBuffer.toString('utf-8'));
-            downloadedNotes = notesData?.notes || '';
-            this.logger.verbose(
-              `[Sync Download] Downloaded ${remoteNotesPathRelative}`,
-            );
-          } catch (notesError: any) {
-            if (notesError.status === 404) {
-              this.logger.warn(
-                `[Sync Download] Notes file not found for notebook ${notebookMeta.id} at ${remoteNotesPathRelative}. Setting notes to empty.`,
-              );
-              downloadedNotes = '';
-            } else {
-              throw notesError;
-            }
+            const notesJson = JSON.parse(notesContentBuffer.toString('utf-8'));
+            downloadedNotes = notesJson.notes || ''; // Extract the string value
+            this.logger.verbose(`[Sync Download] Downloaded ${remoteNotesPathRelative}`);
+          } catch (notesError) {
+            this.logger.warn(`[Sync Download] Could not download or parse ${remoteNotesPathRelative} for notebook ${notebookMeta.id}. Notes will be empty. Error: ${notesError.message}`);
+            downloadedNotes = ''; // Default to empty if notes.json is missing or corrupt
           }
 
-          // Upsert Notebook in local DB
+          // Upsert notebook metadata (without notes field)
+          const notebookCreatePayload: Prisma.NotebookCreateInput = {
+            id: notebookMeta.id,
+            title: downloadedMeta.title,
+            // folderId: downloadedMeta.folderId, // Will be handled by 'folder' field
+            createdAt: new Date(downloadedMeta.createdAt),
+            updatedAt: new Date(downloadedMeta.updatedAt),
+            user: { connect: { id: config.userId } },
+          };
+          if (downloadedMeta.folderId) {
+            notebookCreatePayload.folder = { connect: { id: downloadedMeta.folderId } };
+          }
+
+          const notebookUpdatePayload: Prisma.NotebookUpdateInput = {
+            title: downloadedMeta.title,
+            // folderId: downloadedMeta.folderId, // Will be handled by 'folder' field
+            updatedAt: new Date(downloadedMeta.updatedAt),
+          };
+          if (downloadedMeta.folderId === null) { // Explicitly unsetting folder
+            notebookUpdatePayload.folder = { disconnect: true };
+          } else if (downloadedMeta.folderId) { // Setting or changing folder
+            notebookUpdatePayload.folder = { connect: { id: downloadedMeta.folderId } };
+          }
+
           await this.prisma.notebook.upsert({
             where: { id: notebookMeta.id },
-            update: {
-              title: downloadedMeta.title,
-              notes: downloadedNotes,
-              folderId: downloadedMeta.folderId,
-              updatedAt: new Date(downloadedMeta.updatedAt), // Use timestamp from downloaded meta
-            },
-            create: {
-              id: notebookMeta.id,
-              title: downloadedMeta.title,
-              notes: downloadedNotes,
-              folderId: downloadedMeta.folderId,
-              createdAt: new Date(
-                downloadedMeta.createdAt || downloadedMeta.updatedAt,
-              ),
-              updatedAt: new Date(downloadedMeta.updatedAt),
-            },
+            create: notebookCreatePayload, // No 'notes' field here
+            update: notebookUpdatePayload, // No 'notes' field here
           });
           this.logger.verbose(
-            `[Sync Download] Upserted notebook ${notebookMeta.id} locally.`,
+            `[Sync Download] Upserted notebook metadata ${notebookMeta.id} locally for user ${config.userId}.`,
           );
+
+          // Now, save the downloaded notes content to notes.json using NotebooksService
+          try {
+            // Pass an empty DTO for metadata update, as we only want to update the notes file.
+            await this.notebooksService.update(notebookMeta.id, config.userId, {}, downloadedNotes);
+            this.logger.verbose(
+              `[Sync Download] Updated/created notes.json for notebook ${notebookMeta.id} via NotebooksService.`
+            );
+          } catch (notesSaveError) {
+            this.logger.error(
+              `[Sync Download] FAILED to save notes.json for notebook ${notebookMeta.id} using NotebooksService: ${notesSaveError.message}`,
+              notesSaveError.stack,
+            );
+            // Decide if this is a critical error. For now, log and continue.
+          }
         } catch (error) {
           this.logger.error(
             `[Sync Download] FAILED to download/upsert notebook ${notebookMeta.id}: ${error.message}`,
@@ -1302,29 +1337,31 @@ export class SyncService {
             where: { id: docMeta.id },
             update: {
               fileName: docMeta.fileName,
-              notebookId: docMeta.notebookId,
+              // notebookId: docMeta.notebookId, // Should not be updated like this
               fileSize: docMeta.fileSize ?? fileBuffer.length, // Use meta size or actual size
               filePath: localFilePathAbsolute, // Store absolute path
               updatedAt: remoteUpdatedAt, // Use timestamp from remote meta
               status: 'COMPLETED',
               statusMessage: 'Downloaded from cloud sync.',
+              // userId is not typically changed on update for an existing document owned by a user
             },
             create: {
               id: docMeta.id,
               fileName: docMeta.fileName,
-              notebookId: docMeta.notebookId,
+              // notebookId: docMeta.notebookId, // Replace with notebook connect object
+              notebook: { connect: { id: docMeta.notebookId } }, // + ADDED notebook connect
+              user: { connect: { id: config.userId } }, // + ADDED user connect (syncing user)
               fileSize: docMeta.fileSize ?? fileBuffer.length,
               filePath: localFilePathAbsolute, // Store absolute path
               createdAt: approxCreatedAt,
               updatedAt: remoteUpdatedAt,
               status: 'COMPLETED',
               statusMessage: 'Downloaded from cloud sync.',
-              // Ensure all required fields are provided (check your schema)
-              mimeType: docMeta.mimeType || 'application/octet-stream', // Add mimetype if available in meta
+              mimeType: docMeta.mimeType || 'application/octet-stream', 
             },
           });
           this.logger.verbose(
-            `[Sync Download] Upserted document ${docMeta.id} locally.`,
+            `[Sync Download] Upserted document ${docMeta.id} locally for user ${config.userId}.`,
           );
         } catch (error) {
           this.logger.error(

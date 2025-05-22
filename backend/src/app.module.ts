@@ -11,8 +11,8 @@ import { BackupModule } from './backup/backup.module';
 import { SyncModule } from './sync/sync.module';
 import { NotesModule } from './notes/notes.module';
 import { UploadModule } from './upload/upload.module';
-// import { AuthModule } from './auth/auth.module'; // 注释掉导入
-// import { UserModule } from './user/user.module'; // 注释掉导入
+import { AuthModule } from './auth/auth.module';
+import { UserModule } from './user/user.module';
 
 @Module({
   imports: [
@@ -26,8 +26,8 @@ import { UploadModule } from './upload/upload.module';
     SyncModule,
     NotesModule,
     UploadModule,
-    // AuthModule, // 注释掉引用
-    // UserModule, // 注释掉引用
+    AuthModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

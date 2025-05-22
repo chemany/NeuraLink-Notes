@@ -173,7 +173,7 @@ export default function NotebookCard({ notebookId, onDelete, onRename }: Noteboo
     <>
       {/* 卡片容器，移除固定高度 h-[70px] 和 justify-between */}
       <div 
-        className={`relative border rounded-lg shadow-sm p-3 bg-white hover:shadow-md transition-shadow duration-200 flex flex-col ${isDragging ? 'opacity-50' : ''} cursor-pointer`} // 移除 h-[70px] 和 justify-between
+        className={`relative border rounded-lg shadow-sm p-1 bg-white hover:shadow-md transition-shadow duration-200 flex flex-col ${isDragging ? 'opacity-50' : ''} cursor-pointer`} // 修改 p-2 为 p-1
         onClick={handleCardClick}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
@@ -215,7 +215,7 @@ export default function NotebookCard({ notebookId, onDelete, onRename }: Noteboo
         {/* 卡片内容 - 移除 overflow-hidden */}
         <div className="flex-grow mb-1"> {/* 使用 flex-grow 并添加下边距 */} 
           {/* 标题 - 移除 truncate，允许换行 */}
-          <h3 className="text-sm font-semibold text-gray-800 pr-7 break-words" title={notebook?.title}> {/* 调整右内边距为7，容纳两个按钮 */} 
+          <h3 className="text-sm font-semibold text-gray-800 pr-2 break-words" title={notebook?.title}> {/* 修改 pr-4 为 pr-2 */} 
             {notebook?.title}
           </h3>
         </div>

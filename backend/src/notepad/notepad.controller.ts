@@ -9,71 +9,94 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { NotePadService } from './notepad.service';
 import { CreateNotePadNoteDto } from './dto/create-notepad-note.dto';
 import { UpdateNotePadNoteDto } from './dto/update-notepad-note.dto';
 import { Logger } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { User as UserModel } from '@prisma/client';
 
-// FIX: Use a consistent nested route structure
+interface AuthenticatedRequest extends Request {
+  user: Omit<UserModel, 'password'> & { id: string };
+}
+
 @Controller('notebooks/:notebookId/notes')
+@UseGuards(JwtAuthGuard)
 export class NotePadController {
   private readonly logger = new Logger(NotePadController.name);
 
   constructor(private readonly notePadService: NotePadService) {}
 
-  // POST /notebooks/:notebookId/notes
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(
     @Param('notebookId') notebookId: string,
     @Body() createNoteDto: CreateNotePadNoteDto,
+    @Request() req: AuthenticatedRequest,
   ) {
+    const userId = req.user.id;
     this.logger.log(
-      `[NotePadController] POST /notebooks/${notebookId}/notes`,
+      `[NotePadController] User ${userId} POST /notebooks/${notebookId}/notes`,
       JSON.stringify(createNoteDto),
     );
-    return this.notePadService.create(notebookId, createNoteDto);
+    return this.notePadService.create(notebookId, userId, createNoteDto);
   }
 
-  // GET /notebooks/:notebookId/notes
   @Get()
   @HttpCode(HttpStatus.OK)
-  findAllByNotebook(@Param('notebookId') notebookId: string) {
-    this.logger.log(`[NotePadController] GET /notebooks/${notebookId}/notes`);
-    return this.notePadService.findAllByNotebook(notebookId);
+  findAllByNotebook(
+    @Param('notebookId') notebookId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
+    this.logger.log(`[NotePadController] User ${userId} GET /notebooks/${notebookId}/notes`);
+    return this.notePadService.findAllByNotebook(notebookId, userId);
   }
 
-  // GET /notebooks/:notebookId/notes/:id
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  findOne(@Param('notebookId') notebookId: string, @Param('id') id: string) {
+  findOne(
+    @Param('notebookId') notebookId: string,
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
     this.logger.log(
-      `[NotePadController] GET /notebooks/${notebookId}/notes/${id}`,
+      `[NotePadController] User ${userId} GET /notebooks/${notebookId}/notes/${id}`,
     );
-    return this.notePadService.findOne(id);
+    return this.notePadService.findOne(id, userId);
   }
 
-  @Put(':id')
+  @Patch(':id')
   @HttpCode(HttpStatus.OK)
   update(
     @Param('notebookId') notebookId: string,
     @Param('id') id: string,
     @Body() updateNoteDto: UpdateNotePadNoteDto,
+    @Request() req: AuthenticatedRequest,
   ) {
+    const userId = req.user.id;
     this.logger.log(
-      `[NotePadController] PUT /notebooks/${notebookId}/notes/${id}`,
+      `[NotePadController] User ${userId} PATCH /notebooks/${notebookId}/notes/${id}`,
       JSON.stringify(updateNoteDto),
     );
-    return this.notePadService.update(id, updateNoteDto);
+    return this.notePadService.update(id, userId, updateNoteDto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  remove(@Param('notebookId') notebookId: string, @Param('id') id: string) {
+  remove(
+    @Param('notebookId') notebookId: string,
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
     this.logger.log(
-      `[NotePadController] DELETE /notebooks/${notebookId}/notes/${id}`,
+      `[NotePadController] User ${userId} DELETE /notebooks/${notebookId}/notes/${id}`,
     );
-    return this.notePadService.remove(id);
+    return this.notePadService.remove(id, userId);
   }
 }

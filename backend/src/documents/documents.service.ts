@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, InternalServerErrorException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Document, Prisma } from '@prisma/client';
 // Try require syntax for pdf-parse
@@ -59,12 +59,13 @@ export class DocumentsService {
   // --- create method (modified) ---
   async create(
     notebookId: string,
+    userId: string,
     file: Express.Multer.File,
     originalNameParam: string,
     initialStatus: string = 'PENDING',
     initialStatusMessage?: string,
   ): Promise<Document> {
-    this.logger.log(`Starting document creation process for notebook ${notebookId}`);
+    this.logger.log(`User ${userId} starting document creation process for notebook ${notebookId}`);
 
     if (!file) {
         this.logger.error('File is missing in the request for document creation.');
@@ -74,12 +75,24 @@ export class DocumentsService {
         this.logger.error('Notebook ID is missing for document creation.');
         throw new BadRequestException('Notebook ID is required.');
     }
+    if (!userId) {
+        this.logger.error('User ID is required.');
+        throw new BadRequestException('User ID is required.');
+    }
 
     let docId: string | null = null;
     let finalFilePath: string | null = null;
     let createdDocument: Document | null = null;
 
     try {
+      // First, ensure the notebook belongs to the user
+      const notebook = await this.prisma.notebook.findFirst({
+        where: { id: notebookId, userId },
+      });
+      if (!notebook) {
+        throw new ForbiddenException('Notebook not found or you do not have permission to add documents to it.');
+      }
+
       createdDocument = await this.prisma.$transaction(async (tx) => {
         const initialDocData = {
             fileName: `__temp__${uuidv4()}`,
@@ -90,6 +103,7 @@ export class DocumentsService {
           notebook: {
             connect: { id: notebookId },
           },
+          user: { connect: { id: userId } },
         };
 
         const documentRecord = await (tx as any).document.create({ data: initialDocData });
@@ -97,49 +111,45 @@ export class DocumentsService {
         if (!docId) {
              throw new Error('[Transaction] Failed to get document ID after creation.');
         }
-        this.logger.verbose(`[Transaction] Document record created (TEMP): ID=${docId}`);
+        this.logger.verbose(`[Transaction] Document record created (TEMP): ID=${docId} for User ${userId}`);
 
         // 2. Determine the final, non-conflicting filename and path
         const originalNameParamValue = originalNameParam; // Store param value for logging
         const originalNameFromFile = file.originalname; // Store file value for logging
         const originalName = originalNameParamValue || originalNameFromFile;
-        this.logger.debug(`[Sanitize Debug] originalNameParam: ${originalNameParamValue}, file.originalname: ${originalNameFromFile}, used originalName: ${originalName}`);
+        console.log(`[CONSOLE_FILENAME_DEBUG] Service received originalName: "${originalName}", fromParam: "${originalNameParamValue}", fromFile: "${originalNameFromFile}"`);
         
-        // --- ADD LOGS for basename and extname --- 
         let fileExt = '';
         let baseName = '';
         try {
             fileExt = path.extname(originalName);
+            console.log(`[CONSOLE_FILENAME_DEBUG] path.extname("${originalName}") -> "${fileExt}"`);
             baseName = path.basename(originalName, fileExt);
-            this.logger.debug(`[Sanitize Debug] path.extname result: ${fileExt}`);
-            this.logger.debug(`[Sanitize Debug] path.basename result: ${baseName}`);
+            console.log(`[CONSOLE_FILENAME_DEBUG] path.basename("${originalName}", "${fileExt}") -> "${baseName}"`);
         } catch (pathError) {
-             this.logger.error(`[Sanitize Debug] Error during path operations: ${pathError.message}`);
-             // Fallback values if path operations fail
+             this.logger.error(`[Sanitize Debug] Error during path operations: ${pathError.message}`); // Keep logger for errors
              fileExt = '.unknown';
              baseName = originalName.substring(0, originalName.length - fileExt.length) || 'document';
         }
-        // --- END OF ADDED LOGS ---
         
-        // FIX: Updated sanitization logic
         let sanitizedBaseName = baseName.replace(/[^\p{L}\p{N}_\-\.\s]/gu, '_');
-        this.logger.debug(`[Sanitize Debug] After initial replace: ${sanitizedBaseName}`);
+        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after pLpN: "${sanitizedBaseName}"`);
         sanitizedBaseName = sanitizedBaseName.replace(/\s+/g, '_');
-        this.logger.debug(`[Sanitize Debug] After space replace: ${sanitizedBaseName}`);
+        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after space replace: "${sanitizedBaseName}"`);
         sanitizedBaseName = sanitizedBaseName.replace(/__+/g, '_');
-        this.logger.debug(`[Sanitize Debug] After underscore merge: ${sanitizedBaseName}`);
+        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after underscore merge: "${sanitizedBaseName}"`);
         sanitizedBaseName = sanitizedBaseName.replace(/^[\s_]+|[\s_]+$/g, '') || 'document';
-        this.logger.debug(`[Sanitize Debug] After trim: ${sanitizedBaseName}`);
+        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after trim: "${sanitizedBaseName}"`);
         
         let fileNameToSave = '';
         finalFilePath = '';
         let counter = 0;
         let fileExists = true;
-        const notebookUploadPath = path.join(this.uploadsDir, notebookId);
-        const finalFileDir = path.join(notebookUploadPath, docId);
+        const userNotebookUploadPath = path.join(this.uploadsDir, userId, notebookId);
+        const finalFileDir = path.join(userNotebookUploadPath, docId);
         
         await fsExtra.ensureDir(finalFileDir);
-        this.logger.verbose(`[Transaction] Ensured directory exists: ${finalFileDir}`);
+        this.logger.verbose(`[Transaction] Ensured directory exists: ${finalFileDir} for User ${userId}`);
 
         while (fileExists) {
             if (counter === 0) {
@@ -153,6 +163,7 @@ export class DocumentsService {
             const existingDoc = await (tx as any).document.findFirst({
                 where: {
                     notebookId: notebookId,
+                    userId: userId,
                     fileName: fileNameToSave,
                     NOT: { id: docId } // Exclude the document currently being created
                 },
@@ -176,10 +187,10 @@ export class DocumentsService {
 
         // Now that we have a unique DB filename, determine the final file path
         finalFilePath = path.join(finalFileDir, fileNameToSave);
-        this.logger.log(`[Transaction] Determined final file path: ${finalFilePath}`);
+        this.logger.log(`[Transaction] User ${userId} determined final file path: ${finalFilePath}`);
 
         await fs.promises.writeFile(finalFilePath, file.buffer);
-        this.logger.log(`[Transaction] Successfully saved uploaded file to: ${finalFilePath}`);
+        this.logger.log(`[Transaction] User ${userId} successfully saved uploaded file to: ${finalFilePath}`);
 
         const updatedDocument = await (tx as any).document.update({
             where: { id: docId },
@@ -190,12 +201,12 @@ export class DocumentsService {
                 statusMessage: initialStatusMessage ?? 'File saved successfully',
             },
         });
-        this.logger.verbose(`[Transaction] Updated document record ${docId} with final details.`);
+        this.logger.verbose(`[Transaction] Updated document record ${docId} with final details for User ${userId}`);
         
         return updatedDocument;
       });
       
-      this.logger.log(`Document created and file saved successfully: ID=${createdDocument?.id}`);
+      this.logger.log(`User ${userId} document created and file saved successfully: ID=${createdDocument?.id}`);
 
       if (createdDocument) { 
           try {
@@ -203,11 +214,11 @@ export class DocumentsService {
               where: { id: notebookId },
               data: { updatedAt: new Date() },
             });
-            this.logger.log(`Touched Notebook ${notebookId} updatedAt after creating document ${createdDocument.id}`);
+            this.logger.log(`Touched Notebook ${notebookId} updatedAt after User ${userId} creating document ${createdDocument.id}`);
             
             // 处理文档内容 (异步处理，不阻塞文档创建流程)
-            this.processDocument(createdDocument.id).catch(error => {
-              this.logger.error(`Failed to process document ${createdDocument!.id}: ${error.message}`, error.stack);
+            this.processDocument(createdDocument.id, userId).catch(error => {
+              this.logger.error(`User ${userId} failed to process document ${createdDocument!.id}: ${error.message}`, error.stack);
             });
             
           } catch (touchError) {
@@ -220,18 +231,18 @@ export class DocumentsService {
       return createdDocument!;
 
     } catch (error: any) {
-        this.logger.error(`Error during document creation transaction for notebook ${notebookId}: ${error.message}`, error.stack);
+        this.logger.error(`User ${userId} error during document creation for notebook ${notebookId}: ${error.message}`, error.stack);
         if (finalFilePath) { 
              try {
                  if (await fsExtra.pathExists(finalFilePath)) {
                      await fsExtra.remove(finalFilePath);
-                     this.logger.warn(`Cleaned up file ${finalFilePath} after transaction error.`);
+                     this.logger.warn(`Cleaned up file ${finalFilePath} for User ${userId} after transaction error.`);
                      const docDir = path.dirname(finalFilePath);
                      try {
                          const files = await fs.promises.readdir(docDir);
                          if (files.length === 0) {
                               await fsExtra.rmdir(docDir);
-                              this.logger.warn(`Removed empty directory ${docDir} after cleanup.`);
+                              this.logger.warn(`Removed empty directory ${docDir} for User ${userId} after cleanup.`);
                          }
                      } catch (rmdirError) { /* Ignore error if dir removal fails */ }
                  }
@@ -239,54 +250,54 @@ export class DocumentsService {
                  this.logger.error(`Failed to clean up file/dir ${finalFilePath} after error: ${cleanupError.message}`);
              }
         }
+        if (error instanceof ForbiddenException || error instanceof BadRequestException) throw error;
         throw new InternalServerErrorException(`Failed to create document: ${error.message}`);
     }
   }
 
   // --- Other methods remain the same ---
-  async findAllByNotebook(notebookId: string): Promise<Document[]> {
-    this.logger.log(`Finding documents for notebook ${notebookId}`);
+  async findAllByNotebook(notebookId: string, userId: string): Promise<Document[]> {
+    this.logger.log(`User ${userId} finding documents for notebook ${notebookId}`);
+    const notebook = await this.prisma.notebook.findFirst({ where: { id: notebookId, userId } });
+    if (!notebook) {
+      throw new ForbiddenException('Notebook not found or you do not have permission.');
+    }
     return this.prisma.document.findMany({
-        where: { notebookId },
+      where: { notebookId, userId },
       orderBy: { createdAt: 'desc' },
-      });
+    });
   }
 
-  async findOne(id: string): Promise<Document | null> {
-    this.logger.log(`Finding document with ID: ${id}`);
-    const document = await this.prisma.document.findUnique({
-      where: { id },
+  async findOne(id: string, userId: string): Promise<Document | null> {
+    this.logger.log(`User ${userId} finding document with ID ${id}`);
+    const document = await this.prisma.document.findFirst({
+      where: { id, userId },
     });
     if (!document) {
-      this.logger.warn(`Document with ID ${id} not found.`);
-      throw new NotFoundException(`Document with ID ${id} not found`);
+      this.logger.warn(`Document ID ${id} not found or not owned by user ${userId}.`);
     }
     return document;
   }
 
-  async getDocumentContent(id: string): Promise<string | Buffer | null> {
-     this.logger.log(`[DocumentsService] Getting content for document ${id}`);
-     const doc = await this.prisma.document.findUnique({
-         where: { id },
-         // Select both textContent and status
-         select: { textContent: true, status: true, statusMessage: true, filePath: true }
-     });
+  async getDocumentContent(id: string, userId: string): Promise<string | Buffer | null> {
+     this.logger.log(`User ${userId} getting content for document ID ${id}`);
+     const document = await this.findOne(id, userId);
 
-     if (!doc) {
+     if (!document || !document.filePath) {
          this.logger.warn(`[DocumentsService] Document ${id} not found`);
          return null; // Or throw NotFoundException
      }
 
-     this.logger.log(`[DocumentsService] Document ${id} found with status: ${doc.status}, message: ${doc.statusMessage}`);
+     this.logger.log(`[DocumentsService] Document ${id} found with status: ${document.status}, message: ${document.statusMessage}`);
      
      // 转换状态为大写以便比较
-     const status = doc.status?.toUpperCase() || '';
+     const status = document.status?.toUpperCase() || '';
      
      // Check status before returning content
      if (status === 'FAILED') {
-         this.logger.warn(`[DocumentsService] Document ${id} has failed status: ${doc.statusMessage}`);
+         this.logger.warn(`[DocumentsService] Document ${id} has failed status: ${document.statusMessage}`);
          // Optionally throw an error or return a specific message
-         throw new InternalServerErrorException(`文档处理失败: ${doc.statusMessage || '未知原因'}`);
+         throw new InternalServerErrorException(`文档处理失败: ${document.statusMessage || '未知原因'}`);
      } else if (status !== 'COMPLETED') {
          this.logger.warn(`[DocumentsService] Document ${id} is not yet completed (status: ${status}).`);
          // Optionally throw an error or return a message indicating processing
@@ -294,12 +305,12 @@ export class DocumentsService {
      }
 
      // 检查textContent是否存在
-     if (!doc.textContent) {
+     if (!document.textContent) {
          this.logger.warn(`[DocumentsService] Document ${id} has COMPLETED status but missing textContent`);
          
          // 检查文件是否存在
-         if (doc.filePath && fs.existsSync(doc.filePath)) {
-             this.logger.log(`[DocumentsService] Document ${id} has physical file at ${doc.filePath}, but no textContent in DB`);
+         if (document.filePath && fs.existsSync(document.filePath)) {
+             this.logger.log(`[DocumentsService] Document ${id} has physical file at ${document.filePath}, but no textContent in DB`);
              throw new InternalServerErrorException(`文档状态正常但内容未提取，请联系管理员`);
          } else {
              this.logger.error(`[DocumentsService] Document ${id} missing both textContent and physical file`);
@@ -309,11 +320,11 @@ export class DocumentsService {
 
      this.logger.log(`[DocumentsService] Successfully retrieved content for document ${id}`);
      // Only return content if status is completed
-     return doc.textContent;
+     return document.textContent;
   }
 
-   async remove(id: string): Promise<Document> {
-    this.logger.log(`Attempting to delete document with ID: ${id}`);
+   async remove(id: string, userId: string): Promise<Document> {
+    this.logger.log(`User ${userId} attempting to remove document with ID: ${id}`);
     let documentToDelete: Document | null = null;
     let notebookId: string | null = null;
 
@@ -335,7 +346,7 @@ export class DocumentsService {
         // 先删除向量数据
         if (notebookId) {
             try {
-                await this.deleteVectorData(id, notebookId);
+                await this.deleteVectorData(id, notebookId, userId);
                 this.logger.log(`Deleted vector data for document ${id}`);
             } catch (vectorDeleteError) {
                 this.logger.error(`Failed to delete vector data for document ${id}: ${vectorDeleteError.message}`);
@@ -380,7 +391,7 @@ export class DocumentsService {
         return deletedDocumentRecord;
 
     } catch (error: any) {
-        this.logger.error(`Error deleting document ${id}: ${error.message}`, error.stack);
+        this.logger.error(`User ${userId} error deleting document ${id}: ${error.message}`, error.stack);
         if (error instanceof NotFoundException) {
              throw error;
         }
@@ -474,50 +485,61 @@ export class DocumentsService {
    * 处理文档并提取文本内容
    * @param documentId 文档ID
    */
-  async processDocument(documentId: string): Promise<void> {
-    this.logger.log(`[ProcessDoc] Starting processing for document ID: ${documentId}`);
-    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+  async processDocument(documentId: string, userId: string): Promise<void> {
+    this.logger.log(`User ${userId} starting processing for document ID: ${documentId}`);
+    const document = await this.prisma.document.findFirst({ where: { id: documentId, userId }});
 
     if (!document || !document.filePath) {
       this.logger.error(`[ProcessDoc] Document or filePath not found for ID: ${documentId}`);
-      await this.updateDocumentStatus(documentId, 'FAILED', '文件信息丢失');
+      await this.updateDocumentStatus(documentId, userId, 'FAILED', '文件信息丢失');
       return;
     }
 
     const filePath = document.filePath;
     if (!fs.existsSync(filePath)) {
         this.logger.error(`[ProcessDoc] File does not exist at path: ${filePath} for document ${documentId}`);
-        await this.updateDocumentStatus(documentId, 'FAILED', '文件不存在或已被删除');
+        await this.updateDocumentStatus(documentId, userId, 'FAILED', '文件不存在或已被删除');
         return;
     }
     const fileExt = path.extname(filePath).toLowerCase();
     this.logger.log(`[ProcessDoc] Processing file: ${filePath}, Extension: ${fileExt}`);
 
     try {
-      await this.updateDocumentStatus(documentId, 'PROCESSING', '开始提取文本内容...');
+      await this.updateDocumentStatus(documentId, userId, 'PROCESSING', '开始提取文本内容...');
       let textContent = '';
 
       switch (fileExt) {
         case '.pdf':
           this.logger.log(`[ProcessDoc] Extracting content from PDF: ${filePath}`);
-          textContent = await this.extractPdfContent(filePath);
+          textContent = await this.extractPdfContent(filePath, document.fileName, documentId, userId);
           break;
         case '.docx':
           this.logger.log(`[ProcessDoc] Extracting content from DOCX: ${filePath}`);
-          textContent = await this.extractWordContent(filePath);
+          textContent = await this.extractWordContent(filePath, document.fileName, userId);
           break;
         case '.pptx':
-           this.logger.log(`[ProcessDoc] Extracting content from PPTX: ${filePath}`);
-           textContent = await this.extractPptContent(filePath);
+           this.logger.log(`[ProcessDoc] Extracting content from PPTX (using officeparser): ${filePath}`);
+           // 直接使用 officeparser，而不是调用返回空的 extractPptContent
+           try {
+            textContent = await officeparser.parseOfficeAsync(filePath);
+            this.logger.log(`[ProcessDoc] officeparser PPTX extraction successful. Text length: ${textContent?.length || 0}`);
+           } catch (error) {
+            this.logger.error(`[ProcessDoc] officeparser failed to extract text from PPTX ${filePath}: ${error.message}`, error.stack);
+            // 即使 officeparser 失败，也设置为空字符串，避免null导致后续问题，但记录错误
+            textContent = ''; 
+            // 考虑是否应该在此处更新文档状态为 FAILED
+            // await this.updateDocumentStatus(documentId, userId, 'FAILED', `PPTX文本提取失败: ${error.message}`);
+            // return; // 如果提取失败则提前返回，避免标记为 COMPLETED
+           }
            break;
         case '.txt':
         case '.md':
            this.logger.log(`[ProcessDoc] Extracting content from Text file: ${filePath}`);
-           textContent = await this.extractTextFileContent(filePath);
+           textContent = await this.extractTextFileContent(filePath, document.fileName, userId);
            break;
         default:
           this.logger.warn(`[ProcessDoc] Unsupported file type: ${fileExt} for document ${documentId}`);
-          await this.updateDocumentStatus(documentId, 'FAILED', `不支持的文件类型: ${fileExt}`);
+          await this.updateDocumentStatus(documentId, userId, 'FAILED', `不支持的文件类型: ${fileExt}`);
           return;
       }
 
@@ -544,32 +566,32 @@ export class DocumentsService {
       }
 
     } catch (error) {
-      this.logger.error(`[ProcessDoc] Error processing document ${documentId} (${filePath}): ${error.message}`, error.stack);
-      await this.updateDocumentStatus(documentId, 'FAILED', `处理失败: ${error.message}`);
+      this.logger.error(`User ${userId} error processing document ${documentId}: ${error.message}`, error.stack);
+      await this.updateDocumentStatus(documentId, userId, 'FAILED', `处理失败: ${error.message}`);
     }
   }
   
   /**
    * 更新文档状态
    */
-  private async updateDocumentStatus(documentId: string, status: string, statusMessage: string): Promise<void> {
+  private async updateDocumentStatus(documentId: string, userId: string, status: string, statusMessage: string): Promise<void> {
     try {
-      await this.prisma.document.update({
-        where: { id: documentId },
-        data: { status, statusMessage },
+      await this.prisma.document.updateMany({
+        where: { id: documentId, userId },
+        data: { status, statusMessage, updatedAt: new Date() },
       });
-      this.logger.log(`[StatusUpdate] Updated status for doc ${documentId}: ${status} - ${statusMessage}`);
+      this.logger.log(`User ${userId} updating status for document ${documentId}: ${status} - ${statusMessage}`);
     } catch (error) {
        // Log error if status update fails, but don't throw, as the underlying process might have still failed
-       this.logger.error(`[StatusUpdate] Failed to update status for doc ${documentId}: ${error.message}`);
+       this.logger.error(`User ${userId} failed to update status for doc ${documentId}: ${error.message}`);
     }
   }
   
   /**
    * 提取PDF文件内容
    */
-  private async extractPdfContent(filePath: string): Promise<string> {
-    this.logger.log(`[PDF Extract] Starting standard text extraction for: ${filePath}`);
+  private async extractPdfContent(filePath: string, fileName: string, documentId: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting standard text extraction for: ${filePath}`);
     let standardText = '';
     let extractionOk = false;
     try {
@@ -577,9 +599,9 @@ export class DocumentsService {
       const pdfData = await pdfParse(dataBuffer);
       standardText = pdfData.text || '';
       extractionOk = true; // Mark as successful if pdfParse doesn't throw
-      this.logger.log(`[PDF Extract] Standard extraction successful. Text length: ${standardText.length}`);
+      this.logger.log(`User ${userId} standard extraction successful. Text length: ${standardText.length}`);
     } catch (error) {
-      this.logger.error(`[PDF Extract] Standard PDF parsing failed for ${filePath}: ${error.message}`);
+      this.logger.error(`User ${userId} standard PDF parsing failed for ${filePath}: ${error.message}`);
       // Explicitly set empty string on error
       standardText = '';
       // Do not re-throw, allow returning empty text
@@ -588,10 +610,10 @@ export class DocumentsService {
     // Check if standard extraction yielded enough text
     if (extractionOk && standardText.length < this.MIN_TEXT_LENGTH_FOR_OCR) {
       // Log a warning if text is short, indicating OCR was skipped (as OCR logic is removed)
-      this.logger.warn(`[PDF Extract] Standard text length (${standardText.length}) is below OCR threshold (${this.MIN_TEXT_LENGTH_FOR_OCR}). OCR step is skipped. Content might be incomplete.`);
+      this.logger.warn(`User ${userId} standard text length (${standardText.length}) is below OCR threshold (${this.MIN_TEXT_LENGTH_FOR_OCR}). OCR step is skipped. Content might be incomplete.`);
     } else if (!extractionOk) {
         // Log if the initial parsing failed altogether
-        this.logger.warn(`[PDF Extract] Standard text extraction failed. Returning empty content.`);
+        this.logger.warn(`User ${userId} standard text extraction failed. Returning empty content.`);
     }
     // Always return the result from pdf-parse (potentially empty or short)
     return standardText;
@@ -600,63 +622,29 @@ export class DocumentsService {
   /**
    * 提取Word文档内容
    */
-  private async extractWordContent(filePath: string): Promise<string> {
-    this.logger.log(`[Word Extract] Starting content extraction for: ${filePath}`);
+  private async extractWordContent(filePath: string, fileName: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting content extraction for: ${filePath}`);
     try {
       const { value } = await mammoth.extractRawText({ path: filePath });
-      this.logger.log(`[Word Extract] Extraction successful. Text length: ${value?.length || 0}`);
+      this.logger.log(`User ${userId} extraction successful. Text length: ${value?.length || 0}`);
       return value || '';
     } catch (error) {
-      this.logger.error(`[Word Extract] Failed to extract text from DOCX ${filePath}: ${error.message}`);
+      this.logger.error(`User ${userId} failed to extract text from DOCX ${filePath}: ${error.message}`);
       throw new Error(`无法解析 DOCX 文件: ${error.message}`);
     }
   }
   
   /**
-   * 提取PPT幻灯片内容
-   */
-
-  private async extractPptContent(filePath: string): Promise<string> {
-     this.logger.warn(`[PPT Extract] Basic PPTX extraction for: ${filePath}. Note: This might miss speaker notes and complex elements.`);
-     // Note: pptxgenjs is primarily for *creating* PPTX.
-     // Actual text extraction from PPTX in Node.js is non-trivial and might require
-     // external libraries or services (like Apache POI via a Java bridge, or specific parsing libs).
-     // This is a VERY basic placeholder using known library limitations or requiring a different approach.
-
-     // Placeholder: Attempt to read basic slide text if a suitable library was integrated.
-     // For now, return empty as reliable extraction is complex.
-     try {
-         // Example (Conceptual - requires a suitable library like 'pptx-parser'):
-         // const parser = require('pptx-parser'); // Assuming such a library exists and is installed
-         // const presentation = await parser.parse(filePath);
-         // let combinedText = '';
-         // if (presentation && presentation.slides) {
-         //     for (const slide of presentation.slides) {
-         //         if (slide.text) combinedText += slide.text.join('\n') + '\n\n';
-         //     }
-         // }
-         // this.logger.log(`[PPT Extract] Conceptual extraction length: ${combinedText.length}`);
-         // return combinedText;
-
-         this.logger.warn('[PPT Extract] Reliable PPTX text extraction is not implemented. Returning empty content.');
-         return '';
-     } catch (error) {
-         this.logger.error(`[PPT Extract] Failed to extract text from PPTX ${filePath}: ${error.message}`);
-         // Don't throw, just return empty for now, as it's not fully supported
-         return '';
-     }
-  }
-  /**
    * 提取普通文本文件内容
    */
-  private async extractTextFileContent(filePath: string): Promise<string> {
-    this.logger.log(`[Text Extract] Starting content extraction for: ${filePath}`);
+  private async extractTextFileContent(filePath: string, fileName: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting content extraction for: ${filePath}`);
     try {
       const content = await fs.promises.readFile(filePath, 'utf-8');
-      this.logger.log(`[Text Extract] Extraction successful. Text length: ${content?.length || 0}`);
+      this.logger.log(`User ${userId} extraction successful. Text length: ${content?.length || 0}`);
       return content || '';
     } catch (error) {
-      this.logger.error(`[Text Extract] Failed to read text file ${filePath}: ${error.message}`);
+      this.logger.error(`User ${userId} failed to read text file ${filePath}: ${error.message}`);
       throw new Error(`无法读取文本文件: ${error.message}`);
     }
   }
@@ -664,13 +652,11 @@ export class DocumentsService {
   /**
    * 重新处理一个文档，用于手动触发文档内容提取
    */
-  async reprocessDocument(documentId: string): Promise<Document> {
-    this.logger.log(`[ReprocessDocument] Manually reprocessing document ${documentId}`);
+  async reprocessDocument(documentId: string, userId: string): Promise<Document> {
+    this.logger.log(`User ${userId} reprocessing document ID: ${documentId}`);
     
     // 查找文档
-    const document = await this.prisma.document.findUnique({
-      where: { id: documentId },
-    });
+    const document = await this.findOne(documentId, userId);
     
     if (!document) {
       this.logger.error(`[ReprocessDocument] Document ${documentId} not found`);
@@ -678,17 +664,11 @@ export class DocumentsService {
     }
     
     // 更新状态为PENDING
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: {
-        status: 'PENDING',
-        statusMessage: '文档重新处理中...',
-      },
-    });
+    await this.updateDocumentStatus(documentId, userId, 'PENDING', '文档重新处理中...');
     
     // 异步处理文档
-    this.processDocument(documentId).catch(error => {
-      this.logger.error(`[ReprocessDocument] Failed to reprocess document ${documentId}: ${error.message}`, error.stack);
+    this.processDocument(documentId, userId).catch(error => {
+      this.logger.error(`User ${userId} failed to reprocess document ${documentId}: ${error.message}`, error.stack);
     });
     
     return document;
@@ -702,7 +682,7 @@ export class DocumentsService {
    * @param documentId The ID of the document.
    * @param vectorData The data to save (should be JSON-serializable).
    */
-  async saveVectorData(documentId: string, vectorData: any): Promise<void> {
+  async saveVectorData(documentId: string, userId: string, vectorData: any): Promise<void> {
     this.logger.log(`Attempting to save vector data for document ID: ${documentId}`);
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
@@ -721,11 +701,11 @@ export class DocumentsService {
 
     // 两个存储路径：
     // 1. 文档目录下的向量数据文件
-    const documentVectorDataPath = path.join(this.uploadsDir, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
+    const documentVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
     const documentDir = path.dirname(documentVectorDataPath);
 
     // 2. 笔记本vectors目录下的向量数据文件
-    const notebookVectorsDir = path.join(this.uploadsDir, document.notebookId, 'vectors');
+    const notebookVectorsDir = path.join(this.uploadsDir, userId, document.notebookId, 'vectors');
     const notebookVectorDataPath = path.join(notebookVectorsDir, `${documentId}_vector_data.json`);
     
     try {
@@ -762,7 +742,7 @@ export class DocumentsService {
    * @param documentId The ID of the document.
    * @returns The parsed vector data, or null if the file doesn't exist.
    */
-  async getVectorData(documentId: string): Promise<any | null> {
+  async getVectorData(documentId: string, userId: string): Promise<any | null> {
     this.logger.log(`Attempting to retrieve vector data for document ID: ${documentId}`);
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
@@ -781,8 +761,8 @@ export class DocumentsService {
      }
 
     // 尝试从两个位置获取
-    const documentVectorDataPath = path.join(this.uploadsDir, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
-    const notebookVectorDataPath = path.join(this.uploadsDir, document.notebookId, 'vectors', `${documentId}_vector_data.json`);
+    const documentVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
+    const notebookVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, 'vectors', `${documentId}_vector_data.json`);
 
     try {
       let vectorData = null;
@@ -828,12 +808,12 @@ export class DocumentsService {
    * @param documentId 文档ID
    * @param notebookId 笔记本ID
    */
-  async deleteVectorData(documentId: string, notebookId: string): Promise<void> {
+  async deleteVectorData(documentId: string, notebookId: string, userId: string): Promise<void> {
     this.logger.log(`Attempting to delete vector data for document ID: ${documentId}`);
     
     // 删除两个位置的向量数据
-    const documentVectorDataPath = path.join(this.uploadsDir, notebookId, documentId, this.VECTOR_DATA_FILENAME);
-    const notebookVectorDataPath = path.join(this.uploadsDir, notebookId, 'vectors', `${documentId}_vector_data.json`);
+    const documentVectorDataPath = path.join(this.uploadsDir, userId, notebookId, documentId, this.VECTOR_DATA_FILENAME);
+    const notebookVectorDataPath = path.join(this.uploadsDir, userId, notebookId, 'vectors', `${documentId}_vector_data.json`);
     
     try {
       // 删除文档目录下的向量数据

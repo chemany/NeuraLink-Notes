@@ -6,14 +6,22 @@ import * as path from 'path';
 import { MulterError } from 'multer';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // logger: console, // 启用详细日志 (可选)
+    logger: ['log', 'error', 'warn', 'debug', 'verbose'],
+  });
 
   // 启用全局 DTO 验证管道
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    forbidNonWhitelisted: true,
-    transform: true,
-  }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
 
   // 启用 CORS (允许前端 http://localhost:3000 访问)
   app.enableCors({

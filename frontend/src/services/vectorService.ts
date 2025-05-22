@@ -3,6 +3,7 @@ import { generateEmbeddings } from './aiService';
 import { EmbeddingModelSettings } from '@/contexts/SettingsContext';
 import { fetchDocumentById } from './documentService';
 import { rerankChunks, RerankResult } from './aiService';
+import apiClient from './apiClient';
 
 // 后端 API 地址
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
@@ -464,67 +465,69 @@ export async function storeDocumentChunks(chunks: DocumentChunk[]): Promise<void
       
       // 逐个或小批量存储文档块
       // 后端请求体限制已放宽，尝试增加 CHUNK_SIZE 以提高存储效率
-      const CHUNK_SIZE = 200; // 尝试一次处理 50 个块
+      const CHUNK_SIZE = 200; // 尝试一次处理 200 个块
       
       for (let i = 0; i < chunks.length; i += CHUNK_SIZE) {
         const batch = chunks.slice(i, i + CHUNK_SIZE);
+        const firstChunkIdInBatch = batch[0]?.id || 'unknown_chunk_id';
         try {
-          const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/vector-data`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ vectorData: batch }), // 发送包含多个块的数组
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' }));
-            console.warn(`[VectorService] 块 ${i+1}/${chunks.length} 存储失败: ${response.status}`, errorData);
-            continue; // 继续处理下一个块
+          console.log(`[VectorService] 存储批次，起始块ID: ${firstChunkIdInBatch}, 批次大小: ${batch.length}`);
+          // 将 batch 包装在 { vectorData: batch } 中以匹配后端 DTO
+          const response = await apiClient.post(`/api/documents/${documentId}/vector-data`, { vectorData: batch });
+          // 检查响应状态，确保成功
+          if (response.status === 201 || response.status === 200) {
+            successCount += batch.length;
+            console.log(`[VectorService] 批次 (起始块ID: ${firstChunkIdInBatch}) 存储成功，当前总成功数: ${successCount}`);
+          } else {
+            // 如果状态码不是成功状态，则记录错误并抛出
+            const errorMessage = `[VectorService] Failed to store chunk batch for document ${documentId}. Status: ${response.status}`;
+            console.error(errorMessage, response.data);
+            throw new Error(errorMessage);
           }
-
-          successCount += batch.length;
-          // 移除批量存储的进度日志
-          // if (i % 5 === 0 || i >= chunks.length - CHUNK_SIZE) {
-          //   console.log(`[VectorService] 已成功存储 ${successCount}/${chunks.length} 个文档块`);
-          // }
-        } catch (chunkError: any) {
-          console.warn(`[VectorService] 存储块 ${i+1}/${chunks.length} 时出错:`, chunkError.message);
-          // 继续处理下一个块
+        } catch (batchError: any) {
+          console.error(`[VectorService] Error storing document chunks for ${documentId}, batch starting with chunk ID ${firstChunkIdInBatch}. Batch size: ${batch.length}. Error: ${batchError.message}`, batchError.response?.data || batchError);
+          // 从批处理错误中重新抛出，以便中止整个存储过程
+          throw new Error(`存储文档块批次失败 (文档ID: ${documentId}, 起始块ID: ${firstChunkIdInBatch}): ${batchError.message}`);
         }
       }
-
-      console.log(`[VectorService] 批量存储完成，成功率: ${successCount}/${chunks.length}`);
-      
-      if (successCount === 0) {
-        throw new Error('所有文档块存储都失败了');
+    } else if (chunks.length === 1) {
+      // 单个块的逻辑保持不变，但也确保错误被抛出
+      const chunk = chunks[0];
+      console.log(`[VectorService] Storing single chunk (ID: ${chunk.id}) for document ${documentId}`);
+      try {
+        // 将 chunk 数组包装在 { vectorData: [chunk] } 中以匹配后端 DTO
+        const response = await apiClient.post(`/api/documents/${documentId}/vector-data`, { vectorData: [chunk] });
+        if (response.status === 201 || response.status === 200) {
+          successCount = 1;
+          console.log(`[VectorService] Single chunk (ID: ${chunk.id}) stored successfully.`);
+        } else {
+          const errorMessage = `[VectorService] Failed to store single chunk ${chunk.id} for document ${documentId}. Status: ${response.status}`;
+          console.error(errorMessage, response.data);
+          throw new Error(errorMessage);
+        }
+      } catch (singleChunkError: any) {
+        console.error(`[VectorService] Error storing single chunk ${chunk.id} for document ${documentId}: ${singleChunkError.message}`, singleChunkError.response?.data || singleChunkError);
+        throw new Error(`存储单个文档块失败 (文档ID: ${documentId}, 块ID: ${chunk.id}): ${singleChunkError.message}`);
       }
-      
-      return; // 处理完毕，直接返回
     }
 
-    // 如果只有一个块，直接存储
-    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/vector-data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ vectorData: chunks }), // 匹配后端的 SaveVectorDataDto
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' }));
-      console.error(`[VectorService] 后端存储失败: ${response.status} ${response.statusText}`, errorData);
-      throw new Error(`存储向量数据失败: ${errorData.message || response.statusText}`);
+    console.log(`[VectorService] 批量存储完成，成功率: ${successCount}/${chunks.length}`);
+    if (successCount < chunks.length) {
+       // 如果不是所有块都成功存储，也应该抛出错误
+       const overallErrorMessage = `[VectorService] Not all chunks were stored successfully for document ${documentId}. Expected: ${chunks.length}, Succeeded: ${successCount}`;
+       console.error(overallErrorMessage);
+       throw new Error(overallErrorMessage);
     }
 
-    const result = await response.json();
-    // console.log(`[VectorService] 成功将文档块存储到后端:`, result.message);
-
-  } catch (error: any) {
-    console.error(`[VectorService] 调用后端存储API时出错:`, error);
-    // 重新抛出错误，以便调用者可以处理
-    throw new Error(`存储向量数据时出错: ${error.message}`);
+  } catch (error: any) { // Catches errors re-thrown from inner blocks or new errors from this scope, specified type as any
+    // 确保最外层的 catch 也能将错误信息传递出去
+    console.error(`[VectorService] Final error in storeDocumentChunks for document ${documentId}: ${error.message}`);
+    // 如果错误不是 Error 实例，或者没有 message，创建一个新的 Error 对象
+    if (error instanceof Error) {
+      throw error; // Re-throw the original error
+    } else {
+      throw new Error(`存储文档块时发生未知错误 (文档ID: ${documentId})`);
+    }
   }
 }
 
@@ -540,48 +543,51 @@ export async function getDocumentChunks(documentId: string): Promise<DocumentChu
   console.log(`[VectorService] 开始从后端获取文档块 (文档 ID: ${documentId})`);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}/vector-data`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
+    // 使用 apiClient 发起请求，它会自动处理 Authorization 头
+    const response = await apiClient.get(`/api/documents/${documentId}/vector-data`);
 
-    if (!response.ok) {
-       // 如果后端返回 404，说明向量数据不存在，返回空数组是合理的
-      if (response.status === 404) {
-           console.log(`[VectorService] 文档 ${documentId} 的向量数据未找到 (404)。`);
-           return [];
-       }
-      const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' }));
-      console.error(`[VectorService] 后端获取失败: ${response.status} ${response.statusText}`, errorData);
-      throw new Error(`获取向量数据失败: ${errorData.message || response.statusText}`);
-    }
+    // Axios 的响应数据在 response.data 中
+    const chunks = response.data;
 
-    // 检查响应内容类型，确保是 JSON
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-        // 如果响应为空 (例如 200 OK 但没有内容)，也视为未找到
-        if (response.status === 200 && response.headers.get('content-length') === '0') {
-             console.log(`[VectorService] 文档 ${documentId} 的向量数据为空 (后端返回空响应体)。`);
-             return [];
-        }
-        // 如果不是 JSON，抛出错误
-        console.error(`[VectorService] 响应类型错误: Expected application/json, got ${contentType}`);
-        throw new Error('获取向量数据失败：响应格式不正确。');
-    }
+    // if (!response.ok) { // Axios 会在非 2xx 状态时抛出错误，所以这里的检查方式不同
+    //    // 如果后端返回 404，说明向量数据不存在，返回空数组是合理的
+    //   if (response.status === 404) {
+    //        console.log(`[VectorService] 文档 ${documentId} 的向量数据未找到 (404)。`);
+    //        return [];
+    //    }
+    //   const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' }));
+    //   console.error(`[VectorService] 后端获取失败: ${response.status} ${response.statusText}`, errorData);
+    //   throw new Error(`获取向量数据失败: ${errorData.message || response.statusText}`);
+    // }
 
-    const chunks = await response.json();
-    // console.log(`[VectorService] 成功从后端获取了 ${chunks?.length ?? 0} 个文档块`);
+    // // 检查响应内容类型，确保是 JSON --- Axios 通常会处理好这个
+    // const contentType = response.headers.get('content-type');
+    // if (!contentType || !contentType.includes('application/json')) {
+    //     // 如果响应为空 (例如 200 OK 但没有内容)，也视为未找到
+    //     if (response.status === 200 && response.headers.get('content-length') === '0') {
+    //          console.log(`[VectorService] 文档 ${documentId} 的向量数据为空 (后端返回空响应体)。`);
+    //          return [];
+    //     }
+    //     // 如果不是 JSON，抛出错误
+    //     console.error(`[VectorService] 响应类型错误: Expected application/json, got ${contentType}`);
+    //     throw new Error('获取向量数据失败：响应格式不正确。');
+    // }
+
+    // const chunks = await response.json(); // Axios 已自动解析 JSON
+    console.log(`[VectorService] 成功从后端获取了 ${chunks?.length ?? 0} 个文档块`);
 
     // 后端在找不到文件时可能返回 null，这里处理一下
     return chunks || [];
 
-  } catch (error: any) {
-    console.error(`[VectorService] 调用后端获取API时出错:`, error);
-     // 重新抛出错误，以便调用者可以处理
-     // 避免在获取失败时返回空数组，因为这可能隐藏了问题
-    throw new Error(`获取向量数据时出错: ${error.message}`);
+  } catch (error: any) { // 修改 error 类型为 any 或 unknown，以便访问其属性
+    // Axios 错误对象通常包含 response 对象
+    if (error.response && error.response.status === 404) {
+      console.log(`[VectorService] 文档 ${documentId} 的向量数据未找到 (404，来自 Axios)。`);
+      return [];
+    }
+    console.error(`[VectorService] 调用后端获取API时出错 (Axios):`, error.isAxiosError ? error.toJSON() : error);
+    const message = error.response?.data?.message || error.message || '获取向量数据时出错';
+    throw new Error(`获取向量数据时出错: ${message}`);
   }
 }
 

@@ -1,28 +1,27 @@
 import axios from 'axios';
 import { Note } from '@/types'; // 确保 Note 类型已从 types 导入（现在是更新后的富文本 Note 类型）
+import apiClient, { handleApiError } from './apiClient'; // 导入共享的 apiClient 和 handleApiError
 
 // 从环境变量或默认值获取后端 API 基础 URL
-const BACKEND_API_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'http://localhost:3001';
+// const BACKEND_API_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'http://localhost:3001';
 
-// 统一的错误处理函数 (可以从其他 service 文件中复用或单独定义)
-const handleApiError = (error: any, context: string): Error => {
-  console.error(`[${context}] API Error:`, error);
-  let message = `An unknown error occurred in ${context}.`;
-  if (axios.isAxiosError(error)) {
-    if (error.response) {
-      // 后端返回了具体的错误信息
-      message = error.response.data?.message || error.response.statusText || error.message;
-      message = `API Error in ${context}: ${message} (Status: ${error.response.status})`;
-    } else if (error.request) {
-      message = `API Error in ${context}: No response received from server.`;
-    } else {
-      message = `API Error in ${context}: ${error.message}`;
-    }
-  } else if (error instanceof Error) {
-    message = `Error in ${context}: ${error.message}`;
-  }
-  return new Error(message);
-};
+// 创建一个配置了 Authorization 头的 Axios 实例
+// const apiClient = axios.create({
+//   baseURL: BACKEND_API_BASE,
+// });
+
+// apiClient.interceptors.request.use(
+//   (config) => {
+//     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+//     if (token) {
+//       config.headers['Authorization'] = `Bearer ${token}`;
+//     }
+//     return config;
+//   },
+//   (error) => {
+//     return Promise.reject(error);
+//   }
+// );
 
 /**
  * 工具函数：将后端返回的 Note 对象的 contentJson 字段从字符串解析为对象，并统一时间字段为字符串
@@ -51,8 +50,7 @@ export const fetchRichNotesByNotebookId = async (notebookId: string): Promise<No
     return [];
   }
   try {
-    const response = await axios.get<Note[]>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/richnotes`);
-    // 统一处理 contentJson 和时间字段
+    const response = await apiClient.get<Note[]>(`/api/notebooks/${notebookId}/richnotes`);
     return response.data.map(normalizeNote);
   } catch (error) {
     throw handleApiError(error, 'fetchRichNotesByNotebookId');
@@ -73,13 +71,12 @@ export const createRichNoteApi = async (
     throw new Error('Notebook ID is required to create a note.');
   }
   try {
-    // contentJson 需序列化为字符串
     const payload = {
       title: data.title,
       contentJson: data.contentJson ? JSON.stringify(data.contentJson) : null,
       contentHtml: data.contentHtml,
     };
-    const response = await axios.post<Note>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/richnotes`, payload);
+    const response = await apiClient.post<Note>(`/api/notebooks/${notebookId}/richnotes`, payload);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'createRichNoteApi');
@@ -102,14 +99,13 @@ export const updateRichNoteApi = async (
     throw new Error('Notebook ID and Note ID are required to update a note.');
   }
   try {
-    // contentJson 需序列化为字符串
     const payload = {
       ...data,
       contentJson: data.contentJson !== undefined
         ? (data.contentJson === null ? null : JSON.stringify(data.contentJson))
         : undefined,
     };
-    const response = await axios.put<Note>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/richnotes/${noteId}`, payload);
+    const response = await apiClient.put<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`, payload);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'updateRichNoteApi');
@@ -127,7 +123,7 @@ export const deleteRichNoteApi = async (notebookId: string, noteId: string): Pro
     throw new Error('Notebook ID and Note ID are required to delete a note.');
   }
   try {
-    const response = await axios.delete<Note>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/richnotes/${noteId}`);
+    const response = await apiClient.delete<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'deleteRichNoteApi');
@@ -146,10 +142,9 @@ export const fetchRichNoteByIdApi = async (notebookId: string, noteId: string): 
     return null;
   }
   try {
-    const response = await axios.get<Note>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/richnotes/${noteId}`);
+    const response = await apiClient.get<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`);
     return normalizeNote(response.data);
   } catch (error) {
-    // 如果是404，则认为是null，否则抛出错误
     if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
       return null;
     }

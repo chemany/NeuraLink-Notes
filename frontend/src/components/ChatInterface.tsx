@@ -8,12 +8,14 @@ import { Message, Document } from '@/types';
 import { DocumentStatus } from '@/types/shared_local';
 import { formatDate } from '@/utils/formatters';
 import ChatMessage from '@/components/ChatMessage';
+// @ts-ignore 
 import { toast } from 'react-hot-toast';
 import { TldrawBoardRef } from '@/components/TldrawBoard';
 import { ExcalidrawBoardRef } from './ExcalidrawBoard';
 import { SimpleBoardRef } from './SimpleBoard';
 import { MarkdownNotebookRef } from './MarkdownNotebook';
 import DocumentPreview from './DocumentPreview';
+import { useRouter } from 'next/navigation';
 // 暂时注释掉ReactMarkdown导入，解决编译错误
 // import ReactMarkdown from 'react-markdown';
 
@@ -23,7 +25,7 @@ interface ChatInterfaceProps {
   documents?: Document[];
   messages?: Message[];
   onSendMessage?: (message: Message) => void;
-  tldrawBoardRef: React.RefObject<MarkdownNotebookRef>;
+  tldrawBoardRef?: any;
   onAddDocumentToChat?: (document: Document) => void;
   onPreviewDocument?: (document: Document, content: string) => void;
 }
@@ -51,7 +53,8 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { llmSettings } = useSettings();
-  const { currentNotebook, saveWhiteboardContent, getWhiteboardContent } = useNotebook();
+  const { currentNotebook, saveWhiteboardContent, getWhiteboardContent, createNotebook, createNote } = useNotebook();
+  const router = useRouter();
   
   // 添加文档预览状态
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
@@ -286,33 +289,145 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
     }
   };
 
-  // 添加保存到笔记功能
-  const handleSaveToNotes = (title: string, content: string) => {
-    if (!tldrawBoardRef.current) {
-      console.warn('[handleSaveToNotes] 笔记本引用不存在');
-      toast.error('无法保存到笔记：笔记本未初始化');
+  const handleSaveToNotes = async (chatMessageContent: string, chatMessageTitle?: string) => {
+    console.log('[ChatInterface] handleSaveToNotes called.');
+    console.log('[ChatInterface] Initial chatMessageTitle (from ChatMessage):', chatMessageTitle); // This will likely be undefined now
+    console.log('[ChatInterface] Initial chatMessageContent (from ChatMessage):', chatMessageContent.substring(0, 100));
+    console.log('[ChatInterface] Initial chatMessageContent length:', chatMessageContent.length);
+
+    if (!chatMessageContent.trim()) {
+      toast.error('无法保存空内容。');
       return;
     }
-    
-    // 尝试添加到笔记本
+
+    let noteTitle = chatMessageTitle; // Start with a possible explicit title
+    let noteContentHtml = chatMessageContent; // Default to full content
+
+    // New logic: Try to extract from "标题：" and "正文：" markers first
+    const structuredResponseRegex = /^标题：\s*([\s\S]*?)\n正文：\s*([\s\S]*)$/im;
+    const structuredMatch = chatMessageContent.match(structuredResponseRegex);
+
+    if (structuredMatch && structuredMatch[1] && structuredMatch[2]) {
+      noteTitle = structuredMatch[1].trim();
+      noteContentHtml = structuredMatch[2].trim();
+      console.log('[ChatInterface] Title and Content extracted using structured markers.');
+      console.log('[ChatInterface] Structured Title:', noteTitle);
+      console.log('[ChatInterface] Structured Content (first 100 chars):', noteContentHtml.substring(0, 100));
+    } else {
+      console.log('[ChatInterface] Structured markers not found. Falling back to previous logic.');
+      // Fallback to existing logic if structured markers are not found
+      if (!noteTitle) { // Only if chatMessageTitle was not initially provided
+        const oldTitleRegex = /^以下是文档《(.*?)》(?:的关键点总结|的主要内容|的核心内容提炼|等)：/i;
+        const oldMatch = chatMessageContent.match(oldTitleRegex);
+
+        if (oldMatch && oldMatch[1]) {
+          const extractedFilename = oldMatch[1];
+          let suffix = "的关键点总结";
+          if (oldMatch[0].includes("的主要内容")) {
+            suffix = "的主要内容";
+          } else if (oldMatch[0].includes("的核心内容提炼")) {
+            suffix = "的核心内容提炼";
+          }
+          noteTitle = `《${extractedFilename}》${suffix}`;
+          console.log('[ChatInterface] Title generated from OLD regex:', noteTitle);
+          // When using old regex, assume the full chatMessageContent is the content
+          // noteContentHtml is already set to chatMessageContent by default
+        } else {
+          console.log('[ChatInterface] OLD Regex did not match. Falling back to generateKeywords or default.');
+          const keywordsTitle = generateKeywords(chatMessageContent); // chatMessageContent here is the full AI response
+          console.log('[ChatInterface] Title from generateKeywords:', keywordsTitle);
+          noteTitle = keywordsTitle || `聊天记录 ${formatDate(new Date().toISOString())}`;
+          console.log('[ChatInterface] Title after fallback:', noteTitle);
+          // noteContentHtml is already set to chatMessageContent
+        }
+      }
+      // If noteTitle was provided by chatMessageTitle, and no structured markers, use it as is.
+      // noteContentHtml remains chatMessageContent in this fallback path.
+    }
+
+    console.log('[ChatInterface] Final raw noteTitle (before truncation):', noteTitle);
+    console.log('[ChatInterface] Final raw noteTitle length:', noteTitle?.length || 0); // Added null check
+
+    // 确保标题长度不超过255个字符
+    if (noteTitle && noteTitle.length > 255) { // Added null check for noteTitle
+      noteTitle = noteTitle.substring(0, 252) + "..."; // 截断并添加省略号
+    }
+    console.log('[ChatInterface] noteTitle after truncation (if any):', noteTitle);
+
+    console.log('[ChatInterface] Final noteContentHtml (first 100 chars):', noteContentHtml.substring(0, 100));
+    console.log('[ChatInterface] Final noteContentHtml length:', noteContentHtml.length);
+
     try {
-      console.log('[handleSaveToNotes] 保存内容到笔记:', content.substring(0, 50) + (content.length > 50 ? '...' : ''));
-      
-      // 检查内容是否有效
-      if (!content || content.trim() === '') {
-        console.warn('[handleSaveToNotes] 内容为空，不保存到笔记');
-        toast.error('无法保存到笔记：内容为空');
+      let targetNotebookId: string | undefined = currentNotebook?.id;
+      let newNotebookCreated = false;
+
+      if (!targetNotebookId) {
+        // 情况 2: 没有当前笔记本，需要创建新笔记本
+        console.log('[ChatInterface] 没有当前笔记本，将创建新笔记本并保存笔记。');
+        const autoGeneratedNotebookTitle = `聊天笔记 ${formatDate(new Date().toISOString())}`;
+        const userNotebookTitle = window.prompt("请输入新笔记本的名称：", autoGeneratedNotebookTitle);
+        
+        if (!userNotebookTitle || !userNotebookTitle.trim()) {
+            toast.error("未提供有效的笔记本名称，取消保存。");
+            return;
+        }
+
+        const newNotebook = await createNotebook(userNotebookTitle.trim());
+        if (newNotebook) {
+          targetNotebookId = newNotebook.id;
+          newNotebookCreated = true;
+          toast.success(`新笔记本 "${newNotebook.title}" 已创建。`);
+        } else {
+          toast.error('创建新笔记本失败，无法保存笔记。');
+          return;
+        }
+      }
+
+      // 到这里，我们应该有一个 targetNotebookId
+      if (!targetNotebookId) {
+        toast.error('无法确定目标笔记本，保存笔记失败。');
+        console.error('[ChatInterface] Logic error: targetNotebookId is still undefined after notebook creation/check.');
         return;
       }
       
-      // 使用笔记本引用的方法添加内容
-      tldrawBoardRef.current.addTextToNotebook(content);
-      
-      // 显示成功提示
-      toast.success('内容已保存到笔记');
+      console.log(`[ChatInterface] 准备在笔记本 ID: ${targetNotebookId} 中创建笔记，标题: "${noteTitle}"`);
+      const newNote = await createNote(targetNotebookId, {
+        title: noteTitle,
+        contentHtml: noteContentHtml, // 确保这是 Tiptap 可以处理的 HTML
+      });
+
+      if (newNote) {
+        toast.success(`笔记 "${newNote.title}" 已成功保存!`);
+        // 导航到新创建或已存在的笔记本，并尝试聚焦到新笔记
+        // NotebookContext 中的 createNote 已经将新笔记添加到了 currentNotes
+        // NotebookLayout 中的 useEffect 会监听 activeNote 和 currentNotes 来更新编辑器
+        // 我们只需要导航到笔记本，并最好能让 NotebookLayout 知道哪个是新笔记。
+        // 最简单的方式是直接导航到笔记本，让用户自己选择笔记，或者依赖 NotebookLayout 默认选择最新/第一个笔记。
+        // 为了更好的用户体验，可以尝试导航并激活笔记。
+        
+        // 如果是新创建的笔记本，导航到它
+        if (newNotebookCreated) {
+          router.push(`/notebook/${targetNotebookId}`);
+          //  当 NotebookLayout 加载时，它会获取 currentNotes。
+          //  可以考虑在 NotebookLayout 中添加逻辑，如果 URL query param 中有 noteId，则自动设为 activeNote。
+          //  或者，在这里调用一个方法（如果 NotebookContext 或 Layout 暴露的话）来设置 activeNote。
+        } else if (currentNotebook?.id === targetNotebookId) {
+          // 如果是保存到当前已打开的笔记本，可以尝试通过某种方式通知 NotebookLayout 更新 activeNote
+          // 但 NotebookContext 的 createNote 已经更新了 currentNotes，
+          // NotebookLayout 的 useEffect 应该会处理 activeNote 的选择（比如选择第一个，或者最新的）
+          // 通常不需要强制导航，除非想确保新笔记被打开。
+          console.log('[ChatInterface] 笔记已保存到当前笔记本。NotebookLayout应处理笔记列表的更新。');
+        }
+        // 如果希望总是导航到新笔记（即使在当前笔记本中创建）
+        // router.push(`/notebook/${targetNotebookId}?note=${newNote.id}`); // 这需要NotebookLayout支持从query读取noteId
+        
+      } else {
+        toast.error('在笔记本中创建笔记失败。');
+      }
+
     } catch (error) {
-      console.error('[handleSaveToNotes] 保存内容到笔记时出错:', error);
-      toast.error('保存到笔记时出错，请重试');
+      console.error('[ChatInterface] 保存笔记时出错:', error);
+      toast.error(`保存笔记失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   };
 
@@ -484,7 +599,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
           <ChatMessage
             key={message.id}
             message={message}
-            onSaveToNotes={handleSaveToNotes}
+            onSaveToNotes={(content, title) => handleSaveToNotes(content, title)}
           />
         ))}
         <div ref={messagesEndRef} />

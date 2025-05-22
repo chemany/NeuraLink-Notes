@@ -3,6 +3,19 @@ import { Notebook } from '../types'; // 或者 '../types/notebook'，取决于�
 // 和 documentService.ts 一样，从环境变量或常量获取基础 URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
 
+// Helper function to get authorization headers
+const getAuthHeaders = () => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+};
+
 // 添加简单的错误处理函数
 const handleApiError = (error: any, message: string) => {
   console.error(`[API Error] ${message}:`, error);
@@ -20,10 +33,7 @@ export const createNotebookApi = async (title: string, folderId?: string): Promi
   try {
     const response = await fetch(`${API_BASE_URL}/api/notebooks`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      // 只发送必要的字段，后端 DTO 会处理
+      headers: getAuthHeaders(),
       body: JSON.stringify({ title, folderId }),
     });
 
@@ -59,9 +69,7 @@ export const fetchNotebooksApi = async (): Promise<Notebook[]> => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/notebooks`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {
@@ -95,9 +103,7 @@ export const updateNotebookApi = async (id: string, data: { title?: string; fold
   try {
     const response = await fetch(`${API_BASE_URL}/api/notebooks/${id}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify(data),
     });
 
@@ -132,10 +138,7 @@ export const updateNotebookTitle = async (id: string, title: string): Promise<No
   try {
     const response = await fetch(url, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        // 可能需要认证头
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ title }), // 只发送 title
     });
 

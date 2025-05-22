@@ -5,7 +5,9 @@ export enum DocumentStatus {
   PENDING = 'PENDING',      // 待处理
   PROCESSING = 'PROCESSING', // 处理中
   COMPLETED = 'COMPLETED',   // 处理完成
-  FAILED = 'FAILED'          // 处理失败
+  FAILED = 'FAILED',          // 处理失败
+  VECTORIZATION_SKIPPED = 'VECTORIZATION_SKIPPED', // 新增：向量化跳过
+  VECTORIZATION_FAILED = 'VECTORIZATION_FAILED'   // 新增：向量化失败
 }
 
 // 文档类型定义

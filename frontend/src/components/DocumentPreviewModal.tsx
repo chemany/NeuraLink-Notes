@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { Document } from '../types/shared_local';
 import dynamic from 'next/dynamic';
 import { toast } from 'react-hot-toast';
+import apiClient from '@/services/apiClient';
+import axios from 'axios';
 
 // Dynamic import for FileViewer
 const FileViewer = dynamic(() => import('react-file-viewer'), {
@@ -67,11 +69,12 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
          setObjectUrl(null);
          setPreviewError(null);
          setIsLoadingPreview(false);
+         console.log('[PreviewModal] loadPreview returned early due to missing isOpen, document, or content.', { isOpen, docExists: !!document, contentExists: !!content }); 
          return;
       }
 
       const extension = getFileExtension(document.fileName);
-      
+
       // Reset state
       setObjectUrl(null);
       setPreviewError(null);
@@ -81,28 +84,18 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         let finalUrl = null;
 
         if (typeof content === 'string') {
-          // If it's text, no fetch needed, but we clear any previous object URL
           if (['txt', 'md', 'csv', 'json'].includes(extension)) {
-             // No object URL needed for direct text display
           } 
-          // If it's a URL (e.g., for PDF, image, or FileViewer path)
-          else if (content.startsWith('http') || content.startsWith('/api/documents')) {
-              // Fetch the content from the backend URL
-              console.log(`[PreviewModal] Fetching content from URL: ${content}`);
-              const response = await fetch(content); // Fetch from the backend URL
-              if (!response.ok) {
-                 throw new Error(`无法加载预览 (${response.status} ${response.statusText})`);
-              }
-              const blob = await response.blob();
-              finalUrl = URL.createObjectURL(blob);
-              currentObjectUrl = finalUrl; // Keep track to revoke later
-              console.log(`[PreviewModal] Created Object URL: ${finalUrl}`);
-          } else {
-             // Assume it's a path FileViewer can handle directly (might be data URI)
-             // No fetch needed, but treat as non-object URL content
+          else {
+            if (content.startsWith('http') || content.startsWith('/api/documents')) {
+                const response = await apiClient.get(content, { responseType: 'blob' });
+                const blob = response.data as Blob;
+                finalUrl = URL.createObjectURL(blob);
+                currentObjectUrl = finalUrl; 
+            } else {
+            }
           }
         } else if (content instanceof ArrayBuffer) {
-           // Handle ArrayBuffer directly (e.g., for images passed as buffer)
            const mimeType = getMimeType(extension);
            const blob = new Blob([content], { type: mimeType });
            finalUrl = URL.createObjectURL(blob);
@@ -111,11 +104,15 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
            throw new Error('不支持的预览内容类型');
         }
 
-        setObjectUrl(finalUrl); // Set the Object URL for rendering
+        setObjectUrl(finalUrl);
 
       } catch (error) {
          console.error('[PreviewModal] Error loading preview content:', error);
-         setPreviewError(error instanceof Error ? error.message : '加载预览失败');
+         if (axios.isAxiosError(error) && error.response) {
+           setPreviewError(`无法加载预览 (${error.response.status} ${error.response.statusText || error.message})`);
+         } else {
+           setPreviewError(error instanceof Error ? error.message : '加载预览失败');
+         }
       } finally {
           setIsLoadingPreview(false);
       }

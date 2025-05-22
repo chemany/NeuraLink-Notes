@@ -21,14 +21,23 @@ import {
 import { type Document, type NotePadNote, type Message, type Notebook, type Note, type WhiteboardContent } from '@/types'; 
 import { DocumentStatus } from '@/types/shared_local'; // Correct import path
 // import { emergencyRecoverNotebookDocuments } from '@/services/documentService';
+// @ts-ignore
 import { toast } from 'react-hot-toast';
 import SimpleBoard, { SimpleBoardRef } from './SimpleBoard';
 // import MarkdownNotebook, { MarkdownNotebookRef } from './MarkdownNotebook'; // 旧的
-import RichTextNotebook, { RichTextNotebookRef } from './RichTextNotebook'; // 新的
+import dynamic from 'next/dynamic'; // 导入 dynamic
+import type { TiptapNotebookApi } from './TiptapNotebook'; // 确保这里是 TiptapNotebookApi
 // Import icons for collapse button
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, HomeIcon, PencilIcon } from '@heroicons/react/24/outline';
 import DocumentPreviewModal from './DocumentPreviewModal'; // Import the new modal
 import RenameNotebookModal from './RenameNotebookModal'; // 导入重命名模态框
+
+// 动态导入 TiptapNotebook，并禁用SSR
+const TiptapNotebook = dynamic(() => import('@/components/TiptapNotebook'), { // 使用正确的相对路径
+  ssr: false,
+  loading: () => <div style={{ padding: '1rem', color: 'gray' }}>编辑器加载中...</div>, // 可选的加载状态
+});
+//不再需要单独的 TiptapNotebookRef 类型导入
 
 interface NotebookLayoutProps {
   children?: ReactNode;
@@ -57,6 +66,13 @@ export default function NotebookLayout({
   const [showChat, setShowChat] = useState(true);
   const [notebookTitle, setNotebookTitle] = useState(initialNotebookTitle || '');
   const [isClient, setIsClient] = useState(false);
+  const [tiptapApi, setTiptapApi] = useState<TiptapNotebookApi | null>(null);
+
+  // 使用 useCallback 包裹 onApiReady 回调
+  const handleApiReady = useCallback((api: TiptapNotebookApi | null) => {
+    console.log('[NotebookLayout] Tiptap API ready/changed:', api ? 'API object received' : 'API is null');
+    setTiptapApi(api);
+  }, []); // setTiptapApi 的引用是稳定的，所以依赖数组可以为空，或者明确写 [setTiptapApi]
 
   const { llmSettings, embeddingSettings } = useSettings();
   const { 
@@ -120,6 +136,7 @@ export default function NotebookLayout({
   }, [router]);
   
   // Add logging here
+  /* // Temporarily disable this high-frequency log
   console.log('[NotebookLayout Status]', { 
       isLoadingNotebooks, 
       isLoadingDocuments, 
@@ -128,6 +145,7 @@ export default function NotebookLayout({
       documentsCount: documents?.length,
       routerInitialized: !!router
   });
+  */
   
   // 在加载时记录笔记本状态 (Corrected)
   useEffect(() => {
@@ -197,14 +215,14 @@ export default function NotebookLayout({
     if (activeNote && currentNotes) {
       const noteData = currentNotes.find(note => note.id === activeNote);
       if (noteData) {
-        console.log(`[NotebookLayout] Active note is '${noteData.title || 'Untitled'}'. Updating editor title and content.`);
+        // console.log(`[NotebookLayout] Active note is '${noteData.title || 'Untitled'}'. Updating editor title and content.`);
         setStudioContentTitle(noteData.title || '');
         setStudioContent(noteData.contentHtml || '');
         setShowStudio(true); // Ensure editor panel is visible
       } else {
         // Active note ID exists but not found in currentNotes (e.g., notes list updated and old activeNote is gone)
-        console.warn(`[NotebookLayout] Active note ID ${activeNote} not found in currentNotes. Attempting to clear active note.`);
-        setActiveNote(null); // Reset activeNote, which will trigger this effect again for the null case
+        // console.warn(`[NotebookLayout] Active note ID ${activeNote} not found in currentNotes. Attempting to clear active note.`);
+        // setActiveNote(null); // <--- Temporarily comment out this line
       }
     } else if (activeNote === null) {
       // No active note selected, or activeNote was just cleared
@@ -612,7 +630,7 @@ export default function NotebookLayout({
   };
   
   // const notebookRef = useRef<MarkdownNotebookRef>(null); // 旧的 Ref
-  const notebookRef = useRef<RichTextNotebookRef>(null); // 新的 Ref 类型
+  const notebookRef = useRef<TiptapNotebookApi>(null); // 新的 TiptapNotebook Ref
   // 添加聊天界面引用
   const chatRef = useRef<ChatInterfaceRef>(null);
   
@@ -811,27 +829,11 @@ export default function NotebookLayout({
   }, [activeNote, currentNotes]); // Depend on context's notes
 
   // Handler passed to RichTextNotebook's onSave prop
-  const handleSaveCurrentNoteCallback = async (contentInput: string | SyntheticBaseEvent, title: string) => {
+  const handleSaveCurrentNoteCallback = useCallback(async (contentInput: string, title: string) => {
     let contentHtmlString: string;
 
     // Check if contentInput is a SyntheticBaseEvent or an object that might contain the HTML
-    if (typeof contentInput === 'object' && contentInput !== null && 'nativeEvent' in contentInput) {
-      console.warn('[NotebookLayout] handleSaveCurrentNoteCallback received an event object for contentHtml. Attempting to extract HTML. This should be fixed in the calling component.');
-      // Attempt to extract HTML if it's a common event structure or from a known editor property
-      // This is a guess and might need adjustment based on how RichTextNotebook passes data
-      const event = contentInput as any; // Type assertion for easier access
-      if (event.target && typeof event.target.value === 'string') {
-        contentHtmlString = event.target.value;
-      } else if (event.editor && typeof event.editor.getHTML === 'function') {
-        contentHtmlString = event.editor.getHTML();
-      } else if (typeof event.getHTML === 'function') { // If the event itself has getHTML (e.g. tiptap)
-        contentHtmlString = event.getHTML();
-      } else {
-        toast.error('无法从编辑器事件中提取HTML内容。');
-        console.error('[NotebookLayout] Could not extract HTML string from event object:', contentInput);
-        return; // Stop if we can't get a string
-      }
-    } else if (typeof contentInput === 'string') {
+    if (typeof contentInput === 'string') {
       contentHtmlString = contentInput;
     } else {
       toast.error('收到的笔记内容格式不正确。');
@@ -850,7 +852,7 @@ export default function NotebookLayout({
     } else {
       toast.error('无法确定要保存的笔记。请确保已选择或创建笔记。');
     }
-  };
+  }, [currentNotebook, activeNote, updateNote]); // <--- 添加 useCallback 和依赖项
 
   // Handler for the "New Note" button
   const handleCreateNewNoteClick = async () => {
@@ -897,6 +899,12 @@ export default function NotebookLayout({
     const nextIndex = Math.min(currentIndex, remainingNotes.length - 1);
     return remainingNotes[nextIndex].id;
   };
+
+  const memoizedTiptapOnSave = useCallback(async (html: string, titleFromEditor: string): Promise<void> => {
+    // Use the already memoized handleSaveCurrentNoteCallback
+    // Pass studioContentTitle as the fallback title if titleFromEditor is empty
+    await handleSaveCurrentNoteCallback(html, titleFromEditor || studioContentTitle);
+  }, [handleSaveCurrentNoteCallback, studioContentTitle]);
 
   return (
     <>
@@ -1022,18 +1030,27 @@ export default function NotebookLayout({
             
             {/* 保存按钮 - 调整高度与其他按钮一致 */}
             <button
-                onClick={() => {
-                  if (notebookRef.current && typeof notebookRef.current.getEditorContent === 'function') {
-                    const currentEditorHTML = notebookRef.current.getEditorContent();
-                    const currentEditorTitle = studioContentTitle; // Title is managed in NotebookLayout's state
-                    handleSaveCurrentNoteCallback(currentEditorHTML, currentEditorTitle);
+                onClick={async () => {
+                  if (tiptapApi && typeof tiptapApi.saveNotebook === 'function') {
+                    try {
+                      console.log('[NotebookLayout] Calling tiptapApi.saveNotebook()');
+                      const success = await tiptapApi.saveNotebook();
+                      if (success) {
+                        // console.log('[NotebookLayout] saveNotebook returned true.');
+                      } else {
+                        // console.warn('[NotebookLayout] saveNotebook returned false or did not run.');
+                      }
+                    } catch (error) {
+                      toast.error('调用保存方法时发生错误。');
+                      console.error('[NotebookLayout] Error calling saveNotebook from button:', error);
+                    }
                   } else {
-                    toast.error('编辑器引用或获取内容方法不可用，无法保存。');
-                    console.error('[NotebookLayout] notebookRef.current is null or getEditorContent is not a function, cannot save from button click.');
+                    toast.error('编辑器API或保存方法不可用，无法保存。');
+                    console.error('[NotebookLayout] tiptapApi is null or saveNotebook is not a function. Current API:', tiptapApi);
                   }
                 }}
                 className="px-3 py-0.5 text-sm bg-[#10b981] hover:bg-[#0d9668] text-white rounded shadow-sm transition-colors"
-                disabled={!activeNote}
+                disabled={!activeNote || !tiptapApi}
             >
                 保存
             </button>
@@ -1050,19 +1067,21 @@ export default function NotebookLayout({
            >
              {isLoadingNotes ? (
                <div className="h-full flex items-center justify-center text-gray-500">加载中...</div>
-             ) : isClient ? (
-               <RichTextNotebook
-                ref={notebookRef}
+             ) : isClient && activeNote ? (
+               <TiptapNotebook
+                // ref={notebookRef} // <--- Temporarily comment this out
                 notebookId={notebookId} 
-                  key={activeNote || 'no-note'}
+                  key={activeNote}
                   initialContent={studioContent || ''}
                   initialTitle={studioContentTitle || ''}
-                  onSave={(html, titleFromEditor) => handleSaveCurrentNoteCallback(html, titleFromEditor || studioContentTitle)} // 确保 onSave 也传递正确的参数
-                  // 编辑器本身已100%高度，外层flex保证最大化
+                  onSave={memoizedTiptapOnSave} 
+                  onApiReady={handleApiReady}
                   style={{ height: '100%', minHeight: 0 }}
-             />
+               />
              ) : (
-               <div className="h-full flex items-center justify-center text-gray-500">编辑器加载中...</div>
+               <div className="h-full flex items-center justify-center text-gray-500">
+                 {isClient ? '请选择或创建一个笔记' : '编辑器加载中...'}
+                </div>
              )}
            </div>
          </div>
@@ -1150,7 +1169,7 @@ export default function NotebookLayout({
                    messages={[]}
                    onSendMessage={handleSendMessage}
                    onPreviewDocument={handleChatPreview}
-                   tldrawBoardRef={notebookRef}
+                   // tldrawBoardRef={notebookRef} // <--- Temporarily comment this out
                  />
                </div>
              </div>

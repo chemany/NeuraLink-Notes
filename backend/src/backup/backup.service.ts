@@ -211,10 +211,11 @@ export class BackupService {
                   id: folder.id,
                   name: folder.name,
                   createdAt: folder.createdAt,
-                  updatedAt: folder.updatedAt
+                  updatedAt: folder.updatedAt,
+                  userId: folder.userId // Add userId from backup
                 }
               });
-              this.logger.log(`Restored folder: ${folder.id} - "${folder.name}"`);
+              this.logger.log(`Restored folder: ${folder.id} - "${folder.name}" (User: ${folder.userId})`);
               restoredFolderIds.add(folder.id);
             }
           } catch (error) {
@@ -349,7 +350,8 @@ export class BackupService {
                   return { 
                       ...docData, 
                       id: docId, // Preserve original document ID from backup
-                      notebookId: notebookId // Ensure association is correct
+                      notebookId: notebookId, // Ensure association is correct
+                      userId: doc.userId // Add userId from backup
                       // filePath might need adjustment if upload structure changes, but likely okay if restoring to same base path
                   };
                 });
@@ -372,7 +374,8 @@ export class BackupService {
                 content: note.content,
                 createdAt: note.createdAt,
                 updatedAt: note.updatedAt,
-                notebookId: notebookId
+                notebookId: notebookId,
+                userId: note.userId // Add userId from backup
               };
             });
             await this.prisma.notePadNote.createMany({ data: notesToCreate });

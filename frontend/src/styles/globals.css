@@ -226,12 +226,12 @@
 }
 
 .ck.ck-editor__editable {
-  min-height: 100% !important; /* Ensure it takes at least full height of parent */
+  min-height: 100% !important;
   border: none !important;
   background-color: var(--bg-notes) !important;
   display: flex !important;
   flex-direction: column !important;
-  padding: 1rem !important;
+  padding: 1px !important;
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
@@ -271,4 +271,97 @@
   width: 100% !important; /* Ensure width is also full */
   box-sizing: border-box !important; /* Include padding and border in the element's total width and height */
   border: none !important;
+}
+
+/* Custom styles for CKEditor content area padding */
+/* .ck.ck-editor__editable_inline.ck-content {
+  padding-left: 1px;
+  padding-right: 1px;
+} */
+
+/* Add styles for Tiptap editor content */
+.ProseMirror ul,
+.ProseMirror ol {
+  list-style-position: inside;
+  padding-left: 1.5rem; /* Add some padding for list items */
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror ul li::before {
+  content: '\2022'; /* Bullet character */
+  margin-right: 0.5em;
+  color: #333; /* Dark gray bullet */
+}
+
+.ProseMirror ol {
+  list-style-type: decimal; /* Use numbers for ordered lists */
+}
+
+.ProseMirror blockquote {
+  border-left: 3px solid #cbd5e1; /* Tailwind gray-300 */
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 1rem;
+  font-style: italic;
+  color: #4a5568; /* Tailwind gray-700 */
+  background-color: #f7fafc; /* Tailwind gray-100 */
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+/* Styles for Tiptap Superscript and Subscript */
+.ProseMirror sup {
+  vertical-align: baseline; /* 重置默认的super，以便通过position精确控制 */
+  font-size: 60%;
+  position: relative;
+  top: -0.7em; /* 调整：让上标更高一点 */
+}
+
+.ProseMirror sub {
+  vertical-align: baseline; /* 重置默认的sub，以便通过position精确控制 */
+  font-size: 60%;
+  position: relative;
+  top: 0.35em; /* 调整：让下标更低一点 */
+}
+
+/* Ensure body and html take full height if needed by layout */
+html,
+body,
+#__next {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Example of a more specific selector for Tiptap if needed */
+/* 
+.tiptap-editor-wrapper .ProseMirror ul {
+  ...
+}
+*/
+
+.ProseMirror {
+  padding: 0.5rem; /* 保持原有的内边距 */
+  min-height: 150px; /* 可以设置一个最小高度，但主要依赖flex布局填充 */
+  /* 确保 ProseMirror 能够填充其父容器 EditorContent 的高度 */
+  height: 100%; 
+  /* 允许内容超出时滚动，但通常 EditorContent 已经处理了滚动 */
+  /* overflow-y: auto;  */
+}
+
+.ProseMirror:focus {
+  outline: none; /* 移除默认的黑色边框 */
+}
+
+/* 更推荐使用 :focus-visible 来处理焦点样式，以获得更好的可访问性，但如果目标是完全移除，:focus 也可以 */
+.ProseMirror:focus-visible {
+  outline: none; /* 移除键盘导航时的焦点边框 */
+}
+
+/* 为 Tiptap 的 Placeholder 扩展添加样式 */
+.ProseMirror:focus-visible + .ProseMirror-placeholder {
+  outline: 2px solid #007bff;
 }

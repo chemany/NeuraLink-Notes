@@ -9,16 +9,25 @@ import {
   HttpCode,
   HttpStatus,
   ValidationPipe,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { NotesService } from './notes.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { User as UserModel } from '@prisma/client';
+
+interface AuthenticatedRequest extends Request {
+  user: Omit<UserModel, 'password'> & { id: string };
+}
 
 /**
  * 富文本笔记相关接口
  * 负责处理 /api/notebooks/:notebookId/richnotes 路由
  */
 @Controller('notebooks/:notebookId/richnotes')
+@UseGuards(JwtAuthGuard)
 export class NotesController {
   constructor(private readonly notesService: NotesService) {}
 
@@ -27,8 +36,9 @@ export class NotesController {
    * @param notebookId 笔记本ID
    */
   @Get()
-  async findAll(@Param('notebookId') notebookId: string) {
-    return this.notesService.findAllByNotebook(notebookId);
+  async findAll(@Param('notebookId') notebookId: string, @Request() req: AuthenticatedRequest) {
+    const userId = req.user.id;
+    return this.notesService.findAllByNotebook(notebookId, userId);
   }
 
   /**
@@ -40,10 +50,11 @@ export class NotesController {
   @HttpCode(HttpStatus.CREATED)
   async create(
     @Param('notebookId') notebookId: string,
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-    createNoteDto: CreateNoteDto,
+    @Body() createNoteDto: CreateNoteDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.notesService.create(notebookId, createNoteDto);
+    const userId = req.user.id;
+    return this.notesService.create(notebookId, userId, createNoteDto);
   }
 
   /**
@@ -55,8 +66,10 @@ export class NotesController {
   async findOne(
     @Param('notebookId') notebookId: string,
     @Param('noteId') noteId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.notesService.findOne(noteId);
+    const userId = req.user.id;
+    return this.notesService.findOne(noteId, userId);
   }
 
   /**
@@ -69,10 +82,11 @@ export class NotesController {
   async update(
     @Param('notebookId') notebookId: string,
     @Param('noteId') noteId: string,
-    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
-    updateNoteDto: UpdateNoteDto,
+    @Body() updateNoteDto: UpdateNoteDto,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.notesService.update(noteId, updateNoteDto);
+    const userId = req.user.id;
+    return this.notesService.update(noteId, userId, updateNoteDto);
   }
 
   /**
@@ -84,7 +98,9 @@ export class NotesController {
   async remove(
     @Param('notebookId') notebookId: string,
     @Param('noteId') noteId: string,
+    @Request() req: AuthenticatedRequest,
   ) {
-    return this.notesService.remove(noteId);
+    const userId = req.user.id;
+    return this.notesService.remove(noteId, userId);
   }
 }

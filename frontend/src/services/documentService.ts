@@ -1,16 +1,14 @@
 import { generateEmbeddings } from './aiService';
 import { EmbeddingModelSettings } from '@/contexts/SettingsContext';
-import { extractTextFromPDF, preprocessPDFText } from './pdfService';
-import { extractTextFromWord, extractTextFromPPT } from './officeService';
+// import { extractTextFromPDF, preprocessPDFText } from './pdfService';
+// import { extractTextFromWord, extractTextFromPPT } from './officeService';
 import type { Document } from '@/types';
 import { DocumentStatus } from '@/types/shared_local';
-import axios from 'axios'; // FIX: Import global axios instead
+import axios from 'axios'; // 保持 axios 导入，因为 handleApiError 在 apiClient.ts 中，但 isAxiosError 可能在此文件其他地方使用
+import apiClient, { handleApiError } from './apiClient';
 
-// 检查是否在浏览器环境
-const isBrowser = typeof window !== 'undefined';
-
-// 后端 API 地址
-const API_BASE_URL = 'http://localhost:3001';
+// const isBrowser = typeof window !== 'undefined'; // 已移除
+// const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001'; // 已移除
 
 // --- COMMENTED OUT: Old localStorage/IndexedDB Constants ---
 /*
@@ -92,7 +90,6 @@ const readFileAsText = (file: File): Promise<string> => {
 };
 
 const splitTextIntoChunks = (text: string, maxChunkSize: number = 1000): string[] => {
-  // 简单分割成固定大小的块
   const chunks: string[] = [];
   let i = 0;
   
@@ -109,10 +106,8 @@ const generateChunks = (content: string): string[] => {
     return [];
   }
   
-  // 简单实现：按段落分割，每个段落是一个文本块
   const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim() !== '');
   
-  // 如果段落太少，可能是PDF或其他格式，尝试按句子分割
   if (paragraphs.length < 3) {
     const sentences = content.split(/[.!?。！？]+/).filter(s => s.trim() !== '');
     return sentences;
@@ -136,10 +131,6 @@ const formatFileSize = (bytes: number): string => {
 };
 
 const getEmbeddingSettings = (): EmbeddingModelSettings => {
-  // 这里需要从设置中获取实际配置，而不是使用默认值
-  // 由于这是一个普通函数，不能直接使用React的useSettings钩子
-  // 我们需要从localStorage直接读取保存的设置
-  
   try {
     if (typeof window !== 'undefined') {
       const savedSettings = localStorage.getItem('embeddingSettings');
@@ -148,8 +139,7 @@ const getEmbeddingSettings = (): EmbeddingModelSettings => {
         if (settings && settings.apiKey && settings.apiKey.trim() !== '') {
           console.log('成功从localStorage加载嵌入向量设置');
           
-          // 确保模型名称格式正确
-        let model = settings.model;
+          let model = settings.model;
           if (model === 'bge-m3') {
             model = 'BAAI/bge-m3';
             console.log('自动修正模型名称格式:', model);
@@ -163,7 +153,7 @@ const getEmbeddingSettings = (): EmbeddingModelSettings => {
           
           return {
             ...settings,
-            model: model, // 使用修正后的模型名称
+            model: model,
           };
         }
       }
@@ -172,7 +162,6 @@ const getEmbeddingSettings = (): EmbeddingModelSettings => {
     console.error('从localStorage读取嵌入向量设置失败:', error);
   }
   
-  // 默认设置（如果无法从localStorage获取）
   console.warn('未找到或无效的嵌入向量设置，使用默认设置');
   return {
     provider: 'siliconflow',
@@ -186,37 +175,17 @@ const getEmbeddingSettings = (): EmbeddingModelSettings => {
 export const fetchDocumentsByNotebookId = async (notebookId: string): Promise<Document[]> => {
   if (!notebookId) {
     console.error('获取笔记本文档失败: notebookId 不能为空');
-    return []; // 或者抛出错误
+    return [];
   }
-
-  // Corrected URL to match backend controller
-  const url = `${API_BASE_URL}/api/documents/notebook/${notebookId}`; 
-  console.log(`正在从以下地址获取文档: ${url}`);
-
+  const url = `/api/documents/notebook/${notebookId}`;
+  console.log(`正在从以下地址获取文档: ${apiClient.defaults.baseURL}${url}`);
   try {
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      // 尝试从响应体获取更多错误细节
-      let errorBody = '无可用错误详情';
-      try {
-        errorBody = await response.text();
-      } catch (e) {
-        // 如果读取响应体失败则忽略
-      }
-      console.error(`API 错误 ${response.status}: ${response.statusText}. 响应体: ${errorBody}`);
-      throw new Error(`获取文档失败: ${response.status} ${response.statusText}`);
-    }
-
-    // 假设后端返回 Document 对象数组
-    const documents: Document[] = await response.json(); // 注意：这里会因为 Document 未正确导入而报错
-    console.log(`成功获取笔记本 ${notebookId} 的 ${documents.length} 个文档`);
-    return documents;
-
+    const response = await apiClient.get<Document[]>(url);
+    console.log(`成功获取笔记本 ${notebookId} 的 ${response.data.length} 个文档`);
+    return response.data;
   } catch (error) {
     console.error(`调用 API 获取文档时出错 (${url}):`, error);
-    // 重新抛出错误，以便调用方组件可以处理它（例如显示错误消息）
-    throw error;
+    throw handleApiError(error, 'fetchDocumentsByNotebookId');
   }
 };
 
@@ -228,270 +197,66 @@ export const fetchDocumentsByNotebookId = async (notebookId: string): Promise<Do
  * @returns The created document object from the backend.
  * @throws Throws an error if the upload fails.
  */
-export const uploadDocumentToApi = async (file: File, notebookId: string): Promise<any> => {
-  // Add detailed logging for parameters
-  console.log(`[documentService] uploadDocumentToApi called with:`);
-  console.log(`  - file:`, file);
-  console.log(`  - notebookId: ${notebookId} (Type: ${typeof notebookId})`);
-
+export const uploadDocumentToApi = async (file: File, notebookId: string, originalName?: string): Promise<Document> => {
+  console.log(`[documentService] uploadDocumentToApi called with:`, { fileName: file.name, notebookId, originalName });
   if (!file || !notebookId) {
-    // Improve error message for missing notebookId
-    if (!notebookId) {
-      console.error('[documentService] Missing notebookId for upload.');
-      throw new Error('Notebook ID is required for upload.');
-    }
-    if (!file) {
-      console.error('[documentService] Missing file for upload.');
-      throw new Error('File is required for upload.');
-    }
-    // Fallback error (shouldn't be reached if above checks are exhaustive)
     throw new Error('File and Notebook ID are required for upload.');
-  }
-
-  // Add type check for notebookId
-  if (typeof notebookId !== 'string' || notebookId.trim() === '') {
-      console.error(`[documentService] Invalid notebookId provided: Type=${typeof notebookId}, Value=${notebookId}`);
-      throw new Error(`Invalid Notebook ID provided. Expected a non-empty string, but received type ${typeof notebookId}.`);
   }
 
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('originalName', file.name); 
+  if (originalName) {
+    formData.append('originalName', originalName);
+  }
 
-  const uploadUrl = '/api/documents/upload'; // Matches the POST URL from logs
-
-  console.log(`[documentService] Uploading '${file.name}' to ${uploadUrl} for notebook ${notebookId}`);
+  const url = `/api/documents/upload?notebookId=${encodeURIComponent(notebookId)}`;
+  console.log(`Uploading to: ${apiClient.defaults.baseURL}${url}`);
 
   try {
-    // FIX: Use global axios instance
-    const response = await axios.post(uploadUrl, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      params: {
-        notebookId: notebookId
-      }
-    });
-
-    console.log('[documentService] File uploaded successfully:', response.data);
-    return response.data; // Return the created document data
-
-  } catch (error: any) {
-    console.error('[documentService] API Error:', error.response?.status, error.response?.statusText, '. Body:', error.response?.data);
-    const message = error.response?.data?.message || error.message || '上传文件时出错';
-    throw new Error(`上传文件失败: ${message}`);
+    const response = await apiClient.post<Document>(url, formData);
+    console.log('文档上传成功:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('文档上传API调用失败:', error);
+    throw handleApiError(error, 'uploadDocumentToApi');
   }
 };
 
 export const deleteDocumentFromApi = async (documentId: string): Promise<void> => {
   if (!documentId) {
-    throw new Error('删除文档失败: 必须提供文档 ID');
+    throw new Error('Document ID is required for deletion.');
   }
-
-  const url = `${API_BASE_URL}/api/documents/${documentId}`;
-  console.log(`Deleting document from: ${url}`);
-
+  const url = `/api/documents/${documentId}`;
   try {
-    const response = await fetch(url, {
-      method: 'DELETE',
-    });
-
-    // DELETE 请求成功通常返回 200 OK 或 204 No Content
-    if (!response.ok) {
-      let errorBody = 'No error details available';
-      try {
-        errorBody = await response.text();
-      } catch (e) {}
-      console.error(`API Error ${response.status}: ${response.statusText}. Body: ${errorBody}`);
-       let errorMessage = `删除文档失败: ${response.status} ${response.statusText}`;
-      try {
-        const errorJson = JSON.parse(errorBody);
-        if (errorJson.message) {
-            errorMessage = `删除文档失败: ${errorJson.message}`;
-        }
-      } catch(e) {}
-      throw new Error(errorMessage);
-    }
-
-    console.log(`文档 ${documentId} 删除成功`);
-    // 不需要返回值
-
+    await apiClient.delete(url);
+    console.log(`Document ${documentId} deleted successfully from API.`);
   } catch (error) {
-    console.error(`调用 API 删除文档时出错 (${url}):`, error);
-    throw error; // 重新抛出，让调用者处理
+    throw handleApiError(error, 'deleteDocumentFromApi');
   }
 };
 
-export const fetchDocumentById = async (documentId: string): Promise<Document> => {
-  // ... (Placeholder implementation as before) ...
-    if (!documentId) {
-    throw new Error('获取文档失败: 必须提供文档 ID');
-  }
-  const url = `${API_BASE_URL}/api/documents/${documentId}`;
-  console.log(`Fetching document details from: ${url}`);
+export const fetchDocumentById = async (documentId: string): Promise<Document | null> => {
+  if (!documentId) return null;
+  const url = `/api/documents/${documentId}`;
   try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      if (response.status === 404) { throw new Error(`文档未找到: ${documentId}`); }
-      let errorBody = ''; try { errorBody = await response.text(); } catch (e) {}
-      console.error(`API Error ${response.status}: ${response.statusText}. Body: ${errorBody}`);
-      throw new Error(`获取文档详情失败: ${response.status} ${response.statusText}`);
+    const response = await apiClient.get<Document>(url);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
+      return null;
     }
-    const document: Document = await response.json();
-    console.log(`成功获取文档详情: ${document.id}`);
-    return document;
-  } catch (error) { console.error(`调用 API 获取文档详情时出错 (${url}):`, error); throw error; }
+    throw handleApiError(error, 'fetchDocumentById');
+  }
 };
 
 export const updateDocumentApi = async (documentId: string, data: Partial<Document>): Promise<Document> => {
-  // ... (Placeholder implementation as before) ...
-   if (!documentId) { throw new Error('更新文档失败: 必须提供文档 ID'); }
-   if (!data || Object.keys(data).length === 0) { throw new Error('更新文档失败: 未提供更新数据'); }
-   const url = `${API_BASE_URL}/api/documents/${documentId}`;
-   console.log(`Updating document ${documentId} at: ${url}`);
-   try {
-    const response = await fetch(url, { method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-    if (!response.ok) {
-      let errorBody = ''; try { errorBody = await response.text(); } catch (e) {}
-      console.error(`API Error ${response.status}: ${response.statusText}. Body: ${errorBody}`);
-      let errorMessage = `更新文档失败: ${response.status} ${response.statusText}`; try { const errorJson = JSON.parse(errorBody); if (errorJson.message) { errorMessage = `更新文档失败: ${errorJson.message}`; } } catch(e) {}
-      throw new Error(errorMessage);
-    }
-    const updatedDocument: Document = await response.json();
-    console.log(`文档 ${documentId} 更新成功`);
-    return updatedDocument;
-   } catch (error) { console.error(`调用 API 更新文档时出错 (${url}):`, error); throw error; }
-};
-
-// --- Client-Side Vectorization Logic (Keep but needs adaptation) ---
-export const processDocumentVectorization = async (document: Document): Promise<Document> => {
-  if (!isBrowser) return document; // Or throw error?
-
-  console.log(`[Vectorization] 开始处理文档: ${document.fileName} (ID: ${document.id})`);
-
-  // --- TODO: Step 1: Ensure textContent is available ---
-  // ... (Existing TODO comments remain) ...
-
-  const textContent = document.textContent || '';
-  if (!textContent) {
-      console.warn(`[Vectorization] 文档 ${document.id} 内容为空，无法进行向量化。`);
-      try {
-          // Replace updateDocumentStatus with updateDocumentApi
-          return await updateDocumentApi(document.id, { status: DocumentStatus.FAILED, statusMessage: "内容为空无法向量化" });
-      } catch (updateError) {
-          console.error(`[Vectorization] 更新文档状态为失败时出错:`, updateError);
-          return { ...document, status: DocumentStatus.FAILED, statusMessage: "内容为空无法向量化" };
-      }
-  }
-
+  if (!documentId) throw new Error('Document ID is required for update.');
+  const url = `/api/documents/${documentId}`;
   try {
-    // Optional: Replace potential updateDocumentStatus call
-    // await updateDocumentApi(document.id, { status: DocumentStatus.PROCESSING });
-
-    // Check for existing embeddings
-    let existingEmbeddings: number[][] | null = null;
-    if (document.embeddings && Array.isArray(document.embeddings) && document.embeddings.length > 0) {
-        existingEmbeddings = document.embeddings as number[][];
-    }
-
-    if (existingEmbeddings && existingEmbeddings.length > 0) {
-      console.log(`[Vectorization] 文档 ${document.fileName} 已有嵌入向量，跳过。`);
-      if (document.status !== DocumentStatus.COMPLETED) {
-          try {
-              // Replace updateDocumentStatus with updateDocumentApi
-              return await updateDocumentApi(document.id, { status: DocumentStatus.COMPLETED, statusMessage: "已有向量" });
-          } catch (updateError) {
-              console.error(`[Vectorization] 更新文档状态为完成时出错:`, updateError);
-              return { ...document, status: DocumentStatus.COMPLETED, statusMessage: "已有向量" };
-          }
-      }
-      return document;
-    }
-
-    // Generate chunks
-    let chunks = generateChunks(textContent);
-    const stringifiedChunks = JSON.stringify(chunks);
-
-    // Get embedding settings
-    const embeddingSettings = getEmbeddingSettings();
-
-    if (chunks.length === 0) {
-      const errorMessage = "文档内容为空或无法生成有效的文本块";
-      console.error(`[Vectorization] ${errorMessage}`);
-      try {
-          // Replace updateDocumentStatus with updateDocumentApi
-          return await updateDocumentApi(document.id, { status: DocumentStatus.FAILED, statusMessage: errorMessage, textChunks: stringifiedChunks });
-      } catch (updateError) {
-           console.error(`[Vectorization] 更新文档状态为失败时出错:`, updateError);
-           return { ...document, status: DocumentStatus.FAILED, statusMessage: errorMessage, textChunks: stringifiedChunks };
-      }
-    }
-
-    // Batch processing for embeddings
-    const MAX_BATCH_SIZE = 64;
-    const batches = [];
-    for (let i = 0; i < chunks.length; i += MAX_BATCH_SIZE) { batches.push(chunks.slice(i, i + MAX_BATCH_SIZE)); }
-    console.log(`[Vectorization] 文档 ${document.fileName} 分成 ${batches.length} 个批次`);
-
-    let allEmbeddings: number[][] = [];
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      console.log(`[Vectorization] 处理批次 ${i+1}/${batches.length} (${batch.length} 块)`);
-      try {
-        const batchEmbeddings = await generateEmbeddings(batch, embeddingSettings);
-        allEmbeddings = [...allEmbeddings, ...batchEmbeddings];
-      } catch (error) {
-        console.error(`[Vectorization] 批次 ${i+1} 处理失败:`, error);
-        const errorMessage = `向量化处理失败 (批次 ${i+1}): ${error instanceof Error ? error.message : '未知错误'}`;
-        try {
-            // Replace updateDocumentStatus with updateDocumentApi
-            await updateDocumentApi(document.id, { status: DocumentStatus.FAILED, statusMessage: errorMessage });
-        } catch (updateError) {
-            console.error(`[Vectorization] 更新文档状态为失败时也出错:`, updateError);
-        }
-        throw new Error(errorMessage);
-      }
-    }
-
-    // Ensure consistency if some batches failed but we didn't rethrow immediately (logic adjusted above to rethrow)
-    if (allEmbeddings.length !== chunks.length) {
-        // This part should ideally not be reached if batch failures rethrow
-        console.warn(`[Vectorization] 嵌入向量数量(${allEmbeddings.length})与文本块数量(${chunks.length})不匹配. 可能有批次处理失败.`);
-        // Decide how to handle partial success - e.g., fail or save partial results?
-        // Forcing fail state for simplicity if counts don't match
-        const errorMessage = "未能为所有文本块生成嵌入向量";
-         try {
-            // Replace updateDocumentStatus with updateDocumentApi
-            return await updateDocumentApi(document.id, { status: DocumentStatus.FAILED, statusMessage: errorMessage });
-        } catch (updateError) {
-             console.error(`[Vectorization] 更新文档状态为失败时出错:`, updateError);
-             return { ...document, status: DocumentStatus.FAILED, statusMessage: errorMessage };
-        }
-    }
-
-    // --- Step 2: Save results via API ---
-    console.log(`[Vectorization] 向量化完成，共生成 ${allEmbeddings.length} 个向量。正在通过 API 更新文档...`);
-    const updateData: Partial<Document> = {
-        embeddings: allEmbeddings, // Assumes backend accepts this structure (Json?)
-        status: DocumentStatus.COMPLETED,
-        textChunks: stringifiedChunks, // Save the stringified chunks used for embedding
-        statusMessage: '向量化完成'
-    };
-    // This already correctly calls updateDocumentApi
-    const updatedDocument = await updateDocumentApi(document.id, updateData);
-    console.log(`[Vectorization] 文档 ${document.id} 通过 API 更新成功。`);
-    return updatedDocument; // Return the final document state from the API
-
+    const response = await apiClient.patch<Document>(url, data);
+    return response.data;
   } catch (error) {
-    console.error(`[Vectorization] 处理文档 ${document.fileName} 时发生最终错误:`, error);
-    const errorMessage = `向量化处理失败: ${error instanceof Error ? error.message : '未知错误'}`;
-    try {
-        // Replace updateDocumentStatus with updateDocumentApi
-        return await updateDocumentApi(document.id, { status: DocumentStatus.FAILED, statusMessage: errorMessage });
-    } catch (updateError) {
-        console.error(`[Vectorization] 更新文档状态为失败时也出错:`, updateError);
-        return { ...document, status: DocumentStatus.FAILED, statusMessage: errorMessage };
-    }
+    throw handleApiError(error, 'updateDocumentApi');
   }
 };
 
@@ -500,89 +265,17 @@ export const processDocumentVectorization = async (document: Document): Promise<
  * @param documentId - 文档ID
  * @returns Promise<string> - 返回文档内容的Promise
  */
-export const getDocumentContent = async (documentId: string): Promise<string> => {
-  if (!documentId) {
-    throw new Error('获取文档内容失败: 必须提供文档 ID');
-  }
-
-  const url = `${API_BASE_URL}/api/documents/${documentId}/content`;
-  console.log(`正在从 ${url} 获取文档内容`);
-
+export const getDocumentContent = async (documentId: string): Promise<string | null> => {
+  if (!documentId) return null;
+  const url = `/api/documents/${documentId}/content`;
   try {
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      let errorBody = '无可用错误详情';
-      let errorJson = null;
-      
-      try {
-        errorBody = await response.text();
-        try {
-          errorJson = JSON.parse(errorBody);
-        } catch (e) {
-          // 如果不是JSON则忽略
-        }
-      } catch (e) {
-        // 如果读取响应体失败则忽略
-      }
-      
-      console.error(`API 错误 ${response.status}: ${response.statusText}. 响应体:`, errorBody);
-      
-      // 首先检查是否是因为文档状态问题
-      if (response.status === 500) {
-        // 获取文档状态详情
-        try {
-          const docStatus = await getDocumentStatus(documentId);
-          
-          if (docStatus.status === 'FAILED') {
-            // 如果文档处理失败，提供更具体的错误信息
-            console.log('文档处理失败，查询失败原因:', docStatus);
-            
-            let errorMessage = `文档处理失败: ${docStatus.statusMessage || '未知原因'}`;
-            
-            // 抛出带有附加信息的错误
-            const error = new Error(errorMessage) as Error & { isDocumentProcessingError?: boolean, docId?: string, canReprocess?: boolean };
-            error.isDocumentProcessingError = true;
-            error.docId = documentId;
-            error.canReprocess = true;
-            throw error;
-          } else if (docStatus.status === 'PENDING' || docStatus.status === 'PROCESSING') {
-            // 如果文档仍在处理中
-            const error = new Error(`文档仍在处理中 (状态: ${docStatus.status})，请稍后再试`) as Error & { isDocumentProcessingError?: boolean, docId?: string };
-            error.isDocumentProcessingError = true;
-            error.docId = documentId;
-            throw error;
-          } else if (!docStatus.textContentExists && docStatus.fileExists) {
-            // 文件存在但没有提取文本内容
-            const error = new Error('文档文件存在但未能成功提取文本内容，请尝试重新处理') as Error & { isDocumentProcessingError?: boolean, docId?: string, canReprocess?: boolean };
-            error.isDocumentProcessingError = true;
-            error.docId = documentId;
-            error.canReprocess = true;
-            throw error;
-          } else if (!docStatus.fileExists) {
-            // 文件不存在
-            throw new Error('文档文件不存在或已被删除');
-          }
-        } catch (statusError) {
-          if ((statusError as Error).isDocumentProcessingError) {
-            throw statusError;
-          }
-          // 如果获取状态本身失败，则抛出原始错误
-        }
-      }
-      
-      // 如果无法确定具体原因，则使用通用错误信息
-      let errorMessage = errorJson?.message || `获取文档内容失败: ${response.status} ${response.statusText}`;
-      throw new Error(errorMessage);
-    }
-
-    const content = await response.text();
-    console.log(`成功获取文档 ${documentId} 的内容, 长度: ${content.length}`);
-    return content;
-
+    const response = await apiClient.get<string>(url, { responseType: 'text' });
+    return response.data;
   } catch (error) {
-    console.error(`调用 API 获取文档内容时出错 (${url}):`, error);
-    throw error;
+    if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
+      return null;
+    }
+    throw handleApiError(error, 'getDocumentContent');
   }
 };
 
@@ -591,42 +284,17 @@ export const getDocumentContent = async (documentId: string): Promise<string> =>
  * @param documentId - 文档ID
  * @returns Promise<object> - 返回文档状态详情
  */
-export const getDocumentStatus = async (documentId: string): Promise<{
-  id: string;
-  status: string | null;
-  statusMessage: string | null;
-  filePath?: string | null;
-  textContentExists: boolean;
-  fileExists: boolean;
-}> => {
-  if (!documentId) {
-    throw new Error('获取文档状态失败: 必须提供文档 ID');
-  }
-
-  const url = `${API_BASE_URL}/api/documents/${documentId}/status`;
-  console.log(`正在从 ${url} 获取文档状态`);
-
+export const getDocumentStatus = async (documentId: string): Promise<any | null> => {
+  if (!documentId) return null;
+  const url = `/api/documents/${documentId}/status`;
   try {
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      let errorBody = '无可用错误详情';
-      try {
-        errorBody = await response.text();
-      } catch (e) {
-        // 如果读取响应体失败则忽略
-      }
-      console.error(`API 错误 ${response.status}: ${response.statusText}. 响应体: ${errorBody}`);
-      throw new Error(`获取文档状态失败: ${response.status} ${response.statusText}`);
-    }
-
-    const status = await response.json();
-    console.log(`成功获取文档 ${documentId} 的状态:`, status);
-    return status;
-
+    const response = await apiClient.get<any>(url);
+    return response.data;
   } catch (error) {
-    console.error(`调用 API 获取文档状态时出错 (${url}):`, error);
-    throw error;
+    if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
+      return null;
+    }
+    throw handleApiError(error, 'getDocumentStatus');
   }
 };
 
@@ -635,40 +303,69 @@ export const getDocumentStatus = async (documentId: string): Promise<{
  * @param documentId - 文档ID
  * @returns Promise<Document> - 返回更新后的文档对象
  */
-export const reprocessDocument = async (documentId: string): Promise<Document> => {
-  if (!documentId) {
-    throw new Error('重新处理文档失败: 必须提供文档 ID');
+export const reprocessDocument = async (documentId: string): Promise<Document | null> => {
+  if (!documentId) return null;
+  const url = `/api/documents/${documentId}/reprocess`;
+  try {
+    const response = await apiClient.patch<Document>(url);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response && error.response.status === 404) {
+      return null;
+    }
+    throw handleApiError(error, 'reprocessDocument');
+  }
+};
+
+// --- Client-Side Vectorization Logic (Keep but needs adaptation) ---
+export const processDocumentVectorization = async (document: Document): Promise<Document> => {
+  if (!document || !document.textContent) {
+    console.warn('文档或文档内容为空，跳过向量化处理。');
+    return {
+      ...document,
+      status: DocumentStatus.VECTORIZATION_SKIPPED,
+      statusMessage: '文档内容为空'
+    };
   }
 
-  const url = `${API_BASE_URL}/api/documents/${documentId}/reprocess`;
-  console.log(`正在请求重新处理文档: ${url}`);
-
   try {
-    const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    if (!response.ok) {
-      let errorBody = '无可用错误详情';
-      try {
-        errorBody = await response.text();
-      } catch (e) {
-        // 如果读取响应体失败则忽略
-      }
-      console.error(`API 错误 ${response.status}: ${response.statusText}. 响应体: ${errorBody}`);
-      throw new Error(`重新处理文档失败: ${response.status} ${response.statusText}`);
+    const embeddingSettings = getEmbeddingSettings();
+    if (!embeddingSettings.apiKey) {
+      console.error('API Key 未配置，无法进行向量化。');
+      throw new Error('API Key for embedding service is not configured.');
     }
 
-    const document = await response.json();
-    console.log(`成功请求重新处理文档 ${documentId}`);
-    return document;
+    console.log(`开始处理文档 ${document.id} 的向量化，使用模型: ${embeddingSettings.model}`);
+    const chunks = generateChunks(document.textContent);
+    if (chunks.length === 0) {
+      console.warn('文档内容分块为0，跳过向量化。');
+      return {
+        ...document,
+        status: DocumentStatus.VECTORIZATION_SKIPPED,
+        statusMessage: 'No content chunks to vectorize'
+      };
+    }
 
+    const embeddings = await generateEmbeddings(chunks, embeddingSettings);
+    console.log(`文档 ${document.id} 向量化完成，生成了 ${embeddings.length} 个向量。`);
+
+    const vectorDataUrl = `/api/documents/${document.id}/vector-data`;
+    await apiClient.post(vectorDataUrl, { vectorData: embeddings });
+    console.log(`文档 ${document.id} 的向量数据已保存到后端。`);
+
+    return {
+      ...document,
+      status: DocumentStatus.COMPLETED,
+      statusMessage: '文档处理和向量化完成',
+    };
   } catch (error) {
-    console.error(`调用 API 重新处理文档时出错 (${url}):`, error);
-    throw error;
+    console.error(`处理文档 ${document.id} 向量化时出错:`, error);
+    const message = error instanceof Error ? error.message : '向量化失败';
+    return {
+      ...document,
+      status: DocumentStatus.VECTORIZATION_FAILED,
+      statusMessage: message,
+    };
   }
 };
 

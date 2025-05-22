@@ -19,7 +19,7 @@ interface ChatMessageProps {
   message: Message;
   isLastMessage?: boolean;
   onAddToWhiteboard?: (content: string) => void;
-  onSaveToNotes?: (title: string, content: string) => void;
+  onSaveToNotes?: (content: string, title?: string) => void;
 }
 
 export default function ChatMessage({ 
@@ -61,17 +61,25 @@ export default function ChatMessage({
     if (onSaveToNotes && message.content) {
       // 提取最终答案部分
       let finalContent = message.content;
-      if (finalContent.includes('## 最终答案')) {
-        finalContent = finalContent.split('## 最终答案')[1].trim();
-      } else if (finalContent.includes('##最终答案')) {
-        finalContent = finalContent.split('##最终答案')[1].trim();
-      } else if (finalContent.includes('最终答案')) {
-        finalContent = finalContent.split('最终答案')[1].trim();
+      const finalAnswerMarker = '## 最终答案';
+      const finalAnswerMarkerAlt = '##最终答案';
+      const finalAnswerMarkerGeneric = '最终答案';
+
+      if (finalContent.includes(finalAnswerMarker)) {
+        finalContent = finalContent.split(finalAnswerMarker)[1]?.trim() || finalContent;
+      } else if (finalContent.includes(finalAnswerMarkerAlt)) {
+        finalContent = finalContent.split(finalAnswerMarkerAlt)[1]?.trim() || finalContent;
+      } else if (finalContent.includes(finalAnswerMarkerGeneric)) {
+        // Be more careful with generic marker to avoid accidental splits
+        const parts = finalContent.split(finalAnswerMarkerGeneric);
+        if (parts.length > 1) {
+            finalContent = parts.slice(1).join(finalAnswerMarkerGeneric).trim();
+        }
       }
       
-      // 自动生成标题
-      const title = generateKeywords(finalContent);
-      onSaveToNotes(title, finalContent);
+      // Pass the full content (or stripped content) as the first argument,
+      // and undefined for the title, letting ChatInterface handle title generation.
+      onSaveToNotes(finalContent, undefined);
     }
   };
   

@@ -18,11 +18,14 @@ import {
   Logger,
   InternalServerErrorException,
   Query,
-  Patch
+  Patch,
+  UseGuards,
+  Request,
+  ForbiddenException
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
-import { Document } from '@prisma/client';
+import { Document, User as UserModel } from '@prisma/client';
 import { Express } from 'express';
 import type { Response } from 'express';
 import * as fs from 'fs';
@@ -30,8 +33,15 @@ import * as path from 'path';
 import * as mime from 'mime-types';
 import { createReadStream } from 'fs';
 import { SaveVectorDataDto } from './dto/save-vector-data.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Buffer } from 'buffer';
+
+interface AuthenticatedRequest extends Request {
+  user: Omit<UserModel, 'password'> & { id: string };
+}
 
 @Controller('documents')
+@UseGuards(JwtAuthGuard)
 export class DocumentsController {
   private readonly logger = new Logger(DocumentsController.name);
 
@@ -50,9 +60,32 @@ export class DocumentsController {
         fileIsRequired: true,
       }),
     ) file: Express.Multer.File,
-    @Body('originalName') originalNameFromForm?: string
+    @Request() req: AuthenticatedRequest,
+    @Body('originalName') originalNameFromForm?: string,
   ): Promise<Document> {
-    this.logger.log(`[DocumentsController] Received upload request. NotebookID (query): ${notebookId}, File: ${file.originalname}, OriginalName (form): ${originalNameFromForm}`);
+    let originalNameToUse = file.originalname;
+    try {
+      const redecodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+      this.logger.log(`[DocumentsController] Original file.originalname: "${file.originalname}", Attempted re-decode (latin1->utf8): "${redecodedName}"`);
+
+      const typicalLatin1GarbleChars = ['å', '³', 'é', '®', 'æ', 'ç', 'è', 'ä', 'ö', 'ü'];
+      const hasTypicalGarble = typicalLatin1GarbleChars.some(char => file.originalname.includes(char));
+      const hasChineseCharsAfterDecode = /[\u4e00-\u9fa5]/.test(redecodedName);
+
+      if (hasTypicalGarble && hasChineseCharsAfterDecode && file.originalname !== redecodedName) {
+           this.logger.log(`[DocumentsController] Detected potential UTF-8 mangled as Latin-1. Using re-decoded name: "${redecodedName}"`);
+           originalNameToUse = redecodedName;
+      } else {
+          this.logger.log(`[DocumentsController] Did not use re-decoded name. Original: "${file.originalname}", Decoded: "${redecodedName}", HasGarble: ${hasTypicalGarble}, HasChinese: ${hasChineseCharsAfterDecode}`);
+      }
+
+    } catch (e) {
+      this.logger.error(`[DocumentsController] Error during filename re-decoding: ${e.message}. Falling back to original.`);
+      originalNameToUse = file.originalname;
+    }
+    
+    this.logger.log(`[DocumentsController] Received upload request. NotebookID (query): ${notebookId}, File (processed originalNameToUse): "${originalNameToUse}", OriginalName (form): ${originalNameFromForm}`);
+    const userId = req.user.id;
 
     if (!notebookId) {
        this.logger.error('[DocumentsController] Missing notebookId in query parameters.');
@@ -63,44 +96,49 @@ export class DocumentsController {
          throw new BadRequestException('缺少文件');
     }
     
-    const nameToUse = originalNameFromForm || file.originalname;
-    this.logger.log(`[DocumentsController] Using filename: ${nameToUse} (Source: ${originalNameFromForm ? 'Form Body' : 'file.originalname'})`);
+    const nameToUse = originalNameFromForm || originalNameToUse;
+    this.logger.log(`[DocumentsController] Using filename: ${nameToUse} (Source: ${originalNameFromForm ? 'Form Body' : 'processed originalNameToUse'}) for User ${userId}`);
     
-    return this.documentsService.create(notebookId, file, nameToUse);
+    return this.documentsService.create(notebookId, userId, file, nameToUse);
   }
 
   @Get('notebook/:notebookId')
-  findAllByNotebook(@Param('notebookId') notebookId: string): Promise<Document[]> {
-    this.logger.log(`Finding all documents for notebook: ${notebookId}`);
-    return this.documentsService.findAllByNotebook(notebookId);
+  async findAllByNotebook(
+    @Param('notebookId') notebookId: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<Document[]> {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} finding all documents for notebook: ${notebookId}`);
+    return this.documentsService.findAllByNotebook(notebookId, userId);
   }
 
   @Get(':id/content')
   @HttpCode(HttpStatus.OK)
   async getDocumentContent(
-      @Param('id') id: string
+      @Param('id') id: string,
+      @Request() req: AuthenticatedRequest,
   ): Promise<string | null> {
-      this.logger.log(`[Controller] Received request for GET /documents/${id}/content`);
+      const userId = req.user.id;
+      this.logger.log(`[Controller] User ${userId} received request for GET /documents/${id}/content`);
       
       try {
-          const content = await this.documentsService.getDocumentContent(id);
+          const content = await this.documentsService.getDocumentContent(id, userId);
           
           if (content === null) {
-              this.logger.warn(`[Controller] Content for document ${id} not found`);
+              this.logger.warn(`[Controller] Content for document ${id} (User ${userId}) not found`);
               throw new NotFoundException(`ID 为 ${id} 的文档内容未找到`);
           }
           
           if (typeof content !== 'string') {
-              this.logger.warn(`[Controller] Content for document ${id} is not a string type: ${typeof content}`);
+              this.logger.warn(`[Controller] Content for document ${id} (User ${userId}) is not a string type: ${typeof content}`);
               throw new NotFoundException(`无法以文本形式提供文档 ${id} 的内容`);
           }
           
-          this.logger.log(`[Controller] Successfully returning content for document ${id}, length: ${content.length}`);
+          this.logger.log(`[Controller] Successfully returning content for document ${id} (User ${userId}), length: ${content.length}`);
           return content;
       } catch (error) {
-          this.logger.error(`[Controller] Error getting document content for ${id}: ${error.message}`);
+          this.logger.error(`[Controller] User ${userId} error getting document content for ${id}: ${error.message}`);
           
-          // 保留原始错误类型和状态码
           if (error instanceof NotFoundException) {
               throw error;
           } else if (error instanceof InternalServerErrorException) {
@@ -109,52 +147,68 @@ export class DocumentsController {
               throw error;
           }
           
-          // 其他未知错误
           throw new InternalServerErrorException(`获取文档内容时发生错误: ${error.message}`);
       }
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Document> {
-    this.logger.log(`Finding document details for ID: ${id}`);
-    const doc = await this.documentsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<Document> {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} finding document details for ID: ${id}`);
+    const doc = await this.documentsService.findOne(id, userId);
     if (!doc) {
-       this.logger.error(`Service findOne for ID ${id} returned null without throwing.`);
+       this.logger.error(`Service findOne for ID ${id} (User ${userId}) returned null without throwing.`);
        throw new NotFoundException(`ID 为 ${id} 的文档未找到`);
     }
     return doc;
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string): Promise<Document> {
-    this.logger.log(`Attempting to delete document: ${id}`);
-    return this.documentsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<Document> {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} attempting to delete document: ${id}`);
+    return this.documentsService.remove(id, userId);
   }
 
   @Get(':id/raw')
-  async getRawDocumentContent(@Param('id') id: string, @Res() res: Response) {
+  async getRawDocumentContent(
+    @Param('id') id: string,
+    @Res() res: Response,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    const userId = req.user.id;
     try {
-      this.logger.log(`[Controller] Received request for raw content of document ${id}`);
-      const filePath = await this.documentsService.getDocumentFilePath(id);
-      this.logger.log(`[Controller] File path retrieved: ${filePath}`);
+      this.logger.log(`[Controller] User ${userId} received request for raw content of document ${id}`);
+      const document = await this.documentsService.findOne(id, userId);
+      if (!document || !document.filePath) {
+        throw new NotFoundException('文档或文件路径未找到。');
+      }
+      const filePath = document.filePath;
+      this.logger.log(`[Controller] User ${userId} file path retrieved: ${filePath}`);
 
       const allowedDirectory = path.resolve(this.documentsService.uploadPath);
       const absoluteFilePath = path.resolve(filePath);
-      this.logger.log(`[Controller] Resolved file path: ${absoluteFilePath}`);
-      this.logger.log(`[Controller] Allowed directory: ${allowedDirectory}`);
+      this.logger.log(`[Controller] User ${userId} resolved file path: ${absoluteFilePath}`);
+      this.logger.log(`[Controller] User ${userId} allowed directory: ${allowedDirectory}`);
 
       if (!absoluteFilePath.startsWith(allowedDirectory)) {
-          this.logger.error(`[Controller] Attempt to access restricted path: ${absoluteFilePath}`);
-          throw new NotFoundException('File access denied');
+          this.logger.error(`[Controller] User ${userId} attempt to access restricted path: ${absoluteFilePath}`);
+          throw new ForbiddenException('File access denied');
       }
 
       if (!fs.existsSync(absoluteFilePath)) {
-          this.logger.error(`[Controller] File not found at path: ${absoluteFilePath}`);
+          this.logger.error(`[Controller] File not found at path for User ${userId}: ${absoluteFilePath}`);
           throw new NotFoundException('File not found on server');
       }
 
       const mimeType = mime.lookup(absoluteFilePath) || 'application/octet-stream';
-      this.logger.log(`[Controller] Determined MIME type: ${mimeType}`);
+      this.logger.log(`[Controller] User ${userId} determined MIME type: ${mimeType}`);
 
       res.set({
         'Content-Type': mimeType,
@@ -164,19 +218,21 @@ export class DocumentsController {
       const fileStream = fs.createReadStream(absoluteFilePath);
 
       fileStream.on('error', (err) => {
-        this.logger.error(`[Controller] Error reading file stream for ${id}:`, err);
+        this.logger.error(`[Controller] Error reading file stream for ${id} (User ${userId}):`, err);
         if (!res.headersSent) {
             res.status(500).send('Error reading file');
         }
       });
 
-      this.logger.log(`[Controller] Returning streamable file for ${id}`);
+      this.logger.log(`[Controller] Returning streamable file for ${id} (User ${userId})`);
       fileStream.pipe(res);
     } catch (error) {
-      this.logger.error(`[Controller] Error in getRawDocumentContent:`, error);
+      this.logger.error(`[Controller] User ${userId} error in getRawDocumentContent:`, error);
       if (!res.headersSent) {
          if (error instanceof NotFoundException) {
               res.status(HttpStatus.NOT_FOUND).send({ statusCode: HttpStatus.NOT_FOUND, message: error.message });
+         } else if (error instanceof ForbiddenException) {
+              res.status(HttpStatus.FORBIDDEN).send({ statusCode: HttpStatus.FORBIDDEN, message: error.message });
          } else {
              res.status(HttpStatus.INTERNAL_SERVER_ERROR).send({ statusCode: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Error retrieving file' });
          }
@@ -185,15 +241,24 @@ export class DocumentsController {
   }
 
   @Get(':id/download')
-  async downloadFile(@Param('id') id: string, @Res({ passthrough: true }) res: Response): Promise<StreamableFile> {
-    this.logger.log(`Request to download original file for document ID: ${id}`);
+  async downloadFile(
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<StreamableFile> {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} request to download original file for document ID: ${id}`);
     try {
-        const filePath = await this.documentsService.getDocumentFilePath(id);
+        const document = await this.documentsService.findOne(id, userId);
+        if (!document || !document.filePath) {
+            throw new NotFoundException(`File not found for document ${id}. It might have been deleted or moved.`);
+        }
+        const filePath = document.filePath;
         const fileExists = fs.existsSync(filePath);
-        this.logger.log(`File path for document ${id}: ${filePath}, Exists: ${fileExists}`);
+        this.logger.log(`File path for document ${id} (User ${userId}): ${filePath}, Exists: ${fileExists}`);
 
         if (!fileExists) {
-            this.logger.error(`Physical file not found at path: ${filePath} for document ${id}`);
+            this.logger.error(`Physical file not found at path: ${filePath} for document ${id} (User ${userId})`);
             throw new NotFoundException(`File not found for document ${id}. It might have been deleted or moved.`);
         }
         
@@ -209,7 +274,7 @@ export class DocumentsController {
         return new StreamableFile(fileStream);
 
     } catch (error) {
-        this.logger.error(`Error downloading file for document ${id}: ${error.message}`, error.stack);
+        this.logger.error(`Error downloading file for document ${id} (User ${userId}): ${error.message}`, error.stack);
         if (error instanceof NotFoundException || error instanceof InternalServerErrorException) {
             throw error;
         }
@@ -219,12 +284,16 @@ export class DocumentsController {
 
   @Patch(':id/reprocess')
   @HttpCode(HttpStatus.OK)
-  async reprocessDocument(@Param('id') id: string): Promise<Document> {
-    this.logger.log(`[Controller] 重新处理文档 ${id} 的请求`);
+  async reprocessDocument(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<Document> {
+    const userId = req.user.id;
+    this.logger.log(`[Controller] User ${userId} reprocess document ${id} request`);
     try {
-      return await this.documentsService.reprocessDocument(id);
+      return await this.documentsService.reprocessDocument(id, userId);
     } catch (error) {
-      this.logger.error(`[Controller] 重新处理文档 ${id} 时出错: ${error.message}`);
+      this.logger.error(`[Controller] User ${userId} error reprocessing document ${id}: ${error.message}`);
       if (error instanceof NotFoundException) {
         throw error;
       }
@@ -234,7 +303,10 @@ export class DocumentsController {
   
   @Get(':id/status')
   @HttpCode(HttpStatus.OK) 
-  async getDocumentStatus(@Param('id') id: string): Promise<{ 
+  async getDocumentStatus(
+    @Param('id') id: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<{ 
     id: string; 
     status: string | null; 
     statusMessage: string | null;
@@ -242,37 +314,29 @@ export class DocumentsController {
     textContentExists: boolean;
     fileExists: boolean;
   }> {
-    this.logger.log(`[Controller] 获取文档 ${id} 状态的请求`);
+    const userId = req.user.id;
+    this.logger.log(`[Controller] User ${userId} request for document ${id} status`);
     
     try {
-      const document = await this.documentsService.findOne(id);
+      const document = await this.documentsService.findOne(id, userId);
       if (!document) {
         throw new NotFoundException(`文档 ${id} 未找到`);
       }
-      
-      // 检查文件是否存在
-      let fileExists = false;
-      if (document.filePath) {
-        fileExists = fs.existsSync(document.filePath);
-      }
-      
-      // 检查是否有文本内容
-      const textContentExists = document.textContent != null && document.textContent.length > 0;
-      
+      const fileExists = document.filePath ? fs.existsSync(document.filePath) : false;
       return {
         id: document.id,
         status: document.status,
         statusMessage: document.statusMessage,
         filePath: document.filePath,
-        textContentExists,
-        fileExists
+        textContentExists: document.textContent != null && document.textContent.length > 0,
+        fileExists: fileExists,
       };
     } catch (error) {
-      this.logger.error(`[Controller] 获取文档 ${id} 状态时出错: ${error.message}`);
+      this.logger.error(`[Controller] User ${userId} error getting document status for ${id}: ${error.message}`);
       if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new InternalServerErrorException(`获取文档状态失败: ${error.message}`);
+      throw new InternalServerErrorException('获取文档状态失败.');
     }
   }
 
@@ -281,37 +345,46 @@ export class DocumentsController {
   async saveVectorData(
     @Param('id') documentId: string,
     @Body() saveVectorDataDto: SaveVectorDataDto,
+    @Request() req: AuthenticatedRequest,
   ): Promise<{ message: string }> {
-    this.logger.log(`[Controller] Received request to save vector data for document ${documentId}`);
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} request to save vector data for document ${documentId}`);
     try {
-      await this.documentsService.saveVectorData(documentId, saveVectorDataDto.vectorData);
+      const document = await this.documentsService.findOne(documentId, userId);
+      if (!document) {
+        throw new NotFoundException(`Document with ID ${documentId} not found or user does not have permission.`);
+      }
+      await this.documentsService.saveVectorData(documentId, userId, saveVectorDataDto.vectorData);
       return { message: 'Vector data saved successfully.' };
     } catch (error) {
-      this.logger.error(`[Controller] Error saving vector data for document ${documentId}: ${error.message}`);
-      if (error instanceof NotFoundException || error instanceof InternalServerErrorException) {
+      this.logger.error(`User ${userId} failed to save vector data for document ${documentId}: ${error.message}`, error.stack);
+      if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new InternalServerErrorException(`Failed to save vector data for document ${documentId}.`);
+      throw new InternalServerErrorException('Failed to save vector data.');
     }
   }
 
   @Get(':id/vector-data')
   @HttpCode(HttpStatus.OK)
-  async getVectorData(@Param('id') documentId: string): Promise<any | null> {
-    this.logger.log(`[Controller] Received request to get vector data for document ${documentId}`);
+  async getVectorData(
+    @Param('id') documentId: string,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<any | null> {
+    const userId = req.user.id;
+    this.logger.log(`User ${userId} request to get vector data for document ${documentId}`);
     try {
-      const vectorData = await this.documentsService.getVectorData(documentId);
-      if (vectorData === null) {
-        this.logger.log(`[Controller] Vector data not found for document ${documentId}. Returning null.`);
-        return null; 
-      }
-      return vectorData;
+       const document = await this.documentsService.findOne(documentId, userId);
+       if (!document) {
+         throw new NotFoundException(`Document with ID ${documentId} not found or user does not have permission.`);
+       }
+      return await this.documentsService.getVectorData(documentId, userId);
     } catch (error) {
-      this.logger.error(`[Controller] Error getting vector data for document ${documentId}: ${error.message}`);
-      if (error instanceof InternalServerErrorException) {
+      this.logger.error(`User ${userId} failed to get vector data for document ${documentId}: ${error.message}`, error.stack);
+      if (error instanceof NotFoundException) {
         throw error;
       }
-      throw new InternalServerErrorException(`Failed to retrieve vector data for document ${documentId}.`);
+      throw new InternalServerErrorException('Failed to retrieve vector data.');
     }
   }
 }

@@ -10,6 +10,43 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// 用户模型
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique // 邮箱，唯一
+  password  String   // 存储哈希后的密码
+  username  String   @unique // 用户名，唯一 (之前是 name String?)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  folders      Folder[]
+  notebooks    Notebook[]
+  documents    Document[] // 用户直接创建的文档（如果适用）或通过笔记本间接拥有
+  notes        Note[] // 用户直接创建的富文本笔记（如果适用）或通过笔记本间接拥有
+  notePadNotes NotePadNote[] // 用户直接创建的普通笔记（如果适用）或通过笔记本间接拥有
+  syncConfigs  SyncConfig[]
+  settings     UserSettings? // 一对一关联到用户设置
+}
+
+// 用户设置模型 (示例：用于LLM、向量化等设置)
+model UserSettings {
+  id     String @id @default(cuid())
+  userId String @unique // 关联到用户ID
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // LLM 相关设置 (示例)
+  llmModel      String? @default("default_llm")
+  llmApiKey     String? // 注意：敏感信息处理，考虑更安全的存储方式或不直接存储
+  
+  // 向量化相关设置 (示例)
+  vectorizationModel String? @default("default_vector_model")
+  chunkSize          Int?    @default(1000)
+  chunkOverlap       Int?    @default(200)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // 文件夹模型
 model Folder {
   id        String     @id @default(cuid())
@@ -17,6 +54,11 @@ model Folder {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   notebooks Notebook[] // 关联到多个笔记本
+
+  userId String // 外键关联到用户
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // 笔记本模型
@@ -27,14 +69,18 @@ model Notebook {
   updatedAt DateTime @updatedAt // 更新时间
 
   documents Document[] // 关联到多个文档 (一对多关系)
-  notes     String? // 关联到多个记事本笔记
-  richNotes Note[]     // 关联到多个新的富文本笔记
+  // notes     String? // 移除旧的简单 notes 字段，如果 NotePadNote 是替代品
+  notePadNotes NotePadNote[] // 关联到多个普通笔记
+  richNotes    Note[]        // 关联到多个新的富文本笔记
 
-  // 添加文件夹关联
   folderId String? // 可选的文件夹ID
   folder   Folder? @relation(fields: [folderId], references: [id])
 
+  userId String // 外键关联到用户
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([folderId])
+  @@index([userId])
 }
 
 // 文档模型
@@ -44,27 +90,27 @@ model Document {
   status      String // 或者使用自定义枚举类型
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  textContent String? // <--- 移除 @db.Text
+  textContent String? 
 
-  // --- 修改以下字段 ---
   mimeType      String?
-  textChunks    String? // <--- 将 String[] 修改为 String
-  embeddings    Json? // 这个保持不变，Json 类型通常可以映射到 TEXT
+  textChunks    String? 
+  embeddings    Json? 
   statusMessage String?
-
-  // 在这里添加 fileSize 字段
-  fileSize Int // 文件大小 (以字节为单位)
-
-  // 在这里添加 filePath 字段 <-- 新增字段
-  filePath String? // 存储文件的路径
-  
-  // 添加向量化标记字段
-  isVectorized Boolean @default(false) // 标记文档是否已经向量化
+  fileSize      Int 
+  filePath      String? 
+  isVectorized  Boolean  @default(false)
 
   notebookId String
   notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
 
+  // 直接关联到 User (如果文档可以独立于笔记本存在，或者为了方便查询)
+  // 如果文档总是属于某个用户的某个笔记本，这个直接关联可能不是必需的，
+  // 可以通过 notebook.user 来访问用户。但为了数据隔离，明确关联可能更好。
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([notebookId])
+  @@index([userId]) 
 }
 
 // 记事本笔记模型
@@ -76,43 +122,50 @@ model NotePadNote {
   updatedAt DateTime @updatedAt
 
   notebookId String
+  notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade) // 关联到笔记本
+
+  userId String // 外键关联到用户
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([notebookId])
+  @@index([userId])
 }
 
 // 新的富文本笔记模型
 model Note {
   id           String   @id @default(cuid())
   title        String?
-  contentJson  Json?    // 用于存储 Tiptap/ProseMirror 的 JSON 输出
-  contentHtml  String?  // 用于存储 HTML 内容的冗余或备用
+  contentJson  Json?    
+  contentHtml  String?  
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   notebookId String
   notebook   Notebook @relation(fields: [notebookId], references: [id], onDelete: Cascade)
 
+  userId String // 外键关联到用户
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([notebookId])
+  @@index([userId])
 }
 
 // 同步配置模型
 model SyncConfig {
   id       String  @id @default(cuid())
   name     String
-  type     String // "webdav" 或 "s3"
+  type     String 
   isActive Boolean @default(true)
 
-  // WebDAV特定字段
   webdavUrl      String?
   webdavUsername String?
-  webdavPassword String?
+  webdavPassword String? 
   webdavPath     String?
 
-  // S3特定字段
   s3Region    String?
   s3Bucket    String?
   s3AccessKey String?
-  s3SecretKey String?
+  s3SecretKey String? 
   s3Endpoint  String?
   s3Path      String?
   s3Acl       String?
@@ -120,4 +173,9 @@ model SyncConfig {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  userId String // 外键关联到用户
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

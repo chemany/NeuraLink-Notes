@@ -10,11 +10,17 @@ console.log('API_BASE_URL:', API_BASE_URL);
 export const getNotePadNotesApi = async (notebookId: string): Promise<NotePadNote[]> => {
   console.log(`[notePadService] Fetching notes for notebook: ${notebookId}`);
   try {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Accept': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes`, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: headers,
     });
 
     if (!response.ok) {
@@ -46,11 +52,17 @@ export const getNotePadNotesApi = async (notebookId: string): Promise<NotePadNot
 export const createNotePadNoteApi = async (notebookId: string, note: Omit<NotePadNote, 'id' | 'createdAt'>): Promise<NotePadNote> => {
   console.log(`[notePadService] Creating note for notebook: ${notebookId}`);
   try {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify(note),
     });
 
@@ -84,11 +96,17 @@ export const createNotePadNoteApi = async (notebookId: string, note: Omit<NotePa
 export const updateNotePadNoteApi = async (notebookId: string, noteId: string, updates: Partial<NotePadNote>): Promise<NotePadNote> => {
   console.log(`[notePadService] Updating note ${noteId} in notebook ${notebookId}`);
   try {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes/${noteId}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify(updates),
     });
 
@@ -121,8 +139,15 @@ export const updateNotePadNoteApi = async (notebookId: string, noteId: string, u
 export const deleteNotePadNoteApi = async (notebookId: string, noteId: string): Promise<void> => {
   console.log(`[notePadService] Deleting note ${noteId} from notebook ${notebookId}`);
   try {
+    const token = localStorage.getItem('token');
+    const headers: HeadersInit = {}; // For DELETE, Content-Type might not be needed
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes/${noteId}`, {
       method: 'DELETE',
+      headers: headers,
     });
 
     if (!response.ok) {

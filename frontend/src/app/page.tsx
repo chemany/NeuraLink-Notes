@@ -1,4 +1,4 @@
-import Head from 'next/head';
+'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import NotebookCard from '@/components/NotebookCard';
@@ -12,6 +12,7 @@ import RootFolderItem from '@/components/RootFolderItem';
 import ConfirmModal from '@/components/ConfirmModal';
 import SettingsDialog from '@/components/SettingsDialog';
 import RenameNotebookModal from '@/components/RenameNotebookModal';
+import Header from '@/components/Header';
 
 // 动态导入SyncSettings组件
 const SyncSettings = dynamic(() => import('@/components/settings/SyncSettings'), {
@@ -84,6 +85,9 @@ export default function Home() {
 
   // 拖拽相关的状态
   const [draggedOverFolderId, setDraggedOverFolderId] = useState<string | null>(null);
+
+  const [isClient, setIsClient] = useState(false);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
 
   // Initial setup: Expand all folders and select root by default
   useEffect(() => {
@@ -325,28 +329,32 @@ export default function Home() {
   // 修改 renderNotebookCards 添加 onRename prop
   const renderNotebookCards = useCallback((notebookList: Notebook[], columns: 3 | 6 = 6) => {
     if (!notebookList || notebookList.length === 0) {
-      return <p className="pl-8 text-xs text-gray-500 py-2 col-span-full">（空）</p>; // 添加 col-span-full
+      return <p className="pl-8 text-xs text-gray-500 py-2 col-span-full">（空）</p>;
     }
-    // 根据列数选择不同的 grid 样式
-    const gridColsClass = columns === 3
-       ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3' // 文件夹内部最多3列
-       : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'; // 根目录最多6列
+    // 根据列数选择不同的 card wrapper 样式
+    let cardWrapperClass = '';
+    if (columns === 3) { // 文件夹内部笔记本
+      cardWrapperClass = 'w-full sm:w-1/2 md:w-1/3'; // 保持3列响应式
+    } else { // 根目录笔记本
+      cardWrapperClass = 'w-1/8'; // 固定8列
+    }
 
     return (
-      <div className={`pl-6 grid ${gridColsClass} gap-3 py-2`}> {/* 使用动态列数 */}
+      <div className="pl-2 flex flex-wrap gap-3 py-2"> {/* 修改 pl-6 为 pl-2 */}
         {(notebookList).map(notebook => (
           notebook && notebook.id ? (
-            <NotebookCard
-              key={notebook.id}
-              notebookId={notebook.id}
-              onDelete={deleteNotebook}
-              onRename={handleRenameNotebookClick} // 添加重命名处理函数
-            />
+            <div key={`${notebook.id}-wrapper`} className={cardWrapperClass}> {/* 包裹 NotebookCard 并应用宽度 */}
+              <NotebookCard
+                notebookId={notebook.id}
+                onDelete={deleteNotebook}
+                onRename={handleRenameNotebookClick}
+              />
+            </div>
           ) : null
         ))}
       </div>
     );
-  }, [deleteNotebook, handleRenameNotebookClick]); // 添加依赖
+  }, [deleteNotebook, handleRenameNotebookClick]);
 
   // 拖拽事件处理
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>, folderId: string) => {
@@ -407,85 +415,42 @@ export default function Home() {
   };
 
   return (
-    <>
-      <Head>
-        <title>NotebookLM 克隆</title>
-        <meta name="description" content="Google NotebookLM 的克隆版本" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
-      
+    <>     
       <div className="min-h-screen flex flex-col bg-gray-100"> {/* 主背景色稍暗 */}
-        <header className="bg-white border-b py-3 px-6 sticky top-0 z-10">
-          <div className="container mx-auto flex justify-between items-center">
-            <div className="flex items-center">
-              <span className="font-semibold text-lg">灵枢笔记</span>
-            </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={handleBackup}
-                disabled={isBackingUp || isRestoring}
-                className={`bg-green-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-green-700 flex items-center ${isBackingUp ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isBackingUp ? '备份中...' : '备份'}
-              </button>
-              <button
-                onClick={handleRestoreClick}
-                disabled={isBackingUp || isRestoring}
-                className={`bg-yellow-500 text-white px-3 py-1.5 rounded-md text-sm hover:bg-yellow-600 flex items-center ${isRestoring ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isRestoring ? '恢复中...' : '恢复'}
-              </button>
-              <input 
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".zip"
-                style={{ display: 'none' }} 
-              />
-              <button
-                onClick={() => { setEditingFolder(null); setNewFolderName(''); setShowFolderModal(true); }}
-                className="bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-sm hover:bg-gray-300 flex items-center"
-              >
-                +文件夹
-              </button>
-              <button
-                onClick={() => { setFolderIdForNewNotebook(null); setShowCreateModal(true); }}
-                className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-blue-700"
-              >
-                +笔记本
-              </button>
-              <Link href="/calendar" passHref>
-                <button
-                  className="bg-teal-600 text-white px-3 py-1.5 rounded-md text-sm hover:bg-teal-700 flex items-center"
-                  title="打开智能日历"
-                >
-                  智能日历
-                </button>
-              </Link>
-              <button 
-                onClick={() => setShowMainSettingsModal(true)}
-                className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded-md text-sm hover:bg-gray-200 flex items-center"
-                title="设置"
-              >
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                 </svg>
-                 设置
-               </button>
-              <button onClick={() => setShowCloudSyncModal(true)} className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md text-sm hover:bg-purple-200 flex items-center">
-                 <CloudIcon className="h-4 w-4 mr-1" />
-                 同步
-              </button>
-            </div>
-          </div>
-        </header>
+        <Header 
+          showBackButton={false} 
+          showNewNotebookButton={true} 
+          // title="灵枢笔记" // 可以选择覆盖默认标题
+          
+          // Pass props for Home page specific buttons
+          showBackupRestoreButtons={true}
+          onBackupClick={handleBackup}
+          onRestoreClick={handleRestoreClick} // This will trigger fileInputRef.current.click()
+          isBackingUp={isBackingUp}
+          isRestoring={isRestoring}
+          showAddFolderButton={true}
+          onAddFolderClick={() => { setEditingFolder(null); setNewFolderName(''); setShowFolderModal(true); }}
+          showCalendarButton={true}
+          // onCalendarClick is handled by Link component within Header now
+          showMainSettingsButton={true}
+          onMainSettingsClick={() => setShowMainSettingsModal(true)}
+          showSyncButton={true}
+          onSyncClick={() => setShowCloudSyncModal(true)}
+          showSettingsIcon={false} // Hide the generic notebook settings cog on the main page
+        />
         
-        <main className="flex-grow container mx-auto p-4 md:p-6">
+        <main className="flex-grow p-2"> {/* Reduced padding from p-4 */}
+          {/* The hidden file input for restore remains here */}
+          <input 
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".zip"
+            style={{ display: 'none' }} 
+          />
           <div className="space-y-2">
             {/* Section for Root/Unclassified notebooks - Full Width */}
-            <div className="mb-6 p-4 border border-gray-300 rounded-lg bg-gray-50 shadow-sm min-h-[150px]"> {/* 修改背景色为 bg-gray-50 并添加最小高度 */}
+            <div className="mb-6 p-2 border border-gray-300 rounded-lg bg-gray-50 shadow-sm min-h-[150px]"> {/* 修改 p-4 为 p-2 */}
               <RootFolderItem
                 isSelected={currentlySelectedItemId === null}
                 onSelectFolder={() => handleSelectItem(null)}
@@ -493,15 +458,16 @@ export default function Home() {
               {renderNotebookCards(notebooksByFolder['root'] || [], 6)}
             </div>
 
-            {/* Section for Folders - 3 Columns Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Section for Folders - Target 4 Columns Grid */}
+            <div className="flex flex-wrap gap-4"> {/* 使用 flex flex-wrap */}
               {folders.sort((a, b) => a.name.localeCompare(b.name)).map((folder, index) => {
                 const folderColorClass = MORANDI_COLORS[index % MORANDI_COLORS.length];
                 const isDraggingOver = draggedOverFolderId === folder.id;
                 return (
                   <div 
                     key={folder.id} 
-                    className={`flex flex-col border border-gray-300 rounded-lg shadow-sm overflow-hidden transition-colors duration-150 ${folderColorClass} ${isDraggingOver ? 'bg-green-100 border-2 border-dashed border-green-500' : ''}`}
+                    // 应用文件夹宽度，并保留原有样式 - 固定4列
+                    className={`w-1/4 flex flex-col border border-gray-300 rounded-lg shadow-sm overflow-hidden transition-colors duration-150 ${folderColorClass} ${isDraggingOver ? 'bg-green-100 border-2 border-dashed border-green-500' : ''}`} 
                     onDragOver={(e) => handleDragOver(e, folder.id)}
                     onDragEnter={(e) => handleDragEnter(e, folder.id)}
                     onDragLeave={handleDragLeave}

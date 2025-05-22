@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef, useCallback, useMemo } from 'react';
 // 移除顶部的静态导入
 // import { CKEditor } from '@ckeditor/ckeditor5-react';
 // import ClassicEditorCore from '@ckeditor/ckeditor5-build-classic';
@@ -6,6 +6,7 @@ import { toast } from 'react-hot-toast'; // 假设你已经安装并配置了 re
 // 仅保留类型导入
 import type { Editor } from '@ckeditor/ckeditor5-core'; // CKEditor 核心类型
 import type { RootElement } from '@ckeditor/ckeditor5-engine'; // RootElement 类型
+import type InlineEditorCore from '@ckeditor/ckeditor5-build-inline'; // 添加 InlineEditor 类型 (如果需要直接引用其类型)
 import { useAutosave } from '../hooks/useAutosave'; // Back to relative path
 
 // 移除这行，因为我们将在客户端条件中动态导入
@@ -14,7 +15,7 @@ import { useAutosave } from '../hooks/useAutosave'; // Back to relative path
 export interface RichTextNotebookRef {
   addTextToNotebook: (text: string) => void;
   getEditorContent: () => string; // 新增一个获取内容的方法，如果需要的话
-  saveNotebook: () => Promise<void>; // 新增 saveNotebook 以匹配 MarkdownNotebookRef 的部分需求
+  saveNotebook: () => Promise<boolean | void>; // 修改返回类型以匹配 handleSave
 }
 
 interface RichTextNotebookProps {
@@ -72,7 +73,7 @@ function MyCustomUploadAdapterPlugin(editor: any) {
 
 // 工具函数：从HTML内容中提取所有图片URL
 function extractImageUrls(html: string): string[] {
-  const imgRegex = /<img[^>]+src=["']?([^"'>]+)["']?/g;
+  const imgRegex = /<img[^>]+src=["\']?([^\"\'>]+)[\"\']?/g;
   const urls: string[] = [];
   let match;
   while ((match = imgRegex.exec(html)) !== null) {
@@ -94,75 +95,113 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
 ) => {
   const [editorData, setEditorData] = useState<string>(initialContent);
   const [title, setTitle] = useState<string>(initialTitle);
-  const editorInstanceRef = useRef<any | null>(null); // 修改类型为any
+  const editorInstanceRef = useRef<InlineEditorCore | null>(null); // 修改类型为 InlineEditorCore
   // 记录上一次内容中的图片URL
   const prevImageUrlsRef = useRef<string[]>(extractImageUrls(initialContent));
+
+  // Ref to manage toast display for autosave
+  const canShowAutosaveToastRef = useRef(true); // Initially true
+  const toastDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 当 initialContent 或 initialTitle 改变时 (例如，用户选择了不同的笔记)，更新编辑器内容和标题
   useEffect(() => {
     setEditorData(initialContent);
     setTitle(initialTitle);
-    if (editorInstanceRef.current && editorInstanceRef.current.getData() !== initialContent) {
-      editorInstanceRef.current.setData(initialContent);
-    }
   }, [initialContent, initialTitle, notebookId]);
 
-  const handleSave = async () => {
+  const handleSave = async (isAutosave = false) => {
     if (!title.trim()) {
-      toast.error('笔记标题不能为空!');
-      return; // 返回，不继续执行保存
+      if (!isAutosave) {
+        toast.error('笔记标题不能为空!');
+      }
+      return false;
     }
     try {
-      const currentEditorData = editorInstanceRef.current ? editorInstanceRef.current.getData() : editorData;
+      // const currentEditorData = editorInstanceRef.current ? editorInstanceRef.current.getData() : editorData;
+      // 确保 editorInstanceRef.current 存在并且是 InlineEditorCore 的实例
+      let currentEditorData = editorData; // Default to state if editor instance not ready
+      if (editorInstanceRef.current && typeof editorInstanceRef.current.getData === 'function') {
+        currentEditorData = editorInstanceRef.current.getData();
+      }
       await onSave(currentEditorData, title);
-      toast.success('笔记已保存');
+      if (!isAutosave) {
+        toast.success('笔记已保存');
+      }
+      return true;
     } catch (error) {
-      toast.error('保存笔记失败');
+      if (!isAutosave) {
+        toast.error('保存笔记失败');
+      }
       console.error("保存笔记失败:", error);
-      throw error; // 重新抛出错误，以便 saveNotebook 可以捕获
+      // throw error; // 不再向上抛出，避免 useImperativeHandle 中的 saveNotebook 再次处理
+      return false; // Indicate failure
     }
   };
 
   // Define the actual save function for the hook
   const performAutosave = useCallback(async (saveData: NoteAutosaveData) => {
-    // Check for title similar to handleSave, but maybe less strict feedback for autosave?
-    if (!saveData.title.trim()) {
-      console.warn('Autosave skipped: Title is empty.');
-      // Decide if you want to prevent autosave without title or save anyway
-      // return; // Uncomment to prevent saving without title
+    if (!saveData.title.trim()) { // Title check for autosave
+      console.warn('[RichTextNotebook] Autosave skipped: Title is empty.');
+      return false; // Autosave skipped
     }
-    try {
-      // Call the original onSave prop passed from the parent
-      await onSave(saveData.content, saveData.title);
-      console.log('Note autosaved successfully (ID:', saveData.noteId, ')');
-      // Optional: Update a subtle UI indicator for "Saved" status here
-    } catch (error) {
-      console.error('Autosave failed:', error);
-      toast.error('自动保存笔记失败'); // Keep error toast for autosave failure
-      // Optional: Update UI indicator for "Error" status
-    }
-  }, [onSave, notebookId]);
 
-  // Use the autosave hook
+    console.log('[RichTextNotebook] Performing autosave for note:', saveData.noteId, 'Title:', saveData.title);
+    try {
+      await onSave(saveData.content, saveData.title); // Use the original onSave prop
+      console.log('[RichTextNotebook] Autosave successful for note:', saveData.noteId);
+      
+      if (canShowAutosaveToastRef.current) {
+        toast.success('笔记已自动保存 ✓', { duration: 2000, position: 'bottom-center' });
+        canShowAutosaveToastRef.current = false; // Prevent immediate re-toasting
+        
+        if (toastDebounceTimerRef.current) {
+          clearTimeout(toastDebounceTimerRef.current);
+        }
+        toastDebounceTimerRef.current = setTimeout(() => {
+          canShowAutosaveToastRef.current = true;
+        }, 15000); // Allow another toast after 15 seconds of no saves
+      }
+      return true; // Autosave successful
+    } catch (error) {
+      console.error('[RichTextNotebook] Autosave failed for note:', saveData.noteId, error);
+      toast.error('自动保存失败'); // Keep error toast for autosave failure
+      return false; // Autosave failed
+    }
+  }, [onSave]);
+
+  // Autosave hook configuration
+  const autosaveEnabled = !!notebookId && !!title.trim(); // Enable only if notebookId AND title are valid
+
+  const autosaveData = useMemo(() => ({
+    noteId: notebookId,
+    content: editorData,
+    title,
+  }), [notebookId, editorData, title]);
+
   useAutosave<NoteAutosaveData>({
-    // Data object that triggers the save when its reference changes
-    data: { noteId: notebookId, content: editorData, title }, // Corrected: use notebookId from props
+    data: autosaveData, // 使用 useMemo 后的 data
     onSave: performAutosave,
-    debounceMs: 2500, // 2.5 seconds delay
-    enabled: !!notebookId, // Enable only if notebookId is valid
+    debounceMs: 3000, 
+    enabled: autosaveEnabled, 
   });
+  
+  useEffect(() => {
+      canShowAutosaveToastRef.current = true;
+      if (toastDebounceTimerRef.current) {
+          clearTimeout(toastDebounceTimerRef.current);
+          toastDebounceTimerRef.current = null;
+      }
+  }, [notebookId]);
+
 
   const handleEditorChange = (event: any, editor: any) => {
     const data = editor.getData();
     setEditorData(data);
-    // 检查图片删除
     const currentImageUrls = extractImageUrls(data);
     const prevImageUrls = prevImageUrlsRef.current;
-    // 找出被删除的图片URL
     const deleted = prevImageUrls.filter(url => !currentImageUrls.includes(url));
     if (deleted.length > 0) {
       deleted.forEach(url => {
-        // 只处理本地上传的图片
         if (url.startsWith('http://localhost:3001/uploads/images/')) {
           fetch('http://localhost:3001/api/upload/image', {
             method: 'DELETE',
@@ -184,13 +223,10 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
         }
       });
     }
-    // 更新记录
     prevImageUrlsRef.current = currentImageUrls;
   };
 
-  // 暴露方法给父组件
   useImperativeHandle(ref, () => ({
-    // 添加文本到编辑器
     addTextToNotebook: (text: string) => {
       if (editorInstanceRef.current) {
         const currentContent = editorInstanceRef.current.getData();
@@ -199,168 +235,125 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
         setEditorData(newContent);
       }
     },
-    // 获取编辑器内容
     getEditorContent: () => {
       return editorInstanceRef.current ? editorInstanceRef.current.getData() : editorData;
     },
-    // 保存笔记本
     saveNotebook: async () => {
-      await handleSave();
+      return await handleSave(); // Ensure it returns the boolean from handleSave
     }
   }));
 
-  // 检测是否在浏览器环境中
   const isBrowser = typeof window !== 'undefined';
   
-  // 仅在浏览器环境中导入CKEditor
   let CKEditorComponent = null;
-  let ClassicEditorComponent = null;
+  let InlineEditorComponent = null; // 添加 InlineEditorComponent
   
   if (isBrowser) {
-    // 动态导入
     try {
       CKEditorComponent = require('@ckeditor/ckeditor5-react').CKEditor;
-      ClassicEditorComponent = require('@ckeditor/ckeditor5-build-classic');
+      InlineEditorComponent = require('@ckeditor/ckeditor5-build-inline'); // 引入 InlineEditor
     } catch (error) {
-      console.error('Failed to load CKEditor:', error);
+      console.error("Error loading CKEditor components:", error);
     }
   }
 
+  // 编辑器配置
+  const editorConfiguration = useMemo(() => ({
+    language: 'zh-cn', // 设置语言为中文
+    extraPlugins: [MyCustomUploadAdapterPlugin], // 保留自定义上传插件
+    placeholder: '请输入笔记内容...', // 可以为 InlineEditor 设置 placeholder
+    toolbar: { // 添加显式工具栏配置
+      items: [
+        'heading', '|',
+        'bold', 'italic', '|',
+        'link', '|',
+        'bulletedList', 'numberedList', '|',
+        'blockQuote', '|',
+        'undo', 'redo'
+      ],
+      // 对于 InlineEditor，工具栏默认就是浮动的，并尝试定位到选区或编辑区域。
+      // isFloating: true, // 这个选项通常在 ClassicEditor 中使用，InlineEditor 默认为 true
+      // viewportTopOffset: 15, // 如果工具栏被其他固定元素遮挡，可以尝试设置偏移
+    }
+  }), []); // 依赖项为空数组，因为配置不依赖外部可变状态
+
+  if (!isBrowser || !CKEditorComponent || !InlineEditorComponent) {
+    return <div style={{ padding: '20px', color: '#888' }}>Loading Editor...</div>;
+  }
+  
+  console.log('[RichTextNotebook Render] notebookId:', notebookId, 'editorData:', typeof editorData, 'editorInstanceRef.current:', editorInstanceRef.current);
+
   return (
-    <div 
-      className="richtext-notebook-container"
-      style={{
-        display: 'flex', // 改为 Flex 布局
-        flexDirection: 'column', // 垂直排列
-        height: '100%', // 自身高度100%，依赖父级
-        minHeight: 0,   // 防止 flex item 内容溢出撑开父级
-        ...style
-      }}
-    >
-      {/* 标题输入框不再显示在这里，而是由父组件 NotebookLayout 控制 */}
-
-      {/* 编辑器容器，占据所有剩余空间，使用莫兰迪色系背景 */}
-      <div 
-        style={{ 
-          flexGrow: 1, // 占据所有剩余空间
-          minHeight: 0, // 关键，允许 CKEditor 在此容器内滚动
-          display: 'flex', // 使 CKEditor 能够在其内部撑满
-          flexDirection: 'column',
-          backgroundColor: 'var(--bg-notes)', // 应用莫兰迪色系背景色
-          borderRadius: '8px', // 添加圆角
-          border: '1px solid var(--panel-border)', // 添加边框
-          boxShadow: 'var(--panel-shadow)', // 添加阴影
-          width: '100%', // 确保宽度填满父容器
-          height: '100%', // 确保高度填满父容器
-          padding: '0', // 移除内边距
-          margin: '0', // 移除外边距
-          overflow: 'hidden', // 防止溢出
-        }}
-      >
-        {/* 仅在浏览器环境中渲染CKEditor */}
-        {isBrowser && CKEditorComponent ? (
-          <CKEditorComponent
-            editor={ClassicEditorComponent}
-            data={editorData}
-            style={{
-              height: '100%',
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1
-            }}
-            config={{
-              // 配置工具栏
-              toolbar: {
-                items: [
-                  'heading',
-                  '|',
-                  'bold',
-                  'italic',
-                  'link',
-                  'bulletedList',
-                  'numberedList',
-                  '|',
-                  'outdent',
-                  'indent',
-                  '|',
-                  'imageUpload',
-                  'blockQuote',
-                  'insertTable',
-                  'mediaEmbed',
-                  'undo',
-                  'redo'
-                ]
-              },
-              // 配置图片上传
-              image: {
-                toolbar: [
-                  'imageStyle:full',
-                  'imageStyle:side',
-                  '|',
-                  'imageTextAlternative'
-                ]
-              },
-              // 配置表格
-              table: {
-                contentToolbar: [
-                  'tableColumn',
-                  'tableRow',
-                  'mergeTableCells'
-                ]
-              },
-              // 添加自定义上传适配器
-              extraPlugins: [MyCustomUploadAdapterPlugin],
-            }}
-            onReady={(editor: any) => {
-              editorInstanceRef.current = editor;
-              // 使用新的方法来获取和设置编辑器容器样式
-              if (editor.ui && editor.ui.view && editor.ui.view.editable) {
-                const editableElement = editor.ui.getEditableElement() as HTMLElement;
-                if (editableElement) {
-                  editableElement.style.height = 'calc(100% - 41px)'; // 减去工具栏大致高度
-                  editableElement.style.overflowY = 'auto'; // 确保内容可滚动
-                  editableElement.style.border = 'none'; // 移除默认边框
-                  editableElement.style.padding = '10px'; // 添加一些内边距
-                  editableElement.style.boxShadow = 'none'; // 移除默认阴影
-                  editableElement.style.borderRadius = '0'; // 移除默认圆角
-                  
-                   // 修改工具栏样式
-                  const toolbarElement = editor.ui.view.toolbar.element as HTMLElement;
-                  if (toolbarElement) {
-                    toolbarElement.style.border = 'none';
-                    toolbarElement.style.borderBottom = '1px solid var(--panel-border)'; // 保留下边框
-                    toolbarElement.style.backgroundColor = 'var(--bg-secondary)'; // 背景色
-                    // 设置最小垂直内边距，并尝试减小字体和行高
-                    toolbarElement.style.padding = '0px 8px'; // 垂直内边距设为 0px
-                    toolbarElement.style.fontSize = '0.75rem'; // 尝试缩小字体 (等同于 text-xs)
-                    toolbarElement.style.lineHeight = '1';    // 尝试减小行高
-                  }
-                }
+    <div style={{ flexGrow: 1, overflowY: 'auto', position: 'relative', height: '100%', width: '100%', ...style }}> 
+        <CKEditorComponent
+          key={notebookId}
+          editor={InlineEditorComponent}
+          data={editorData}
+          config={editorConfiguration}
+          onReady={(editor: InlineEditorCore) => {
+            console.log('[RichTextNotebook onReady] Editor is ready. Assigning to editorInstanceRef.current.');
+            editorInstanceRef.current = editor;
+            console.log('[RichTextNotebook onReady] editorInstanceRef.current is now:', editorInstanceRef.current);
+            
+            // 增加 editor 实例有效性检查
+            if (editor && editor.ui && editor.ui.view) { 
+              console.log('[CKEditor Debug] editor.ui:', editor.ui);
+              if (editor.ui.view.element) {
+                console.log('[CKEditor Debug] UI View Element:', editor.ui.view.element);
               }
-              console.log('CKEditor is ready to use!', editor);
-            }}
-            onChange={handleEditorChange}
-            onBlur={(event: any, editor: any) => {
-              console.log('编辑器失去焦点', editor);
-            }}
-            onFocus={(event: any, editor: any) => {
-              console.log('编辑器获得焦点', editor);
-            }}
-          />
-        ) : (
-          // 服务器端渲染时显示加载中或占位符
-          <div style={{ padding: '20px', textAlign: 'center' }}>
-            加载编辑器中...
-          </div>
-        )}
-      </div>
-
-      {/* 移除底部工具栏，不再显示保存按钮 */}
+              try {
+                const editableElement = editor.ui.getEditableElement();
+                if (editableElement) {
+                  console.log('[CKEditor Debug] Editable Element:', editableElement);
+                  let currentElement = editableElement.parentElement;
+                  let depth = 0;
+                  console.log('[CKEditor Debug] --- Begin Parent Chain Analysis ---');
+                  while (currentElement && depth < 10) {
+                    const styles = getComputedStyle(currentElement);
+                    console.log(`[CKEditor Debug] Parent ${depth}:`, 
+                      currentElement.tagName, 
+                      currentElement.className, 
+                      {
+                        scrollTop: currentElement.scrollTop, 
+                        scrollHeight: currentElement.scrollHeight,
+                        clientHeight: currentElement.clientHeight,
+                        position: styles.position,
+                        overflowY: styles.overflowY,
+                        transform: styles.transform
+                      }
+                    );
+                    currentElement = currentElement.parentElement;
+                    depth++;
+                  }
+                  console.log('[CKEditor Debug] --- End Parent Chain Analysis ---');
+                } else {
+                  console.warn('[CKEditor Debug] Editable Element not found.');
+                }
+              } catch (e) {
+                console.warn('[CKEditor Debug] Error during parent chain analysis:', e);
+              }
+            } else {
+              console.warn('[RichTextNotebook onReady] Editor instance or editor.ui or editor.ui.view is not available.');
+            }
+          }}
+          onChange={(event: any, editor: InlineEditorCore) => {
+            const data = editor.getData();
+            console.log('[RichTextNotebook onChange] Data changed, editorInstanceRef.current:', editorInstanceRef.current, 'New data length:', data.length);
+            handleEditorChange(event, editor);
+          }}
+          onError={(error: any, { phase }: { phase: string }) => { 
+            console.error('[RichTextNotebook onError] CKEditor Error during:', phase, error, 'editorInstanceRef.current:', editorInstanceRef.current);
+            toast.error(`编辑器错误: ${phase}`);
+          }}
+          onFocus={(event: any, editor: InlineEditorCore) => { 
+            console.log('[RichTextNotebook onFocus] Focus., editorInstanceRef.current:', editorInstanceRef.current);
+          }}
+          onBlur={(event: any, editor: InlineEditorCore) => { 
+            console.log('[RichTextNotebook onBlur] Blur., editorInstanceRef.current:', editorInstanceRef.current);
+          }}
+        />
     </div>
   );
 });
-
-RichTextNotebook.displayName = 'RichTextNotebook';
 
 export default RichTextNotebook;

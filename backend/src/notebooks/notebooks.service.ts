@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service'; // Adjust path if needed
 import { ConfigService } from '@nestjs/config';
@@ -12,6 +13,7 @@ import * as fsExtra from 'fs-extra';
 import * as fs from 'fs/promises'; // Use promises API for fs
 import * as path from 'path';
 import { CreateNotebookDto } from './dto/create-notebook.dto'; // 导入 DTO
+import { UpdateNotebookDto } from './dto/update-notebook.dto'; // Assuming an UpdateNotebookDto exists or will be created
 
 @Injectable()
 export class NotebooksService {
@@ -27,15 +29,16 @@ export class NotebooksService {
   }
 
   // 获取所有笔记本的方法
-  async findAll(): Promise<Notebook[]> {
-    this.logger.log('Fetching all notebooks');
+  async findAll(userId: string): Promise<Notebook[]> {
+    this.logger.log(`User ${userId} fetching all notebooks`);
     try {
       return await this.prisma.notebook.findMany({
+        where: { userId }, // Filter by userId
         orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
       this.logger.error(
-        `Failed to fetch notebooks: ${error.message}`,
+        `User ${userId} failed to fetch notebooks: ${error.message}`,
         error.stack,
       );
       throw new InternalServerErrorException('获取笔记本列表失败');
@@ -43,39 +46,39 @@ export class NotebooksService {
   }
 
   // 创建新笔记本的方法
-  async create(createNotebookDto: CreateNotebookDto): Promise<Notebook> {
+  async create(createNotebookDto: CreateNotebookDto, userId: string): Promise<Notebook> {
     this.logger.log(
-      `Creating notebook: "${createNotebookDto.title}" ${createNotebookDto.folderId ? `in folder ${createNotebookDto.folderId}` : ''}`,
+      `User ${userId} creating notebook: "${createNotebookDto.title}" ${createNotebookDto.folderId ? `in folder ${createNotebookDto.folderId}` : ''}`,
     );
     let newNotebook: Notebook | null = null; // Define here to access ID later
     try {
       const data: Prisma.NotebookCreateInput = {
         title: createNotebookDto.title,
+        user: { connect: { id: userId } }, // Connect to user
       };
       if (createNotebookDto.folderId) {
-        // Check if folder exists before associating
-        const folderExists = await this.prisma.folder.findUnique({
-          where: { id: createNotebookDto.folderId },
+        const folder = await this.prisma.folder.findFirst({
+          where: { id: createNotebookDto.folderId, userId }, // Ensure folder belongs to user
         });
-        if (!folderExists) {
+        if (!folder) {
           throw new NotFoundException(
-            `ID 为 ${createNotebookDto.folderId} 的文件夹不存在`,
+            `ID 为 ${createNotebookDto.folderId} 的文件夹不存在或不属于您。`,
           );
         }
         data.folder = { connect: { id: createNotebookDto.folderId } };
       }
       newNotebook = await this.prisma.notebook.create({ data });
       this.logger.log(
-        `Successfully created notebook with ID: ${newNotebook.id}`,
+        `User ${userId} successfully created notebook with ID: ${newNotebook.id}`,
       );
 
       // --- Ensure local directory exists after creation ---
       if (newNotebook) {
-        const notebookDir = path.join(this.uploadsDir, newNotebook.id);
+        const notebookDir = path.join(this.uploadsDir, userId, newNotebook.id); // Add userId to path
         try {
           await fsExtra.ensureDir(notebookDir);
           this.logger.log(
-            `Ensured local directory exists for new notebook: ${notebookDir}`,
+            `Ensured local directory for new notebook: ${notebookDir}`,
           );
         } catch (dirError: any) {
           this.logger.error(
@@ -90,62 +93,56 @@ export class NotebooksService {
       return newNotebook;
     } catch (error) {
       this.logger.error(
-        `Failed to create notebook: ${error.message}`,
+        `User ${userId} failed to create notebook: ${error.message}`,
         error.stack,
       );
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException || error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('创建笔记本失败');
     }
   }
 
-  async findOne(id: string): Promise<Notebook | null> {
-    this.logger.log(`Fetching notebook with ID: ${id}`);
+  async findOne(id: string, userId: string): Promise<Notebook | null> {
+    this.logger.log(`User ${userId} fetching notebook with ID: ${id}`);
     try {
-      const notebook = await this.prisma.notebook.findUnique({
-        where: { id },
+      const notebook = await this.prisma.notebook.findFirst({
+        where: { id, userId }, // Ensure notebook belongs to user
       });
       if (!notebook) {
-        throw new NotFoundException(`找不到 ID 为 ${id} 的笔记本`);
+        throw new NotFoundException(`找不到 ID 为 ${id} 的笔记本或您没有权限访问。`);
       }
       return notebook;
     } catch (error) {
       this.logger.error(
-        `Failed to fetch notebook ${id}: ${error.message}`,
+        `User ${userId} failed to fetch notebook ${id}: ${error.message}`,
         error.stack,
       );
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
       throw new InternalServerErrorException('获取笔记本详情失败');
     }
   }
 
   // Add the remove method here
-  async remove(id: string): Promise<Notebook> {
-    // Return the deleted notebook
-    this.logger.log(`Attempting to delete notebook with ID: ${id}`);
-    // Define the path *before* the transaction, in case DB delete fails but we still want to try cleanup
-    const notebookUploadsPath = path.join(this.uploadsDir, id); // Use path.join
+  async remove(id: string, userId: string): Promise<Notebook> {
+    this.logger.log(`User ${userId} attempting to delete notebook with ID: ${id}`);
+    const notebook = await this.findOne(id, userId); // Ensures notebook exists and belongs to user
+    if (!notebook) { // findOne already throws if not found, but as a safeguard
+      throw new NotFoundException(`找不到 ID 为 ${id} 的笔记本或您没有权限删除。`);
+    }
+    const notebookUploadsPath = path.join(this.uploadsDir, userId, id); // Add userId to path
 
     try {
       // Use a transaction to ensure atomicity of DB operations
       const deletedNotebook = await this.prisma.$transaction(async (tx) => {
         // 1. Delete associated documents first
-        const deletedDocs = await tx.document.deleteMany({
-          where: { notebookId: id },
-        });
+        const deletedDocs = await tx.document.deleteMany({ where: { notebookId: id, userId } }); // Also ensure docs belong to user
         this.logger.log(
           `Deleted ${deletedDocs.count} documents associated with notebook ${id}.`,
         );
 
         // 2. Delete the notebook itself
-        const notebook = await tx.notebook.delete({
-          where: { id: id },
-        });
+        const nb = await tx.notebook.delete({ where: { id } }); // id is unique
         this.logger.log(`Deleted notebook record for ${id} from database.`);
-        return notebook; // Return the deleted notebook data
+        return nb; // Return the deleted notebook data
       });
 
       // --- Modified File Deletion Logic ---
@@ -180,7 +177,7 @@ export class NotebooksService {
       }
       // Handle other potential errors
       this.logger.error(
-        `Error deleting notebook ${id}: ${error.message}`,
+        `User ${userId} error deleting notebook ${id}: ${error.message}`,
         error.stack,
       );
       throw new InternalServerErrorException(
@@ -191,33 +188,24 @@ export class NotebooksService {
 
   async update(
     id: string,
-    updateData: { title?: string; folderId?: string | null; notes?: string },
+    userId: string,
+    updateDataDto: UpdateNotebookDto, // Use a DTO
+    notesContent?: string, // Separate parameter for notes.json content if needed for file op
   ): Promise<Notebook> {
-    this.logger.log(`[NotebooksService] Updating notebook ${id} with data:`, {
-      title: updateData.title,
-      folderId: updateData.folderId,
-      notesProvided: updateData.notes !== undefined,
-    });
-
-    // 检查笔记本是否存在
-    const notebook = await this.prisma.notebook.findUnique({
-      where: { id },
-    });
-
-    if (!notebook) {
-      throw new NotFoundException(`笔记本 ID ${id} 不存在`);
+    this.logger.log(`User ${userId} updating notebook ${id}`);
+    const notebook = await this.findOne(id, userId); // Ensures notebook exists and belongs to user
+    if (!notebook) { // findOne should throw, but as a safeguard
+      throw new NotFoundException(`笔记本 ID ${id} 不存在或不属于您`);
     }
 
-    // 如果提供了folderId，则检查文件夹是否存在
-    if (updateData.folderId !== undefined) {
-      if (updateData.folderId !== null) {
-        const folder = await this.prisma.folder.findUnique({
-          where: { id: updateData.folderId },
+    if (updateDataDto.folderId !== undefined) {
+      if (updateDataDto.folderId !== null) {
+        const folder = await this.prisma.folder.findFirst({
+          where: { id: updateDataDto.folderId, userId }, // Ensure folder belongs to user
         });
-
         if (!folder) {
           throw new BadRequestException(
-            `文件夹 ID ${updateData.folderId} 不存在`,
+            `文件夹 ID ${updateDataDto.folderId} 不存在或不属于您。`,
           );
         }
       }
@@ -225,60 +213,69 @@ export class NotebooksService {
 
     // 准备要更新到数据库的数据 (排除 notes，如果它不存在于 DTO 中)
     const dbUpdateData: Prisma.NotebookUpdateInput = {};
-    if (updateData.title !== undefined) dbUpdateData.title = updateData.title;
-    if (updateData.folderId !== undefined) {
-      if (updateData.folderId === null) {
-        // Disconnect from folder
-        dbUpdateData.folder = { disconnect: true };
-      } else {
-        // Connect to new folder
-        dbUpdateData.folder = { connect: { id: updateData.folderId } };
-      }
+    if (updateDataDto.title !== undefined) dbUpdateData.title = updateDataDto.title;
+    if (updateDataDto.folderId !== undefined) {
+      dbUpdateData.folder = updateDataDto.folderId ? { connect: { id: updateDataDto.folderId } } : { disconnect: true };
     }
-    if (updateData.notes !== undefined) dbUpdateData.notes = updateData.notes;
+    // DO NOT update a 'notes' field in the database Notebook entity directly
 
-    // --- 添加本地文件写入逻辑 ---
     let updatedNotebook: Notebook;
     try {
       // 1. 更新数据库
       updatedNotebook = await this.prisma.notebook.update({
-        where: { id },
+        where: { id }, // id is unique
         data: dbUpdateData,
       });
-      this.logger.log(`Successfully updated notebook ${id} in database.`);
+      this.logger.log(`User ${userId} successfully updated notebook ${id} in database.`);
 
-      // 2. 如果 notes 被更新了，则写入本地文件
-      if (updateData.notes !== undefined) {
-        const notesFilePath = path.join(
-          this.uploadsDir,
-          id,
-          this.NOTES_FILENAME,
-        );
-        const notesDir = path.dirname(notesFilePath);
-        const notesJson = JSON.stringify({ notes: updateData.notes }, null, 2); // Format as JSON object
+      if (notesContent !== undefined) { // Check if notesContent was explicitly passed
+        const notebookDir = path.join(this.uploadsDir, userId, id); // Add userId to path
+        const notesFilePath = path.join(notebookDir, this.NOTES_FILENAME);
         try {
-          await fsExtra.ensureDir(notesDir); // Ensure directory exists
-          await fs.writeFile(notesFilePath, notesJson, 'utf-8');
+          await fsExtra.ensureDir(notebookDir);
+          await fs.writeFile(notesFilePath, notesContent, 'utf-8');
           this.logger.log(
-            `Successfully wrote notes to local file: ${notesFilePath}`,
+            `User ${userId} successfully wrote notes to ${notesFilePath} for notebook ${id}`,
           );
         } catch (fileError: any) {
           this.logger.error(
-            `Failed to write notes to local file ${notesFilePath} for notebook ${id}: ${fileError.message}`,
+            `User ${userId} failed to write notes to ${notesFilePath} for notebook ${id}: ${fileError.message}`,
             fileError.stack,
           );
-          // 不抛出错误，因为数据库已更新，但记录严重错误
+          // Decide if this should throw an error and rollback or just log
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       this.logger.error(
-        `Failed to update notebook ${id} in database: ${error.message}`,
+        `User ${userId} failed to update notebook ${id}: ${error.message}`,
         error.stack,
       );
-      throw new InternalServerErrorException(`更新笔记本 ${id} 失败`);
+      throw new InternalServerErrorException('更新笔记本失败');
     }
 
     return updatedNotebook;
+  }
+
+  // Method to read notes.json from local filesystem for a specific notebook
+  async getNotebookNotesFromFile(notebookId: string, userId: string): Promise<string | null> {
+    await this.findOne(notebookId, userId); // Permission check
+    const notebookDir = path.join(this.uploadsDir, userId, notebookId); // Add userId to path
+    const notesFilePath = path.join(notebookDir, this.NOTES_FILENAME);
+    try {
+      if (await fsExtra.pathExists(notesFilePath)) {
+        const notes = await fs.readFile(notesFilePath, 'utf-8');
+        this.logger.log(`User ${userId} successfully read notes from ${notesFilePath}`);
+        return notes;
+      }
+      this.logger.log(`Notes file not found for notebook ${notebookId} (User ${userId}) at ${notesFilePath}`);
+      return null; // Or throw NotFoundException, depending on desired behavior
+    } catch (error: any) {
+      this.logger.error(
+        `User ${userId} failed to read notes from ${notesFilePath}: ${error.message}`,
+        error.stack,
+      );
+      throw new InternalServerErrorException('读取笔记内容失败。');
+    }
   }
 
   // 未来可以添加创建、查找单个、更新、删除等方法
