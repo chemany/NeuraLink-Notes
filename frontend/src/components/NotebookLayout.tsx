@@ -31,6 +31,7 @@ import type { TiptapNotebookApi } from './TiptapNotebook'; // 确保这里是 Ti
 import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, HomeIcon, PencilIcon } from '@heroicons/react/24/outline';
 import DocumentPreviewModal from './DocumentPreviewModal'; // Import the new modal
 import RenameNotebookModal from './RenameNotebookModal'; // 导入重命名模态框
+import ConfirmModal from './ConfirmModal'; // 导入通用确认模态框
 
 // 动态导入 TiptapNotebook，并禁用SSR
 const TiptapNotebook = dynamic(() => import('@/components/TiptapNotebook'), { // 使用正确的相对路径
@@ -67,6 +68,10 @@ export default function NotebookLayout({
   const [notebookTitle, setNotebookTitle] = useState(initialNotebookTitle || '');
   const [isClient, setIsClient] = useState(false);
   const [tiptapApi, setTiptapApi] = useState<TiptapNotebookApi | null>(null);
+
+  // 确认删除相关状态
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // 使用 useCallback 包裹 onApiReady 回调
   const handleApiReady = useCallback((api: TiptapNotebookApi | null) => {
@@ -874,18 +879,40 @@ export default function NotebookLayout({
   // Handler for the "Delete Note" button
   const handleDeleteNoteClick = async (noteIdToDelete: string) => {
     if (!currentNotebook) return;
-    const noteToDelete = currentNotes.find(n => n.id === noteIdToDelete);
-    if (noteToDelete && confirm(`确定要删除笔记 "${noteToDelete.title || '未命名笔记'}" 吗?`)) {
-        try {
-            const nextActiveNoteId = getNextActiveNoteId(currentNotes, noteIdToDelete);
-            await deleteNote(currentNotebook.id, noteIdToDelete);
-            setActiveNote(nextActiveNoteId);
-        } catch (error) {
-            console.error("Error deleting note via button:", error);
-        }
-    } else if (!noteToDelete) {
-        toast.error("找不到要删除的笔记");
+    const noteToDeleteObj = currentNotes.find(n => n.id === noteIdToDelete);
+    if (noteToDeleteObj) {
+      setNoteToDelete({
+        id: noteIdToDelete,
+        title: noteToDeleteObj.title || '未命名笔记'
+      });
+      setShowDeleteConfirm(true);
+    } else {
+      toast.error("找不到要删除的笔记");
     }
+  };
+
+  // 处理确认删除笔记
+  const handleConfirmDeleteNote = async () => {
+    if (!currentNotebook || !noteToDelete) return;
+    
+    try {
+      const nextActiveNoteId = getNextActiveNoteId(currentNotes, noteToDelete.id);
+      await deleteNote(currentNotebook.id, noteToDelete.id);
+      setActiveNote(nextActiveNoteId);
+      toast.success('笔记已删除');
+    } catch (error) {
+      console.error("Error deleting note via button:", error);
+      toast.error('删除笔记时出错');
+    } finally {
+      setShowDeleteConfirm(false);
+      setNoteToDelete(null);
+    }
+  };
+
+  // 处理取消删除笔记
+  const handleCancelDeleteNote = () => {
+    setShowDeleteConfirm(false);
+    setNoteToDelete(null);
   };
 
   // Helper to determine which note to select after deletion
@@ -1200,6 +1227,15 @@ export default function NotebookLayout({
             onRenameSuccess={handleRenameSuccess}
           />
         )}
+
+        {/* Delete Note Confirm Modal */}
+        <ConfirmModal
+          isOpen={showDeleteConfirm}
+          onConfirm={handleConfirmDeleteNote}
+          onClose={handleCancelDeleteNote}
+          title="删除笔记"
+          message={`确定要删除笔记 "${noteToDelete?.title}" 吗？`}
+        />
       </div>
     </>
   );

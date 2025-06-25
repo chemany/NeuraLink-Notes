@@ -100,7 +100,7 @@ export default function NotebookCard({ notebookId, onDelete, onRename }: Noteboo
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/notebook/${notebook.id}`);
+    router.push(`/${notebook.id}`);
   };
 
   // 拖拽事件处理

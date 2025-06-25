@@ -231,7 +231,8 @@
   background-color: var(--bg-notes) !important;
   display: flex !important;
   flex-direction: column !important;
-  padding: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important; /* 添加margin重置 */
   position: absolute !important;
   top: 0 !important;
   left: 0 !important;
@@ -239,6 +240,17 @@
   bottom: 0 !important;
   overflow: auto !important;
   box-sizing: border-box !important; /* Ensure padding is included in height/width calculations */
+}
+
+/* 强制重置CKEditor内容区域的所有默认样式 */
+.ck.ck-editor__editable.ck-editor__editable_inline {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* 添加一个更通用的重置规则 */
+.ck.ck-editor__editable * {
+  box-sizing: border-box !important;
 }
 
 /* 确保CKEditor内容区域即使为空也能占满空间 */
@@ -278,6 +290,129 @@
   padding-left: 1px;
   padding-right: 1px;
 } */
+
+/* 中文文档格式：标题不缩进，正文段落首行缩进两个字符 */
+
+/* 标题不缩进（顶格显示） - 使用更强的选择器 */
+.ck.ck-editor__editable.ck-editor__editable_inline h1,
+.ck.ck-editor__editable.ck-editor__editable_inline h2,
+.ck.ck-editor__editable.ck-editor__editable_inline h3,
+.ck.ck-editor__editable.ck-editor__editable_inline h4,
+.ck.ck-editor__editable.ck-editor__editable_inline h5,
+.ck.ck-editor__editable.ck-editor__editable_inline h6,
+.ck.ck-editor__editable h1,
+.ck.ck-editor__editable h2,
+.ck.ck-editor__editable h3,
+.ck.ck-editor__editable h4,
+.ck.ck-editor__editable h5,
+.ck.ck-editor__editable h6 {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  text-indent: 0 !important; /* 确保标题不缩进 */
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  white-space: nowrap !important; /* 强制标题不换行 */
+  display: block !important;
+  font-weight: bold !important;
+  margin: 0.5em 0 !important;
+}
+
+/* 特别加强编号标题的处理 */
+.ck.ck-editor__editable h3 {
+  font-size: 1.1em !important;
+  line-height: 1.4 !important;
+}
+
+/* 强制所有可能包含编号的元素不换行 */
+.ck.ck-editor__editable *[style*="1."],
+.ck.ck-editor__editable *[style*="2."],
+.ck.ck-editor__editable *[style*="3."],
+.ck.ck-editor__editable *[style*="4."],
+.ck.ck-editor__editable *[style*="5."],
+.ck.ck-editor__editable *[style*="6."],
+.ck.ck-editor__editable *[style*="7."],
+.ck.ck-editor__editable *[style*="8."],
+.ck.ck-editor__editable *[style*="9."] {
+  text-indent: 0 !important;
+  white-space: nowrap !important;
+  display: block !important;
+  font-weight: bold !important;
+  margin: 0.5em 0 !important;
+  padding: 0 !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* 正文段落首行缩进两个字符 - 使用更强的选择器 */
+.ck.ck-editor__editable.ck-editor__editable_inline p,
+.ck.ck-editor__editable p {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  line-height: 1.6 !important; /* 适当的行距 */
+}
+
+/* 普通段落首行缩进两个字符 */
+.ck.ck-editor__editable.ck-editor__editable_inline p:not([style*="position: relative"]),
+.ck.ck-editor__editable p:not([style*="position: relative"]) {
+  text-indent: 2em !important; /* 首行缩进两个字符 */
+}
+
+/* 列表项段落（带有position: relative的）不缩进 */
+.ck.ck-editor__editable p[style*="position: relative"] {
+  text-indent: 0 !important; /* 列表项不缩进 */
+}
+
+/* 列表项处理 */
+.ck.ck-editor__editable ul,
+.ck.ck-editor__editable ol {
+  padding-left: 1.5rem !important; /* 列表容器有左边距 */
+  margin-left: 0 !important;
+  margin: 0.5em 0 !important;
+}
+
+.ck.ck-editor__editable li {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  text-indent: 0 !important; /* 列表项不使用首行缩进 */
+  white-space: normal !important; /* 允许正常换行，但控制内容格式 */
+  display: list-item !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.5 !important;
+}
+
+/* 强制列表项内的段落不缩进，但允许换行 */
+.ck.ck-editor__editable li p {
+  text-indent: 0 !important; /* 列表项内的段落不缩进 */
+  white-space: normal !important;
+  display: inline !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 特别处理列表项内的内容，防止意外的换行 */
+.ck.ck-editor__editable li br {
+  display: none !important; /* 隐藏列表项内的br标签 */
+}
+
+/* 引用块不使用首行缩进 */
+.ck.ck-editor__editable blockquote {
+  margin-left: 0 !important;
+  padding-left: 1rem !important; /* 引用块有左内边距 */
+  text-indent: 0 !important; /* 引用块不使用首行缩进 */
+  border-left: 4px solid #ccc !important; /* 添加左边框标识引用 */
+}
+
+/* 其他块级元素不缩进 */
+.ck.ck-editor__editable div,
+.ck.ck-editor__editable pre,
+.ck.ck-editor__editable code {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+}
 
 /* Add styles for Tiptap editor content */
 .ProseMirror ul,

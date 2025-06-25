@@ -85,14 +85,58 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
         if (typeof content === 'string') {
           if (['txt', 'md', 'csv', 'json'].includes(extension)) {
+            // 对于文本文件，content应该已经是文本内容，直接使用
           } 
           else {
-            if (content.startsWith('http') || content.startsWith('/api/documents')) {
+            // 对于非文本文件，content应该是URL路径
+            if (content.startsWith('http')) {
+              // 如果是完整URL，直接使用
+              const response = await apiClient.get(content, { responseType: 'blob' });
+              const blob = response.data as Blob;
+              finalUrl = URL.createObjectURL(blob);
+              currentObjectUrl = finalUrl; 
+            } else if (content.startsWith('/api/documents')) {
+              // 如果是相对路径，需要判断环境
+              let fullUrl = content;
+              if (typeof window !== 'undefined') {
+                const currentHost = window.location.hostname;
+                console.log('[PreviewModal] Current host:', currentHost);
+                console.log('[PreviewModal] Original content:', content);
+                if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+                  // 外网环境，需要构建完整URL
+                  fullUrl = `${window.location.protocol}//${window.location.host}/notepads${content}`;
+                  console.log('[PreviewModal] External environment, constructed URL:', fullUrl);
+                  // 外网环境使用axios直接请求，因为apiClient可能有基础URL冲突
+                  const token = localStorage.getItem('calendar_unified_token');
+                  const headers: any = {};
+                  if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                  }
+                  const response = await axios.get(fullUrl, { 
+                    responseType: 'blob',
+                    headers 
+                  });
+                  const blob = response.data as Blob;
+                  finalUrl = URL.createObjectURL(blob);
+                  currentObjectUrl = finalUrl;
+                } else {
+                  console.log('[PreviewModal] Local environment, using apiClient');
+                  // 本地环境使用apiClient
+                  const response = await apiClient.get(content, { responseType: 'blob' });
+                  const blob = response.data as Blob;
+                  finalUrl = URL.createObjectURL(blob);
+                  currentObjectUrl = finalUrl;
+                }
+              } else {
+                // 服务端渲染环境
                 const response = await apiClient.get(content, { responseType: 'blob' });
                 const blob = response.data as Blob;
                 finalUrl = URL.createObjectURL(blob);
-                currentObjectUrl = finalUrl; 
+                currentObjectUrl = finalUrl;
+              }
             } else {
+              // 其他情况，可能是Base64或其他格式
+              console.warn('[PreviewModal] Unknown content format:', content.substring(0, 100));
             }
           }
         } else if (content instanceof ArrayBuffer) {

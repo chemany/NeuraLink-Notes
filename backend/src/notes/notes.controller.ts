@@ -15,19 +15,14 @@ import {
 import { NotesService } from './notes.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { User as UserModel } from '@prisma/client';
-
-interface AuthenticatedRequest extends Request {
-  user: Omit<UserModel, 'password'> & { id: string };
-}
+import { UnifiedAuthGuard, AuthenticatedRequest } from '../unified-auth/unified-auth.guard';
 
 /**
  * 富文本笔记相关接口
  * 负责处理 /api/notebooks/:notebookId/richnotes 路由
  */
 @Controller('notebooks/:notebookId/richnotes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard)
 export class NotesController {
   constructor(private readonly notesService: NotesService) {}
 

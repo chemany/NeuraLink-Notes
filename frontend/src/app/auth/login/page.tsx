@@ -4,14 +4,13 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
-import { loginUser as loginUserService } from '@/services/authService';
 
 /**
- * 登录页面组件
+ * 登录页面组件 - 完全使用统一设置服务
  */
 const LoginPage = () => {
   const router = useRouter();
-  const { login: loginContext, isAuthenticated } = useAuth();
+  const { loginWithUnifiedService, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -48,18 +47,22 @@ const LoginPage = () => {
       return;
     }
 
-    const loginData = { email, password };
-
     try {
-      const { accessToken, user } = await loginUserService(loginData);
-      if (accessToken && user) {
-        loginContext(accessToken, user);
+      console.log('[LoginPage] 使用统一设置服务登录');
+      const success = await loginWithUnifiedService(email, password);
+      
+      if (success) {
+        console.log('[LoginPage] 统一设置服务登录成功，正在跳转');
+        router.replace('/');
       } else {
-        setError('登录失败，未能获取到必要信息。');
+        setError('邮箱或密码错误，请重试。如果您还没有账户，请先注册。');
       }
     } catch (err: any) {
-      if (err.response && err.response.status === 401) {
-        setError('邮箱或密码错误，请重试。');
+      console.error('[LoginPage] 登录错误:', err);
+      if (err.message?.includes('邮箱或密码错误')) {
+        setError('邮箱或密码错误，请重试。如果您还没有账户，请先注册。');
+      } else if (err.message?.includes('网络错误') || err.message?.includes('无法连接')) {
+        setError('无法连接到统一设置服务，请检查网络连接或稍后重试。');
       } else {
         setError(err.message || '登录失败，请重试。');
       }
@@ -73,7 +76,14 @@ const LoginPage = () => {
       <div className="w-full max-w-md bg-white rounded-xl shadow-2xl p-8 space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-800">欢迎回来</h1>
-          <p className="text-sm text-gray-500 mt-1">登录您的灵枢笔记账户</p>
+          <p className="text-sm text-gray-500 mt-1">登录您的统一账户</p>
+          
+          {/* 统一设置服务说明 */}
+          <div className="mt-4 text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3">
+            <p className="font-medium text-blue-800">🌟 统一设置服务</p>
+            <p className="mt-1">一个账户，同时使用智能日历和灵枢笔记</p>
+            <p className="mt-1">AI配置和设置在应用间自动同步</p>
+          </div>
         </div>
 
         {registrationSuccess && (
@@ -137,6 +147,12 @@ const LoginPage = () => {
             立即注册
           </Link>
         </p>
+        
+        {/* 服务状态提示 */}
+        <div className="text-xs text-center text-gray-500 bg-gray-50 p-3 rounded-md">
+          <p>💡 所有账户数据由统一设置服务管理</p>
+          <p>🔒 安全加密存储，支持多应用同步</p>
+        </div>
       </div>
       <footer className="mt-8 text-center text-xs text-gray-500">
         <p>&copy; {new Date().getFullYear()} 灵枢笔记项目. 保留所有权利.</p>

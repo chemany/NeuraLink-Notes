@@ -2,6 +2,8 @@
 const path = require('path');
 
 const nextConfig = {
+  basePath: '/notepads',
+  // trailingSlash: true, // 暂时禁用，可能导致 API 路径问题
   reactStrictMode: true,
   swcMinify: true,
   webpack: (config, { isServer }) => {
@@ -19,35 +21,54 @@ const nextConfig = {
     return config;
   },
   // 配置安全策略以允许加载 PDF worker
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin',
-          },
-          {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
-          },
-        ],
-      },
-    ];
-  },
+  // 暂时禁用CORS头，避免在HTTP环境下的警告
+  // async headers() {
+  //   return [
+  //     {
+  //       source: '/:path*',
+  //       headers: [
+  //         {
+  //           key: 'Cross-Origin-Opener-Policy',
+  //           value: 'same-origin',
+  //         },
+  //         {
+  //           key: 'Cross-Origin-Embedder-Policy',
+  //           value: 'require-corp',
+  //         },
+  //       ],
+  //     },
+  //   ];
+  // },
 
-  // --- 添加 API 代理配置 ---
+  // Re-enable rewrites for local development proxying
   async rewrites() {
-    return [
+    const rewrites = [];
+    
+    // 在nginx代理环境下，不需要Next.js的重写规则
+    // nginx会处理 /notebooks/api/* 到后端的代理
+    if (process.env.NODE_ENV === 'development') {
+      rewrites.push({
+        source: '/api/:path*',
+        destination: `${process.env.BACKEND_API_URL || 'http://localhost:3001/api'}/:path*`,
+      });
+    }
+    
+    // 添加开发工具相关的重写规则，避免404错误
+    rewrites.push(
+      // 静默处理Chrome开发工具请求
       {
-        source: '/api/:path*', // 匹配所有 /api 开头的请求
-        // FIX: 确保 destination 指向你 NestJS 后端的正确地址和端口 (默认为 3001)
-        destination: 'http://localhost:3001/api/:path*', 
+        source: '/.well-known/:path*',
+        destination: '/api/dev-tools-silence', // 返回空响应
       },
-    ]
+      // 处理source map请求
+      {
+        source: '/:path*\\.map',
+        destination: '/api/dev-tools-silence',
+      }
+    );
+    
+    return rewrites;
   },
-  // --- 结束 API 代理配置 ---
 }
 
 module.exports = nextConfig; 

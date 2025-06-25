@@ -7,6 +7,8 @@ const pdfParse: (buffer: Buffer) => Promise<{ text: string; [key: string]: any; 
 import * as mammoth from 'mammoth';
 // 修改导入方式，使用require并添加类型断言
 const officeparser = require('officeparser') as any;
+// 添加xlsx导入
+import * as XLSX from 'xlsx';
 // 注意：暂时不导入 DTO，因为 notebookId 会从请求的其他部分获取
 import * as fs from 'fs';
 import * as path from 'path';
@@ -537,6 +539,14 @@ export class DocumentsService {
            this.logger.log(`[ProcessDoc] Extracting content from Text file: ${filePath}`);
            textContent = await this.extractTextFileContent(filePath, document.fileName, userId);
            break;
+        case '.xlsx':
+           this.logger.log(`[ProcessDoc] Extracting content from Excel file: ${filePath}`);
+           textContent = await this.extractExcelContent(filePath, document.fileName, userId);
+           break;
+        case '.csv':
+           this.logger.log(`[ProcessDoc] Extracting content from CSV file: ${filePath}`);
+           textContent = await this.extractCSVContent(filePath, document.fileName, userId);
+           break;
         default:
           this.logger.warn(`[ProcessDoc] Unsupported file type: ${fileExt} for document ${documentId}`);
           await this.updateDocumentStatus(documentId, userId, 'FAILED', `不支持的文件类型: ${fileExt}`);
@@ -646,6 +656,40 @@ export class DocumentsService {
     } catch (error) {
       this.logger.error(`User ${userId} failed to read text file ${filePath}: ${error.message}`);
       throw new Error(`无法读取文本文件: ${error.message}`);
+    }
+  }
+  
+  /**
+   * 提取Excel文件内容
+   */
+  private async extractExcelContent(filePath: string, fileName: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting content extraction for: ${filePath}`);
+    try {
+      const workbook = XLSX.readFile(filePath);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json(sheet);
+      const jsonData = JSON.stringify(data, null, 2);
+      this.logger.log(`User ${userId} extraction successful. Text length: ${jsonData.length}`);
+      return jsonData;
+    } catch (error) {
+      this.logger.error(`User ${userId} failed to extract text from Excel file ${filePath}: ${error.message}`);
+      throw new Error(`无法解析Excel文件: ${error.message}`);
+    }
+  }
+  
+  /**
+   * 提取CSV文件内容
+   */
+  private async extractCSVContent(filePath: string, fileName: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting content extraction for: ${filePath}`);
+    try {
+      const csvData = await fs.promises.readFile(filePath, 'utf-8');
+      this.logger.log(`User ${userId} extraction successful. Text length: ${csvData.length}`);
+      return csvData;
+    } catch (error) {
+      this.logger.error(`User ${userId} failed to read CSV file ${filePath}: ${error.message}`);
+      throw new Error(`无法读取CSV文件: ${error.message}`);
     }
   }
   

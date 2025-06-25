@@ -18,6 +18,9 @@ import { saveAs } from 'file-saver';
 import { useNotebook } from '@/contexts/NotebookContext';
 import axios from 'axios'; // 添加axios导入
 import { processDocumentForRAG, storeDocumentChunks, getDocumentChunks } from '@/services/vectorService'; // 添加向量化处理函数
+import localUnifiedSettingsService from '@/services/localUnifiedSettingsService'; // 添加统一设置服务
+import { EmbeddingModelSettings } from '@/contexts/SettingsContext'; // 导入类型定义
+import { getApiBaseUrl } from '@/services/apiClient';
 
 // 在文件顶部添加类型声明
 declare module 'react-file-viewer';
@@ -86,11 +89,25 @@ interface DocumentsListProps {
   onToggleChatSelection?: (document: Document) => void;
 }
 
-// 定义后端基础 URL (理想情况下应来自环境变量)
-const BACKEND_API_BASE = 'http://localhost:3001';
-
 // 修改向量化状态和队列初始化，确保每个笔记本只处理一批文档
 const VECTORIZE_TOAST_ID = 'vectorize-status-toast'; // 固定的toast ID用于状态更新
+
+/**
+ * 获取后端API基础URL，支持外网环境
+ */
+const getBackendApiBase = (): string => {
+  if (typeof window !== 'undefined') {
+    const currentHost = window.location.hostname;
+    if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+      // 外网环境，使用当前域名
+      return `${window.location.protocol}//${window.location.host}/notepads`;
+    }
+  }
+  // 本地环境，使用localhost
+  return 'http://localhost:3001';
+};
+
+const BACKEND_API_BASE = getBackendApiBase();
 
 export default function DocumentsList({ 
   notebookId, 
@@ -401,7 +418,28 @@ export default function DocumentsList({
       lastProcessedTimeRef.current = Date.now();
       
       console.log(`[vectorizeDocument] 开始为RAG处理文档 ${docId} (${docNameForToast})`);
-      const chunks = await processDocumentForRAG(documentObject); 
+      
+      // 从后端统一设置服务读取embedding设置
+      let embeddingSettings: EmbeddingModelSettings | null = null;
+      try {
+        const embeddingData = await localUnifiedSettingsService.getEmbeddingSettingsFromFile();
+        if (embeddingData?.data) {
+          embeddingSettings = {
+            provider: embeddingData.data.provider || 'siliconflow',
+            apiKey: embeddingData.data.api_key || '',
+            model: embeddingData.data.model || 'BAAI/bge-m3',
+            encodingFormat: embeddingData.data.encoding_format || 'float',
+            customEndpoint: embeddingData.data.custom_endpoint || ''
+          } as EmbeddingModelSettings;
+          console.log(`[vectorizeDocument] 从后端读取embedding设置成功:`, embeddingSettings);
+        } else {
+          console.warn(`[vectorizeDocument] 未能从后端读取embedding设置，将使用默认设置`);
+        }
+      } catch (error) {
+        console.error(`[vectorizeDocument] 读取embedding设置失败:`, error);
+      }
+      
+      const chunks = await processDocumentForRAG(documentObject, embeddingSettings || undefined); 
       console.log(`[vectorizeDocument] 文档 ${docId} (${docNameForToast}) RAG处理完成，生成 ${chunks.length} 个块`);
 
       if (chunks.length > 0) {
@@ -652,9 +690,17 @@ export default function DocumentsList({
   
   // 修改点击处理函数
   const handleDocumentClick = (doc: Document) => {
-    if (doc.status !== DocumentStatus.COMPLETED) {
-      console.log('文档尚未处理完成，无法选择:', doc.fileName, doc.status);
-      toast.error(`文档"${doc.fileName}"尚未处理完成，请等待处理完成后再选择。`);
+    // 允许COMPLETED状态或向量化失败但有文本内容的文档
+    const canUseForAI = doc.status === DocumentStatus.COMPLETED || 
+                       (doc.status === DocumentStatus.VECTORIZATION_FAILED && doc.textContent && doc.textContent.trim().length > 0);
+    
+    if (!canUseForAI) {
+      console.log('文档无法用于AI分析:', doc.fileName, doc.status);
+      if (doc.status === DocumentStatus.VECTORIZATION_FAILED) {
+        toast.error(`文档"${doc.fileName}"向量化失败且无文本内容，无法用于AI分析。`);
+      } else {
+        toast.error(`文档"${doc.fileName}"尚未处理完成，请等待处理完成后再选择。`);
+      }
       return;
     }
 
@@ -732,8 +778,12 @@ export default function DocumentsList({
    */
   const handleDocumentOpen = async (doc: Document) => {
     try {
-      if (doc.status !== DocumentStatus.COMPLETED) {
-        toast.error('文档尚未处理完成，无法预览');
+      // 允许COMPLETED状态或向量化失败但有文本内容的文档进行预览
+      const canPreview = doc.status === DocumentStatus.COMPLETED || 
+                        (doc.status === DocumentStatus.VECTORIZATION_FAILED && doc.textContent && doc.textContent.trim().length > 0);
+      
+      if (!canPreview) {
+        toast.error('文档尚未处理完成或无内容，无法预览');
         return;
       }
       
@@ -751,14 +801,15 @@ export default function DocumentsList({
             return;
         }
       } else {
-        // 对于其他类型，构建后端 URL - 添加 /api 前缀
+        // 对于其他类型，构建相对路径，让DocumentPreviewModal处理环境差异
         let previewUrl: string | null = null;
         if ('url' in doc && typeof doc.url === 'string' && doc.url.startsWith('http')) {
             previewUrl = doc.url;
             console.log(`[DocumentsList] Using direct URL from doc object: ${previewUrl}`);
         } else {
-            previewUrl = `${BACKEND_API_BASE}/api/documents/${doc.id}/raw`; 
-            console.log(`[DocumentsList] Constructed backend URL for preview: ${previewUrl}`);
+            // 传递相对路径，让DocumentPreviewModal根据环境构建完整URL
+            previewUrl = `/api/documents/${doc.id}/raw`; 
+            console.log(`[DocumentsList] Constructed relative path for preview: ${previewUrl}`);
         }
         contentToPreview = previewUrl; // 将 URL 作为内容传递
       }

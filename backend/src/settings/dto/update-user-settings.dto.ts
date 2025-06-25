@@ -16,7 +16,8 @@ import {
 
 export class LLMSettingsDto {
   @IsString()
-  provider: string;
+  @IsEnum(['openai', 'anthropic', 'google', 'deepseek', 'openrouter', 'ollama', 'custom', 'builtin'])
+  provider: string; // 'openai' | 'anthropic' | 'google' | 'deepseek' | 'openrouter' | 'ollama' | 'custom' | 'builtin'
 
   @IsString()
   @IsOptional() // apiKey 可以在更新时不提供，以保留旧值

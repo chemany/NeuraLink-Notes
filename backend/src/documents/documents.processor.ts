@@ -14,6 +14,9 @@ import * as officeparser from 'officeparser';
 // Keep queue name import if needed elsewhere, otherwise remove
 // import { DOCUMENT_PROCESSING_QUEUE } from '../app.module';
 
+// 添加XLSX导入
+import * as XLSX from 'xlsx';
+
 // Interface for the job data payload
 interface DocumentJobPayload {
   documentId: string;
@@ -101,6 +104,20 @@ export class DocumentsProcessor {
         textContent = fs.readFileSync(absoluteFilePath, 'utf8');
         this.logger.log(
           `[ProcessorLogic] 从 TXT 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+        );
+      } else if (fileExtension === '.xlsx') {
+        const workbook = XLSX.readFile(absoluteFilePath);
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const data = XLSX.utils.sheet_to_json(sheet);
+        textContent = JSON.stringify(data, null, 2);
+        this.logger.log(
+          `[ProcessorLogic] 从 XLSX 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+        );
+      } else if (fileExtension === '.csv') {
+        textContent = fs.readFileSync(absoluteFilePath, 'utf8');
+        this.logger.log(
+          `[ProcessorLogic] 从 CSV 提取文本完成 (长度: ${textContent?.length ?? 0})`,
         );
       } else {
         this.logger.warn(

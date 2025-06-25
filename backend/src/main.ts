@@ -4,12 +4,15 @@ import { ValidationPipe } from '@nestjs/common';
 import * as express from 'express'; // 导入 express
 import * as path from 'path';
 import { MulterError } from 'multer';
+import { Logger } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     // logger: console, // 启用详细日志 (可选)
     logger: ['log', 'error', 'warn', 'debug', 'verbose'],
   });
+
+  const logger = new Logger('CORS');
 
   // 启用全局 DTO 验证管道
   app.useGlobalPipes(
@@ -23,9 +26,29 @@ async function bootstrap() {
     }),
   );
 
-  // 启用 CORS (允许前端 http://localhost:3000 访问)
+  // 启用 CORS
+  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',')
+    : ['http://localhost:3000'];
+
+  // --- Add detailed logging for CORS ---
+  logger.log(`CORS allowedOrigins: [${allowedOrigins.join(', ')}]`);
+
   app.enableCors({
-    origin: 'http://localhost:3000',
+    origin: (origin, callback) => {
+      // 允许来自 Postman 或其他无源头的请求（用于测试）
+      if (!origin) {
+        logger.log(`CORS: Allowing request with no origin (e.g., Postman)`);
+        return callback(null, true);
+      }
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        logger.log(`CORS: Allowing origin: ${origin}`);
+        return callback(null, true);
+      } else {
+        logger.error(`CORS: Blocking origin: ${origin}. It is not in the allowed list.`);
+        return callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: 'Content-Type, Accept, Authorization',

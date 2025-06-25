@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { API_URL } from '../utils/constants';
+import apiClient from './apiClient';
 
 export interface SyncConfig {
   id?: string;
@@ -26,7 +25,7 @@ class SyncService {
   // 获取所有同步配置
   async getAllConfigs(): Promise<SyncConfig[]> {
     try {
-      const response = await axios.get(`${API_URL}/sync/configs`);
+      const response = await apiClient.get(`/sync/configs`);
       return response.data;
     } catch (error) {
       console.error('获取同步配置失败', error);
@@ -37,7 +36,7 @@ class SyncService {
   // 获取单个同步配置
   async getConfig(id: string): Promise<SyncConfig> {
     try {
-      const response = await axios.get(`${API_URL}/sync/configs/${id}`);
+      const response = await apiClient.get(`/sync/configs/${id}`);
       return response.data;
     } catch (error) {
       console.error(`获取同步配置 ${id} 失败`, error);
@@ -48,7 +47,7 @@ class SyncService {
   // 创建同步配置
   async createConfig(config: SyncConfig): Promise<SyncConfig> {
     try {
-      const response = await axios.post(`${API_URL}/sync/configs`, config);
+      const response = await apiClient.post(`/sync/configs`, config);
       return response.data;
     } catch (error) {
       console.error('创建同步配置失败', error);
@@ -59,7 +58,7 @@ class SyncService {
   // 更新同步配置
   async updateConfig(id: string, config: SyncConfig): Promise<SyncConfig> {
     try {
-      const response = await axios.put(`${API_URL}/sync/configs/${id}`, config);
+      const response = await apiClient.put(`/sync/configs/${id}`, config);
       return response.data;
     } catch (error) {
       console.error(`更新同步配置 ${id} 失败`, error);
@@ -70,7 +69,7 @@ class SyncService {
   // 删除同步配置
   async deleteConfig(id: string): Promise<{ success: boolean }> {
     try {
-      const response = await axios.delete(`${API_URL}/sync/configs/${id}`);
+      const response = await apiClient.delete(`/sync/configs/${id}`);
       return response.data;
     } catch (error) {
       console.error(`删除同步配置 ${id} 失败`, error);
@@ -81,7 +80,7 @@ class SyncService {
   // 测试同步配置连接
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await axios.post(`${API_URL}/sync/configs/${id}/test`);
+      const response = await apiClient.post(`/sync/configs/${id}/test`);
       return response.data;
     } catch (error) {
       console.error(`测试同步配置 ${id} 失败`, error);
@@ -92,7 +91,7 @@ class SyncService {
   // 同步数据到云端
   async syncToCloud(id: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await axios.post(`${API_URL}/sync/to-cloud/${id}`);
+      const response = await apiClient.post(`/sync/to-cloud/${id}`);
       return response.data;
     } catch (error) {
       console.error(`同步到云端失败 ${id}`, error);
@@ -103,7 +102,7 @@ class SyncService {
   // 从云端同步数据
   async syncFromCloud(id: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await axios.post(`${API_URL}/sync/from-cloud/${id}`);
+      const response = await apiClient.post(`/sync/from-cloud/${id}`);
       return response.data;
     } catch (error) {
       console.error(`从云端同步失败 ${id}`, error);

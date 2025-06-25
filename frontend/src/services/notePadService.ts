@@ -1,169 +1,131 @@
-import { NotePadNote } from '@/types';
+import { getApiBaseUrl } from './apiClient';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
-console.log('API_BASE_URL:', API_BASE_URL);
 /**
- * 获取指定笔记本的所有记事本笔记
- * @param notebookId 笔记本ID
- * @returns Promise<NotePadNote[]> 返回记事本笔记数组
+ * NotePad Service
+ *
+ * 用于管理笔记本内的笔记。
+ * 主要功能:
+ * - 获取指定笔记本的所有笔记
+ * - 在指定笔记本中创建新笔记
+ * - 获取单个笔记的详细信息
+ * - 更新笔记内容
+ * - 删除笔记
  */
-export const getNotePadNotesApi = async (notebookId: string): Promise<NotePadNote[]> => {
-  console.log(`[notePadService] Fetching notes for notebook: ${notebookId}`);
-  try {
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {
-      'Accept': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
 
-    const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes`, {
+// 获取指定笔记本的所有笔记
+export const getNotesByNotebookId = async (notebookId: string, token: string) => {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes`, {
       method: 'GET',
-      headers: headers,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      console.error('[notePadService] Error fetching notes:', errorData);
-      throw new Error(`Failed to fetch notes: ${errorData.message || response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`获取笔记列表失败: ${errorData.message || response.statusText}`);
     }
-
-    const notes: NotePadNote[] = await response.json();
-    console.log(`[notePadService] Successfully fetched ${notes.length} notes`);
-    return notes;
-
+    
+    return await response.json();
   } catch (error) {
-    console.error('[notePadService] Error fetching notes:', error);
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('An unexpected error occurred while fetching notes');
-    }
+    console.error('获取笔记列表时出错:', error);
+    throw error;
   }
 };
 
-/**
- * 创建新的记事本笔记
- * @param notebookId 笔记本ID
- * @param note 笔记数据
- * @returns Promise<NotePadNote> 返回创建的笔记
- */
-export const createNotePadNoteApi = async (notebookId: string, note: Omit<NotePadNote, 'id' | 'createdAt'>): Promise<NotePadNote> => {
-  console.log(`[notePadService] Creating note for notebook: ${notebookId}`);
+// 在指定笔记本中创建新笔记
+export const createNoteInNotebook = async (notebookId: string, title: string, content: string, token: string) => {
   try {
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes`, {
+    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes`, {
       method: 'POST',
-      headers: headers,
-      body: JSON.stringify(note),
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title, content }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      console.error('[notePadService] Error creating note:', errorData);
-      throw new Error(`Failed to create note: ${errorData.message || response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`创建笔记失败: ${errorData.message || response.statusText}`);
     }
-
-    const newNote: NotePadNote = await response.json();
-    console.log('[notePadService] Successfully created note:', newNote);
-    return newNote;
-
+    
+    return await response.json();
   } catch (error) {
-    console.error('[notePadService] Error creating note:', error);
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('An unexpected error occurred while creating note');
-    }
+    console.error('创建笔记时出错:', error);
+    throw error;
   }
 };
 
-/**
- * 更新记事本笔记
- * @param notebookId 笔记本ID
- * @param noteId 笔记ID
- * @param updates 更新的数据
- * @returns Promise<NotePadNote> 返回更新后的笔记
- */
-export const updateNotePadNoteApi = async (notebookId: string, noteId: string, updates: Partial<NotePadNote>): Promise<NotePadNote> => {
-  console.log(`[notePadService] Updating note ${noteId} in notebook ${notebookId}`);
+// 获取单个笔记的详细信息
+export const getNoteById = async (notebookId: string, noteId: string, token: string) => {
   try {
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes/${noteId}`, {
-      method: 'PATCH',
-      headers: headers,
-      body: JSON.stringify(updates),
+    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes/${noteId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      console.error('[notePadService] Error updating note:', errorData);
-      throw new Error(`Failed to update note: ${errorData.message || response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`获取笔记失败: ${errorData.message || response.statusText}`);
     }
-
-    const updatedNote: NotePadNote = await response.json();
-    console.log('[notePadService] Successfully updated note:', updatedNote);
-    return updatedNote;
-
+    
+    return await response.json();
   } catch (error) {
-    console.error('[notePadService] Error updating note:', error);
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('An unexpected error occurred while updating note');
-    }
+    console.error('获取笔记时出错:', error);
+    throw error;
   }
 };
 
-/**
- * 删除记事本笔记
- * @param notebookId 笔记本ID
- * @param noteId 笔记ID
- * @returns Promise<void>
- */
-export const deleteNotePadNoteApi = async (notebookId: string, noteId: string): Promise<void> => {
-  console.log(`[notePadService] Deleting note ${noteId} from notebook ${notebookId}`);
+// 更新笔记内容
+export const updateNote = async (notebookId: string, noteId: string, title: string, content: string, token: string) => {
   try {
-    const token = localStorage.getItem('token');
-    const headers: HeadersInit = {}; // For DELETE, Content-Type might not be needed
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes/${noteId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title, content }),
+    });
 
-    const response = await fetch(`${API_BASE_URL}/api/notebooks/${notebookId}/notes/${noteId}`, {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`更新笔记失败: ${errorData.message || response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('更新笔记时出错:', error);
+    throw error;
+  }
+};
+
+// 删除笔记
+export const deleteNote = async (notebookId: string, noteId: string, token: string) => {
+  try {
+    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes/${noteId}`, {
       method: 'DELETE',
-      headers: headers,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      console.error('[notePadService] Error deleting note:', errorData);
-      throw new Error(`Failed to delete note: ${errorData.message || response.statusText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`删除笔记失败: ${errorData.message || response.statusText}`);
     }
-
-    console.log('[notePadService] Successfully deleted note');
-
+    
+    // DELETE 请求可能没有响应体
+    return { success: true };
   } catch (error) {
-    console.error('[notePadService] Error deleting note:', error);
-    if (error instanceof Error) {
-      throw error;
-    } else {
-      throw new Error('An unexpected error occurred while deleting note');
-    }
+    console.error('删除笔记时出错:', error);
+    throw error;
   }
-}; 
+};

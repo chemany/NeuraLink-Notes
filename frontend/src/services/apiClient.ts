@@ -1,33 +1,65 @@
 import axios from 'axios';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+// 不再需要从 config.ts 获取 URL
+// import { getApiBaseUrl } from '../config'; 
 
 /**
  * apiClient 是一个配置了 Authorization 头的 Axios 实例。
  * 它包含一个请求拦截器，自动从 localStorage 获取 token 并添加到请求头中。
  */
+/**
+ * 获取 API 的基础 URL
+ * 在开发环境中直接连接到后端，在生产环境中使用相对路径
+ */
+export const getApiBaseUrl = (): string => {
+  // 检查是否在浏览器环境中
+  if (typeof window !== 'undefined') {
+    // 在开发环境中，直接连接到后端
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[getApiBaseUrl] Using localhost backend URL');
+      }
+      return 'http://localhost:3001';
+    }
+    
+    // 在生产环境中使用相对路径，考虑basePath
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[getApiBaseUrl] Using relative path for production with basePath');
+    }
+    return '/notepads';
+  }
+  
+  // 服务端渲染环境下的默认值，也需要考虑basePath
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[getApiBaseUrl] Using basePath for SSR');
+  }
+  return '/notepads';
+};
+
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl() + '/api',
 });
 
 apiClient.interceptors.request.use(
   (config) => {
     // 仅在浏览器环境中尝试访问 localStorage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-      console.log('[ApiClient Interceptor] Token ADDED for URL:', config.url);
-    } else {
-      console.log('[ApiClient Interceptor] Token NOT FOUND for URL:', config.url);
+    if (typeof window !== 'undefined') {
+      // 修复：使用正确的令牌键名，与统一设置服务保持一致
+      const token = localStorage.getItem('calendar_unified_token');
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[apiClient] 使用统一认证令牌');
+        }
+      } else {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[apiClient] 未找到统一认证令牌');
+        }
+      }
     }
+    
     // 确保 FormData 请求不被 application/json Content-Type 覆盖
-    if (config.data instanceof FormData) {
-      // Axios 默认会为 FormData 设置正确的 Content-Type
-      // 但如果之前有默认的 Content-Type: application/json，这里可以显式移除或让 Axios 自动处理
-      // delete config.headers['Content-Type']; // 或者让 Axios 自动处理
-    } else if (config.headers['Content-Type'] === undefined) {
-        // 为非 FormData 请求设置默认 Content-Type (如果未显式设置)
-        config.headers['Content-Type'] = 'application/json';
+    if (!(config.data instanceof FormData) && config.headers['Content-Type'] === undefined) {
+      config.headers['Content-Type'] = 'application/json';
     }
     config.headers['Accept'] = 'application/json';
     return config;

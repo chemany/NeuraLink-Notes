@@ -2,11 +2,13 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 // Assuming AuthContext exists and provides a token. Adjust path if necessary.
-import { useAuth } from './AuthContext'; 
+import { useAuth } from './AuthContext';
+import { getApiBaseUrl } from '../services/apiClient'; 
+import localUnifiedSettingsService from '@/services/localUnifiedSettingsService';
 
 // 大语言模型设置接口
 export interface LLMSettings {
-  provider: string; // 'openai' | 'anthropic' | 'google' | 'deepseek' | 'ollama' | 'custom'
+  provider: 'openai' | 'anthropic' | 'google' | 'deepseek' | 'openrouter' | 'ollama' | 'custom' | 'builtin';
   apiKey: string;
   model: string;
   temperature: number;
@@ -44,13 +46,13 @@ export interface UISettings {
 
 // 默认大语言模型设置
 const defaultLLMSettings: LLMSettings = {
-  provider: 'openai',
-  apiKey: '',
-  model: 'gpt-3.5-turbo',
+  provider: 'builtin',
+  apiKey: 'sk-or-v1-7f9a8b6c5d4e3f2a1b9c8d7e6f5a4b3c2d1e9f8a7b6c5d4e3f2a1b9c8d7e6f5',
+  model: 'deepseek/deepseek-r1:free',
   temperature: 0.7,
-  maxTokens: 1000,
+  maxTokens: 2000,
   useCustomModel: false, // 默认不使用自定义模型
-  customEndpoint: '',
+  customEndpoint: 'https://openrouter.ai/api/v1',
 };
 
 // 默认向量化模型设置
@@ -86,6 +88,7 @@ const providerDefaultModels: Record<string, string> = {
   'deepseek': 'deepseek-chat',
   'anthropic': 'claude-instant-1',
   'google': 'gemini-pro',
+  'openrouter': 'google/gemini-2.0-flash-exp:free',
   'ollama': 'llama2',
   'custom': ''
 };
@@ -108,13 +111,25 @@ export interface SettingsContextType {
     rerankingSettings?: Partial<RerankingSettings>;
     uiSettings?: Partial<UISettings>;
   }) => Promise<void>;
+  getFullSettings: () => Promise<{
+    llmSettings: LLMSettings;
+    embeddingSettings: EmbeddingModelSettings;
+    rerankingSettings: RerankingSettings;
+    uiSettings: UISettings;
+  } | null>;
+  defaultModels: any;
 }
+
+// Helper function to validate and fix LLM settings
+const validateAndFixLLMSettings = (settings: LLMSettings): LLMSettings => {
+  // 完全移除自动修正逻辑，保持用户的模型选择
+  return settings;
+};
 
 // 创建Context
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-// API base URL - adjust if your API is hosted elsewhere or has a different prefix
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+// API base URL is now imported from apiClient
 
 // Provider组件
 export function SettingsProvider({ children }: { children: ReactNode }) {
@@ -124,72 +139,211 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingModelSettings>(defaultEmbeddingSettings);
   const [rerankingSettings, setRerankingSettings] = useState<RerankingSettings>(defaultRerankingSettings);
   const [uiSettings, setUISettings] = useState<UISettings>(defaultUISettings);
+  const [defaultModels, setDefaultModels] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true); // Start with loading true
 
-  // Helper for API calls
-  const apiCall = useCallback(async (endpoint: string, method: string, body?: any) => {
-    if (!token) {
-      // Or handle more gracefully, e.g., redirect to login
-      console.error('No auth token found for API call');
-      // Potentially set an error state or throw
-      return null; 
-    }
+  // 使用统一设置服务的API调用
+  const unifiedApiCall = useCallback(async (method: 'get' | 'save', type: 'global' | 'app', category: string, data?: any) => {
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: response.statusText }));
-        console.error(`API call failed: ${response.status}`, errorData);
-        // throw new Error(`API call failed: ${response.status} ${errorData.message || ''}`);
-        // Handle error state in UI if needed
+      // 这个函数已经废弃，使用本地文件操作代替
+      console.log('unifiedApiCall 已废弃，使用本地文件操作代替');
+      return null;
+    } catch (error) {
+      console.error('统一设置服务API调用失败:', error);
+      return null;
+    }
+  }, []);
+
+  // 从统一设置服务获取LLM配置（多提供商格式）
+  const fetchLLMSettingsFromUnified = useCallback(async () => {
+    try {
+      if (!localUnifiedSettingsService.isLoggedIn()) {
+        console.log('未登录本地统一设置服务，使用默认设置');
         return null;
       }
-      return response.json();
-    } catch (error) {
-      console.error('API call error:', error);
-      // throw error;
-      // Handle error state in UI if needed
-      return null;
-        }
-  }, [token]);
 
-  // Fetch settings from backend on mount
+      const llmConfig = await localUnifiedSettingsService.getLLMSettingsFromFile();
+      return llmConfig;
+    } catch (error) {
+      console.error('获取LLM设置文件失败:', error);
+      return null;
+    }
+  }, []);
+
+  // 获取默认模型配置
+  const fetchDefaultModels = useCallback(async () => {
+    try {
+      if (!localUnifiedSettingsService.isLoggedIn()) {
+        return null;
+      }
+
+      const defaultModels = await localUnifiedSettingsService.getDefaultModels();
+      return defaultModels;
+    } catch (error) {
+      console.error('获取默认模型配置失败:', error);
+      return null;
+    }
+  }, []);
+
+
+
+  // Fetch settings from unified service or legacy API
   useEffect(() => {
     const fetchSettings = async () => {
-      if (token) { // Only fetch if token is available
+      if (token) {
         setIsLoading(true);
-        console.log('Attempting to fetch settings from backend...');
-        const data = await apiCall('/settings', 'GET');
-        if (data) {
-          console.log('Settings fetched from backend:', data);
-          // Backend should not return API keys for GET.
-          // If it does, ensure they are not directly set into state here,
-          // or that the state's apiKey field is treated as "potentially stale/absent"
-          // and user is prompted if an action requires it.
-          // For now, we assume backend sends objects matching our DTOs (without apiKeys for GET)
-          setLLMSettings(prev => ({ ...prev, ...data.llmSettings, apiKey: prev.apiKey || '' })); // Preserve local/default apiKey if not sent
-          setEmbeddingSettings(prev => ({ ...prev, ...data.embeddingSettings, apiKey: prev.apiKey || '' })); // Preserve local/default apiKey
-          setRerankingSettings(data.rerankingSettings || defaultRerankingSettings);
-          setUISettings(data.uiSettings || defaultUISettings);
+        
+        // 首先尝试本地统一设置服务
+        if (localUnifiedSettingsService.isLoggedIn()) {
+          console.log('从本地统一设置服务获取LLM配置...');
+          const llmConfig = await fetchLLMSettingsFromUnified();
+          const defaultModelsData = await fetchDefaultModels();
+          setDefaultModels(defaultModelsData);
+          
+          if (llmConfig) {
+            console.log('从本地统一设置服务获取的LLM配置:', llmConfig);
+            
+            // 处理多提供商LLM设置
+            const currentProvider = llmConfig.current_provider || 'builtin';
+            let llmSettings: LLMSettings;
+            
+            if (currentProvider === 'builtin') {
+              // 对于内置模型，不在前端存储真实API密钥，使用占位符
+              if (defaultModelsData?.builtin_free) {
+                llmSettings = {
+                  provider: 'builtin',
+                  apiKey: 'BUILTIN_PROXY', // 使用占位符，实际API密钥在后端代理中处理
+                  model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                  temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                  maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                  customEndpoint: 'BUILTIN_PROXY' // 使用占位符，实际端点在后端代理中处理
+                };
+              } else {
+                // 如果没有获取到默认模型配置，使用安全的内置配置
+                llmSettings = {
+                  provider: 'builtin',
+                  apiKey: 'BUILTIN_PROXY', // 使用占位符
+                  model: 'deepseek/deepseek-chat-v3-0324:free',
+                  temperature: 0.7,
+                  maxTokens: 2000,
+                  customEndpoint: 'BUILTIN_PROXY', // 使用占位符
+                  useCustomModel: false
+                };
+              }
+              console.log('使用内置模型配置 (安全模式):', llmSettings);
+            } else if (llmConfig.providers && llmConfig.providers[currentProvider]) {
+              // 使用指定提供商的配置
+              const providerConfig = llmConfig.providers[currentProvider];
+              const useCustom = providerConfig.use_custom_model || false;
+              
+              // 根据use_custom_model字段决定显示哪个模型
+              let modelToDisplay = '';
+              if (useCustom) {
+                // 使用自定义模型时，优先使用custom_model，回退到model_name
+                modelToDisplay = providerConfig.custom_model || providerConfig.model_name || defaultLLMSettings.model;
+              } else {
+                // 使用预定义模型时，优先使用predefined_model，回退到model_name
+                modelToDisplay = providerConfig.predefined_model || providerConfig.model_name || defaultLLMSettings.model;
+              }
+              
+              llmSettings = {
+                provider: currentProvider,
+                apiKey: providerConfig.api_key || '',
+                model: modelToDisplay,
+                temperature: defaultLLMSettings.temperature, // 温度等参数使用默认值
+                maxTokens: defaultLLMSettings.maxTokens,
+                customEndpoint: providerConfig.base_url || '',
+                useCustomModel: useCustom
+              };
+            } else {
+              // 回退到默认设置，但如果是builtin，使用正确的默认值
+              if (currentProvider === 'builtin') {
+                llmSettings = {
+                  provider: 'builtin',
+                  apiKey: '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',
+                  model: 'deepseek/deepseek-chat-v3-0324:free',
+                  temperature: 0.7,
+                  maxTokens: 2000,
+                  customEndpoint: 'https://openrouter.ai/api/v1',
+                  useCustomModel: false
+                };
+              } else {
+                llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+              }
+            }
+            
+            const fixedLLMSettings = validateAndFixLLMSettings(llmSettings);
+            setLLMSettings(fixedLLMSettings);
+            
+            // 同步到localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('llmSettings', JSON.stringify(fixedLLMSettings));
+              console.log('[SettingsContext] 已同步LLM设置到localStorage (from unified service):', fixedLLMSettings);
+            }
+            
+            // 从本地统一设置服务获取embedding和reranking设置
+            try {
+              const embeddingData = await localUnifiedSettingsService.getEmbeddingSettingsFromFile();
+              if (embeddingData && embeddingData.data) {
+                // 转换embedding设置格式以匹配前端接口
+                const embeddingSettings = {
+                  provider: embeddingData.data.provider || 'siliconflow',
+                  apiKey: embeddingData.data.api_key || '', // 正确从文件中读取API密钥
+                  model: embeddingData.data.model || defaultEmbeddingSettings.model,
+                  encodingFormat: (embeddingData.data.encoding_format as 'float' | 'base64') || defaultEmbeddingSettings.encodingFormat,
+                  customEndpoint: embeddingData.data.custom_endpoint || defaultEmbeddingSettings.customEndpoint
+                };
+                setEmbeddingSettings(embeddingSettings);
+                console.log('[SettingsContext] 从统一设置服务读取embedding设置:', embeddingSettings);
+              } else {
+                setEmbeddingSettings(defaultEmbeddingSettings);
+                console.log('[SettingsContext] 未找到embedding配置，使用默认设置');
+              }
+            } catch (error) {
+              console.log('获取embedding设置失败，使用默认设置:', error);
+              setEmbeddingSettings(defaultEmbeddingSettings);
+            }
+
+            try {
+              const rerankingData = await localUnifiedSettingsService.getRerankingSettingsFromFile();
+              if (rerankingData && rerankingData.data) {
+                // 转换reranking设置格式以匹配前端接口
+                const rerankingSettings = {
+                  enableReranking: rerankingData.data.enableReranking || false,
+                  rerankingProvider: rerankingData.data.rerankingProvider || 'siliconflow',
+                  rerankingModel: rerankingData.data.rerankingModel || defaultRerankingSettings.rerankingModel,
+                  initialRerankCandidates: rerankingData.data.initialRerankCandidates || defaultRerankingSettings.initialRerankCandidates,
+                  finalRerankTopN: rerankingData.data.finalRerankTopN || defaultRerankingSettings.finalRerankTopN,
+                  rerankingCustomEndpoint: rerankingData.data.rerankingCustomEndpoint || defaultRerankingSettings.rerankingCustomEndpoint
+                };
+                setRerankingSettings(rerankingSettings);
+              } else {
+                setRerankingSettings(defaultRerankingSettings);
+              }
+            } catch (error) {
+              console.log('获取reranking设置失败，使用默认设置:', error);
+              setRerankingSettings(defaultRerankingSettings);
+            }
+
+            setUISettings(defaultUISettings);
+          } else {
+            console.log('本地统一设置服务获取失败，使用默认设置');
+            setLLMSettings(validateAndFixLLMSettings(defaultLLMSettings));
+            setEmbeddingSettings(defaultEmbeddingSettings);
+            setRerankingSettings(defaultRerankingSettings);
+            setUISettings(defaultUISettings);
+          }
         } else {
-          console.log('Failed to fetch settings or no settings found, using defaults.');
-          // Keep default settings if fetch fails or returns nothing
-          setLLMSettings(defaultLLMSettings);
+          console.log('未登录本地统一设置服务，使用默认设置并提示用户登录');
+          setLLMSettings(validateAndFixLLMSettings(defaultLLMSettings));
           setEmbeddingSettings(defaultEmbeddingSettings);
           setRerankingSettings(defaultRerankingSettings);
           setUISettings(defaultUISettings);
         }
         setIsLoading(false);
       } else {
-        console.log('No token available, using default settings.');
-        // If no token, use defaults and stop loading (user might be logged out)
-        setLLMSettings(defaultLLMSettings);
+        console.log('无令牌，使用默认设置');
+        setLLMSettings(validateAndFixLLMSettings(defaultLLMSettings));
         setEmbeddingSettings(defaultEmbeddingSettings);
         setRerankingSettings(defaultRerankingSettings);
         setUISettings(defaultUISettings);
@@ -197,30 +351,136 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
     };
     fetchSettings();
-  }, [token, apiCall]); // apiCall is memoized with token dependency
+  }, [token, fetchLLMSettingsFromUnified]);
 
-  // Generic update function
-  const makeUpdateFunction = <T extends LLMSettings | EmbeddingModelSettings | RerankingSettings | UISettings>(
+  // Generic update function using unified service
+  const makeUnifiedUpdateFunction = <T extends LLMSettings | EmbeddingModelSettings | RerankingSettings | UISettings>(
     setStateFunction: React.Dispatch<React.SetStateAction<T>>,
     settingsKey: 'llmSettings' | 'embeddingSettings' | 'rerankingSettings' | 'uiSettings',
   ) => {
     return async (newPartialSettings: Partial<T>) => {
-      setStateFunction(prevState => ({ ...prevState, ...newPartialSettings }));
-      const payload = { [settingsKey]: newPartialSettings };
-      console.log(`Updating ${settingsKey} on backend (via individual update):`, payload);
-      const result = await apiCall('/settings', 'PUT', payload);
-      if (result) {
-        console.log(`${settingsKey} updated successfully on backend (via individual update):`, result);
+      // Apply validation for LLM settings
+      if (settingsKey === 'llmSettings') {
+        setStateFunction(prevState => {
+          const updatedSettings = { ...prevState, ...newPartialSettings } as LLMSettings;
+          const fixedSettings = validateAndFixLLMSettings(updatedSettings);
+          // 同步更新localStorage
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('llmSettings', JSON.stringify(fixedSettings));
+            console.log('[SettingsContext] 已同步LLM设置到localStorage (individual update):', fixedSettings);
+          }
+          return fixedSettings as T;
+        });
       } else {
-        console.error(`Failed to update ${settingsKey} on backend (via individual update).`);
+        setStateFunction(prevState => ({ ...prevState, ...newPartialSettings }));
+      }
+      
+      // 保存到本地统一设置服务或原有API
+      let saveSuccess = false;
+      
+      if (localUnifiedSettingsService.isLoggedIn()) {
+        try {
+          if (settingsKey === 'llmSettings') {
+            const llmData = newPartialSettings as Partial<LLMSettings>;
+            const currentSettings = llmSettings;
+            const updatedSettings = { ...currentSettings, ...llmData };
+            
+            let providerSettings;
+            
+            if (updatedSettings.provider === 'builtin') {
+              // 对于内置模型，使用特殊标记让后端从default-models.json读取配置
+              providerSettings = {
+                api_key: 'USE_DEFAULT_CONFIG',
+                temperature: 'USE_DEFAULT_CONFIG',
+                max_tokens: 'USE_DEFAULT_CONFIG',
+                model_name: 'USE_DEFAULT_CONFIG',
+                base_url: 'USE_DEFAULT_CONFIG'
+              };
+            } else {
+              // 对于其他提供商，使用实际配置
+              const useCustom = updatedSettings.useCustomModel || false;
+              providerSettings = {
+                api_key: updatedSettings.apiKey || '',
+                temperature: updatedSettings.temperature || 0.7,
+                max_tokens: updatedSettings.maxTokens || 2000,
+                model_name: updatedSettings.model || '', // 保持兼容性，存储当前使用的模型
+                predefined_model: useCustom ? '' : (updatedSettings.model || ''), // 预定义模型选择
+                custom_model: useCustom ? (updatedSettings.model || '') : '',     // 自定义模型名称
+                base_url: updatedSettings.customEndpoint || '',
+                use_custom_model: useCustom
+              };
+            }
+            
+            const result = await localUnifiedSettingsService.saveLLMSettingsToFile(
+              updatedSettings.provider || 'builtin',
+              providerSettings
+            );
+            saveSuccess = !!result;
+          } else if (settingsKey === 'embeddingSettings') {
+            const embeddingData = newPartialSettings as Partial<EmbeddingModelSettings>;
+            const currentSettings = embeddingSettings;
+            const updatedSettings = { ...currentSettings, ...embeddingData };
+            
+            // 转换为统一设置服务需要的格式，包含API密钥
+            const embeddingDataToSave = {
+              provider: updatedSettings.provider,
+              model: updatedSettings.model,
+              api_key: updatedSettings.apiKey || '',
+              encoding_format: updatedSettings.encodingFormat || 'float',
+              custom_endpoint: updatedSettings.customEndpoint || ''
+            };
+            const result = await localUnifiedSettingsService.saveEmbeddingSettingsToFile(embeddingDataToSave);
+            saveSuccess = !!result;
+          } else if (settingsKey === 'rerankingSettings') {
+            const rerankingData = newPartialSettings as Partial<RerankingSettings>;
+            const currentSettings = rerankingSettings;
+            const updatedSettings = { ...currentSettings, ...rerankingData };
+            
+            const rerankingDataToSave = {
+              enableReranking: updatedSettings.enableReranking,
+              rerankingProvider: updatedSettings.rerankingProvider,
+              rerankingModel: updatedSettings.rerankingModel,
+              initialRerankCandidates: updatedSettings.initialRerankCandidates,
+              finalRerankTopN: updatedSettings.finalRerankTopN,
+              rerankingCustomEndpoint: updatedSettings.rerankingCustomEndpoint
+            };
+            const result = await localUnifiedSettingsService.saveRerankingSettingsToFile(rerankingDataToSave);
+            saveSuccess = !!result;
+          } else if (settingsKey === 'uiSettings') {
+            const uiData = newPartialSettings as Partial<UISettings>;
+            const appData = {
+              theme: uiData.darkMode ? 'dark' : 'light',
+              auto_save: uiData.saveConversationHistory
+            };
+            // UI设置暂时保存到localStorage，未来可以添加到文件存储
+            localStorage.setItem('uiSettings', JSON.stringify(uiData));
+            const result = { success: true };
+            saveSuccess = !!result;
+          }
+          
+          if (saveSuccess) {
+            console.log(`${settingsKey} 已保存到统一设置服务`);
+            return;
+      } else {
+            console.log(`统一设置服务保存${settingsKey}失败，回退到原有API`);
+          }
+        } catch (error) {
+          console.error(`保存${settingsKey}到统一设置服务失败，回退到原有API:`, error);
+        }
+      }
+      
+      // 如果未登录统一设置服务，提示用户登录
+      if (!saveSuccess) {
+        console.warn(`无法保存${settingsKey}：请登录统一设置服务`);
+        // 可以在这里添加用户提示或其他处理逻辑
     }
     };
   };
   
-  const updateLLMSettings = makeUpdateFunction(setLLMSettings, 'llmSettings');
-  const updateEmbeddingSettings = makeUpdateFunction(setEmbeddingSettings, 'embeddingSettings');
-  const updateRerankingSettings = makeUpdateFunction(setRerankingSettings, 'rerankingSettings');
-  const updateUISettings = makeUpdateFunction(setUISettings, 'uiSettings');
+  const updateLLMSettings = makeUnifiedUpdateFunction(setLLMSettings, 'llmSettings');
+  const updateEmbeddingSettings = makeUnifiedUpdateFunction(setEmbeddingSettings, 'embeddingSettings');
+  const updateRerankingSettings = makeUnifiedUpdateFunction(setRerankingSettings, 'rerankingSettings');
+  const updateUISettings = makeUnifiedUpdateFunction(setUISettings, 'uiSettings');
       
   // New method to save all potentially changed settings at once
   const saveAllSettings = async (settingsToSave: {
@@ -232,7 +492,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     console.log('Attempting to save all settings to backend:', settingsToSave);
     // Optimistically update local state for all parts included in settingsToSave
     if (settingsToSave.llmSettings) {
-      setLLMSettings(prev => ({ ...prev, ...settingsToSave.llmSettings }));
+      setLLMSettings(prev => {
+        const updatedSettings = { ...prev, ...settingsToSave.llmSettings };
+        const fixedSettings = validateAndFixLLMSettings(updatedSettings);
+        // 同步更新localStorage以便aiService.ts可以读取到最新配置
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('llmSettings', JSON.stringify(fixedSettings));
+          console.log('[SettingsContext] 已同步LLM设置到localStorage:', fixedSettings);
+        }
+        return fixedSettings;
+      });
     }
     if (settingsToSave.embeddingSettings) {
       setEmbeddingSettings(prev => ({ ...prev, ...settingsToSave.embeddingSettings }));
@@ -244,23 +513,114 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setUISettings(prev => ({ ...prev, ...settingsToSave.uiSettings }));
     }
 
-    const result = await apiCall('/settings', 'PUT', settingsToSave);
-    if (result) {
-      console.log('All settings saved successfully to backend:', result);
-      // Optionally, update state again from `result` if backend modifies data
-      // For simplicity, current optimistic update is assumed sufficient.
+    // 使用本地统一设置服务保存设置
+    if (!localUnifiedSettingsService.isLoggedIn()) {
+      throw new Error('用户未登录本地统一设置服务');
+    }
+    
+    console.log('使用本地统一设置服务保存设置...');
+    
+    // 保存到本地统一设置服务（使用分别保存的方式）
+    const savePromises = [];
+    
+    if (settingsToSave.llmSettings) {
+      let providerSettings;
+      
+      if (settingsToSave.llmSettings.provider === 'builtin') {
+        // 对于内置模型，使用特殊标记让后端从default-models.json读取配置
+        providerSettings = {
+          api_key: 'USE_DEFAULT_CONFIG',
+          temperature: 'USE_DEFAULT_CONFIG',
+          max_tokens: 'USE_DEFAULT_CONFIG',
+          model_name: 'USE_DEFAULT_CONFIG',
+          base_url: 'USE_DEFAULT_CONFIG'
+        };
+              } else {
+          // 对于其他提供商，使用实际配置
+          const useCustom = settingsToSave.llmSettings.useCustomModel || false;
+          providerSettings = {
+            api_key: settingsToSave.llmSettings.apiKey || '',
+            model_name: settingsToSave.llmSettings.model || '', // 保持兼容性，存储当前使用的模型
+            predefined_model: useCustom ? '' : (settingsToSave.llmSettings.model || ''), // 预定义模型选择
+            custom_model: useCustom ? (settingsToSave.llmSettings.model || '') : '',     // 自定义模型名称
+            base_url: settingsToSave.llmSettings.customEndpoint || '',
+            use_custom_model: useCustom
+          };
+        }
+      
+      savePromises.push(
+        localUnifiedSettingsService.saveLLMSettingsToFile(
+          settingsToSave.llmSettings.provider || 'builtin',
+          providerSettings
+        )
+      );
+    }
+    
+    if (settingsToSave.embeddingSettings) {
+      // 转换为统一设置服务需要的格式，包含API密钥
+      const embeddingDataToSave = {
+        provider: settingsToSave.embeddingSettings.provider,
+        model: settingsToSave.embeddingSettings.model,
+        api_key: settingsToSave.embeddingSettings.apiKey || '',
+        encoding_format: settingsToSave.embeddingSettings.encodingFormat || 'float',
+        custom_endpoint: settingsToSave.embeddingSettings.customEndpoint || ''
+      };
+      savePromises.push(
+        localUnifiedSettingsService.saveEmbeddingSettingsToFile(embeddingDataToSave)
+      );
+    }
+    
+    if (settingsToSave.rerankingSettings) {
+      const rerankingGlobalData = {
+        enableReranking: settingsToSave.rerankingSettings.enableReranking,
+        rerankingProvider: settingsToSave.rerankingSettings.rerankingProvider,
+        rerankingModel: settingsToSave.rerankingSettings.rerankingModel,
+        initialRerankCandidates: settingsToSave.rerankingSettings.initialRerankCandidates,
+        finalRerankTopN: settingsToSave.rerankingSettings.finalRerankTopN,
+        rerankingCustomEndpoint: settingsToSave.rerankingSettings.rerankingCustomEndpoint
+      };
+      savePromises.push(
+        localUnifiedSettingsService.saveRerankingSettingsToFile(rerankingGlobalData)
+      );
+    }
+    
+    if (settingsToSave.uiSettings) {
+      const appData = {
+        theme: settingsToSave.uiSettings.darkMode ? 'dark' : 'light',
+        auto_save: settingsToSave.uiSettings.saveConversationHistory
+      };
+      // UI设置暂时保存到localStorage，未来可以添加到文件存储
+      localStorage.setItem('uiSettings', JSON.stringify(appData));
+      savePromises.push(Promise.resolve({ success: true }));
+    }
+    
+    // 等待所有保存操作完成
+    const results = await Promise.all(savePromises);
+    
+    // 检查是否所有操作都成功（API返回响应对象表示成功）
+    const allSuccess = results.every(result => result !== null && result !== undefined);
+    
+    if (allSuccess) {
+      console.log('统一设置服务保存成功');
+      return;
     } else {
-      console.error('Failed to save all settings to backend.');
-      // Potentially show error to user and revert optimistic updates
+      throw new Error('统一设置服务保存失败');
     }
   };
 
   const resetSettings = async () => {
     console.log('Resetting settings to default and updating backend...');
-    setLLMSettings(defaultLLMSettings);
+    const fixedLLMSettings = validateAndFixLLMSettings(defaultLLMSettings);
+    setLLMSettings(fixedLLMSettings);
     setEmbeddingSettings(defaultEmbeddingSettings);
     setRerankingSettings(defaultRerankingSettings);
     setUISettings(defaultUISettings);
+    
+    // 同步到localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('llmSettings', JSON.stringify(fixedLLMSettings));
+      console.log('[SettingsContext] 已重置并同步LLM设置到localStorage:', fixedLLMSettings);
+    }
 
     const payload = {
       llmSettings: defaultLLMSettings,
@@ -268,13 +628,112 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       rerankingSettings: defaultRerankingSettings,
       uiSettings: defaultUISettings,
     };
-    const result = await apiCall('/settings', 'PUT', payload);
-    if (result) {
-      console.log('Settings successfully reset on backend.');
-    } else {
-      console.error('Failed to reset settings on backend.');
+    // 使用本地统一设置服务重置设置
+    try {
+      if (localUnifiedSettingsService.isLoggedIn()) {
+        await saveAllSettings(payload);
+        console.log('Settings successfully reset on backend.');
+      } else {
+        console.log('未登录本地统一设置服务，仅更新本地状态');
+      }
+    } catch (error) {
+      console.error('Failed to reset settings on backend:', error);
       // Handle error, perhaps by notifying user
     }
+  };
+
+  // 获取包含API Key的完整设置，用于AI服务调用
+  const getFullSettings = async (): Promise<{
+    llmSettings: LLMSettings;
+    embeddingSettings: EmbeddingModelSettings;
+    rerankingSettings: RerankingSettings;
+    uiSettings: UISettings;
+  } | null> => {
+    if (!token) {
+      console.log('[SettingsContext] No token available for full settings fetch');
+      return null;
+    }
+    
+    try {
+      console.log('[SettingsContext] Fetching full settings including API keys...');
+      // 使用本地统一设置服务获取完整设置
+      if (localUnifiedSettingsService.isLoggedIn()) {
+        const [llmData, embeddingData, rerankingData] = await Promise.all([
+          localUnifiedSettingsService.getLLMSettingsFromFile(),
+          localUnifiedSettingsService.getEmbeddingSettingsFromFile(),
+          localUnifiedSettingsService.getRerankingSettingsFromFile()
+        ]);
+        
+        console.log('[SettingsContext] Full settings fetched successfully');
+        
+        // 处理LLM设置
+        let llmSettings = defaultLLMSettings;
+        if (llmData && llmData.data) {
+          const currentProvider = llmData.data.current_provider || 'builtin';
+          if (llmData.data.providers && llmData.data.providers[currentProvider]) {
+            const providerConfig = llmData.data.providers[currentProvider];
+            const useCustom = providerConfig.use_custom_model || false;
+            
+            // 根据use_custom_model字段决定显示哪个模型
+            let modelToDisplay = '';
+            if (useCustom) {
+              // 使用自定义模型时，优先使用custom_model，回退到model_name
+              modelToDisplay = providerConfig.custom_model || providerConfig.model_name || defaultLLMSettings.model;
+            } else {
+              // 使用预定义模型时，优先使用predefined_model，回退到model_name
+              modelToDisplay = providerConfig.predefined_model || providerConfig.model_name || defaultLLMSettings.model;
+            }
+            
+            llmSettings = {
+              provider: currentProvider as any,
+              apiKey: providerConfig.api_key || '',
+              model: modelToDisplay,
+              temperature: defaultLLMSettings.temperature,
+              maxTokens: defaultLLMSettings.maxTokens,
+              customEndpoint: providerConfig.base_url || '',
+              useCustomModel: useCustom
+            };
+          }
+        }
+        
+        // 处理embedding设置
+        let embeddingSettings = defaultEmbeddingSettings;
+        if (embeddingData && embeddingData.data) {
+          embeddingSettings = {
+            provider: embeddingData.data.provider || 'siliconflow',
+            apiKey: embeddingData.data.api_key || '',
+            model: embeddingData.data.model || defaultEmbeddingSettings.model,
+            encodingFormat: (embeddingData.data.encoding_format as 'float' | 'base64') || defaultEmbeddingSettings.encodingFormat,
+            customEndpoint: embeddingData.data.custom_endpoint || defaultEmbeddingSettings.customEndpoint
+          };
+        }
+        
+        // 处理reranking设置
+        let rerankingSettings = defaultRerankingSettings;
+        if (rerankingData && rerankingData.data) {
+          rerankingSettings = {
+            enableReranking: rerankingData.data.enableReranking || false,
+            rerankingProvider: rerankingData.data.rerankingProvider || 'siliconflow',
+            rerankingModel: rerankingData.data.rerankingModel || defaultRerankingSettings.rerankingModel,
+            initialRerankCandidates: rerankingData.data.initialRerankCandidates || defaultRerankingSettings.initialRerankCandidates,
+            finalRerankTopN: rerankingData.data.finalRerankTopN || defaultRerankingSettings.finalRerankTopN,
+            rerankingCustomEndpoint: rerankingData.data.rerankingCustomEndpoint || defaultRerankingSettings.rerankingCustomEndpoint
+          };
+        }
+        
+        // 应用验证和修正
+        const fixedLLMSettings = validateAndFixLLMSettings(llmSettings);
+        return {
+          llmSettings: fixedLLMSettings,
+          embeddingSettings,
+          rerankingSettings,
+          uiSettings: defaultUISettings // UI设置从localStorage读取
+        };
+      }
+    } catch (error) {
+      console.error('[SettingsContext] Failed to fetch full settings:', error);
+    }
+    return null;
   };
 
   return (
@@ -291,6 +750,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         resetSettings,
         isLoading,
         saveAllSettings,
+        getFullSettings,
+        defaultModels,
       }}
     >
       {children}
@@ -308,4 +769,4 @@ export function useSettings() {
 }
 
 // 兼容旧版本接口的别名(用于平滑过渡)
-export type AIModelSettings = LLMSettings; 
+export type AIModelSettings = LLMSettings;

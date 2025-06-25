@@ -34,6 +34,7 @@
     "@types/tesseract.js": "^0.0.2",
     "@types/uuid": "^10.0.0",
     "aws-sdk": "^2.1692.0",
+    "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.18.0",
     "canvas": "^3.1.0",
@@ -61,7 +62,8 @@
     "tesseract.js-core": "^5.0.0",
     "textract": "^2.5.0",
     "uuid": "^11.1.0",
-    "webdav": "^5.8.0"
+    "webdav": "^5.8.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

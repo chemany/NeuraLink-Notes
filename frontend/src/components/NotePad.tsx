@@ -118,7 +118,7 @@ const NotePad: React.FC<NotePadProps> = ({ notebookId, onSaveNotes, initialNotes
       } else if (isResizing && activeNoteId) {
         // 处理调整大小
         const note = notes.find(n => n.id === activeNoteId);
-        if (!note) return;
+        if (!note || !note.position) return;
         
         const width = Math.max(150, e.clientX - containerRect.left - note.position.x);
         const height = Math.max(150, e.clientY - containerRect.top - note.position.y);
@@ -328,10 +328,10 @@ const NotePad: React.FC<NotePadProps> = ({ notebookId, onSaveNotes, initialNotes
           id={note.id}
           className={`note absolute shadow-lg rounded-md overflow-hidden ${note.color} ${activeNoteId === note.id ? 'ring-2 ring-blue-500 z-20' : 'z-10'}`}
           style={{
-            left: `${note.position.x}px`,
-            top: `${note.position.y}px`,
-            width: `${note.size.width}px`,
-            height: `${note.size.height}px`,
+            left: `${note.position?.x || 0}px`,
+            top: `${note.position?.y || 0}px`,
+            width: `${note.size?.width || 200}px`,
+            height: `${note.size?.height || 200}px`,
           }}
           onMouseDown={(e) => handleStartDrag(e, note.id)}
         >

@@ -50,7 +50,7 @@ export const fetchRichNotesByNotebookId = async (notebookId: string): Promise<No
     return [];
   }
   try {
-    const response = await apiClient.get<Note[]>(`/api/notebooks/${notebookId}/richnotes`);
+    const response = await apiClient.get<Note[]>(`/notebooks/${notebookId}/richnotes`);
     return response.data.map(normalizeNote);
   } catch (error) {
     throw handleApiError(error, 'fetchRichNotesByNotebookId');
@@ -76,7 +76,7 @@ export const createRichNoteApi = async (
       contentJson: data.contentJson ? JSON.stringify(data.contentJson) : null,
       contentHtml: data.contentHtml,
     };
-    const response = await apiClient.post<Note>(`/api/notebooks/${notebookId}/richnotes`, payload);
+    const response = await apiClient.post<Note>(`/notebooks/${notebookId}/richnotes`, payload);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'createRichNoteApi');
@@ -105,7 +105,7 @@ export const updateRichNoteApi = async (
         ? (data.contentJson === null ? null : JSON.stringify(data.contentJson))
         : undefined,
     };
-    const response = await apiClient.put<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`, payload);
+    const response = await apiClient.put<Note>(`/notebooks/${notebookId}/richnotes/${noteId}`, payload);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'updateRichNoteApi');
@@ -123,7 +123,7 @@ export const deleteRichNoteApi = async (notebookId: string, noteId: string): Pro
     throw new Error('Notebook ID and Note ID are required to delete a note.');
   }
   try {
-    const response = await apiClient.delete<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`);
+    const response = await apiClient.delete<Note>(`/notebooks/${notebookId}/richnotes/${noteId}`);
     return normalizeNote(response.data);
   } catch (error) {
     throw handleApiError(error, 'deleteRichNoteApi');
@@ -142,7 +142,7 @@ export const fetchRichNoteByIdApi = async (notebookId: string, noteId: string): 
     return null;
   }
   try {
-    const response = await apiClient.get<Note>(`/api/notebooks/${notebookId}/richnotes/${noteId}`);
+    const response = await apiClient.get<Note>(`/notebooks/${notebookId}/richnotes/${noteId}`);
     return normalizeNote(response.data);
   } catch (error) {
     if (axios.isAxiosError(error) && error.response && error.response.status === 404) {

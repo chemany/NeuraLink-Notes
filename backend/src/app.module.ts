@@ -12,9 +12,10 @@ import { BackupModule } from './backup/backup.module';
 import { SyncModule } from './sync/sync.module';
 import { NotesModule } from './notes/notes.module';
 import { UploadModule } from './upload/upload.module';
-import { AuthModule } from './auth/auth.module';
-import { UserModule } from './user/user.module';
+import { UnifiedAuthModule } from './unified-auth/unified-auth.module';
 import { SettingsModule } from './settings/settings.module';
+import { UnifiedSettingsModule } from './unified-settings/unified-settings.module';
+import { ProxyModule } from './proxy/proxy.module';
 
 @Module({
   imports: [
@@ -29,9 +30,10 @@ import { SettingsModule } from './settings/settings.module';
     SyncModule,
     NotesModule,
     UploadModule,
-    AuthModule,
-    UserModule,
+    UnifiedAuthModule,
     SettingsModule,
+    UnifiedSettingsModule,
+    ProxyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

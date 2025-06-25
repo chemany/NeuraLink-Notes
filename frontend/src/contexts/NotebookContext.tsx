@@ -9,11 +9,10 @@ import {
     fetchDocumentById, // Ensure fetchDocumentById is imported if used by addDocumentToChat
     deleteDocumentFromApi,
 } from '@/services/documentService';
-import { createNotebookApi, fetchNotebooksApi, updateNotebookApi } from '@/services/notebookService'; // Import the new API function
-import { getNotePadNotesApi, createNotePadNoteApi, updateNotePadNoteApi, deleteNotePadNoteApi } from '@/services/notePadService';
+import { createNotebook as createNotebookApi, getAllNotebooks as fetchNotebooksApi, updateNotebookTitle as updateNotebookApi, deleteNotebook as deleteNotebookApi, updateNotebook as updateNotebookGenericApi } from '@/services/notebookService'; // Import the new API function
+import { getNotesByNotebookId as getNotePadNotesApi, createNoteInNotebook as createNotePadNoteApi, updateNote as updateNotePadNoteApi, deleteNote as deleteNotePadNoteApi } from '@/services/notePadService';
 import { createFolderApi, getFoldersApi, updateFolderApi, deleteFolderApi } from '@/services/folderService';
 import { toast } from 'react-hot-toast';
-import syncService from '@/services/syncService'; // 新增导入
 import {
     fetchRichNotesByNotebookId,
     createRichNoteApi,
@@ -24,9 +23,6 @@ import { useAuth } from './AuthContext'; // <--- 导入 useAuth
 
 // Helper function to check if running in browser
 const isBrowser = typeof window !== 'undefined';
-
-// Define backend base URL (adjust if necessary)
-const BACKEND_API_BASE = process.env.NEXT_PUBLIC_BACKEND_API_BASE || 'http://localhost:3001';
 
 // Define the shape of the context data
 interface NotebookContextType {
@@ -121,15 +117,18 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   const router = useRouter();
   const { isAuthenticated, isLoading: isAuthLoading, token } = useAuth(); // <--- 使用 AuthContext
 
-  // Effect for initial loading, dependent on authentication status
+    // Effect for initial loading, dependent on authentication status
   useEffect(() => {
     const loadInitialData = async () => {
       // 只在 AuthContext 加载完毕且用户已认证的情况下加载数据
-      if (isBrowser && !isAuthLoading && isAuthenticated) {
-        // console.log('[NotebookContext] Auth confirmed, starting initial data load...');
+      if (isBrowser && !isAuthLoading && isAuthenticated && token) {
+        // console.log('[NotebookContext] Auth confirmed with token, starting initial data load...');
         setIsLoadingNotebooks(true);
         setNotebooksError(null);
         try {
+          // 延迟一小段时间确保 apiClient 拦截器能获取到最新的 token
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           const initialNotebooks = await fetchNotebooksApi();
           // console.log(`[NotebookContext] Fetched notebooks data from API:`, initialNotebooks);
           setNotebooks(initialNotebooks);
@@ -159,7 +158,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
         setCurrentNotebookState(null);
         setDocuments([]);
         setCurrentNotes([]);
-        setIsInitialized(false); // 或 true，表示"已初始化但无数据"
+        setIsInitialized(true); // 设置为 true，表示"已初始化，但用户未认证，无数据"
         setIsLoadingNotebooks(false); // 确保 loading 状态被重置
       }
     };
@@ -243,10 +242,10 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     // setCreateNotebookError(null); // If the above states are not directly displayed, no need to clear here
 
     try {
-      const newNotebook = await createNotebookApi(title, folderId);
+      const newNotebook = await createNotebookApi(title, folderId || undefined, token || '');
       setNotebooks((prevNotebooks) => [newNotebook, ...prevNotebooks]);
       setCurrentNotebookState(newNotebook);
-      // router.push(`/notebook/${newNotebook.id}`); // Navigation can be handled by the caller if needed, or kept here
+      // router.push(`/notebooks/${newNotebook.id}`); // Navigation can be handled by the caller if needed, or kept here
       // console.log('[NotebookContext] Successfully created notebook via API:', newNotebook);
       return newNotebook;
     } catch (error) {
@@ -261,6 +260,10 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [isAuthenticated, token]); // Removed router from dependencies as it was not used
 
   const deleteNotebook = useCallback(async (id: string) => {
+    if (!isAuthenticated || !token) {
+      toast.error("请登录后删除笔记本。");
+      return;
+    }
     console.log(`[NotebookContext] Attempting to delete notebook: ${id}`);
     // Optionally add a loading state specific to deletion if needed
 
@@ -270,76 +273,34 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     toast.loading(`正在删除笔记本 "${titleToDelete}"...`, { id: 'delete-notebook-toast' });
 
     try {
-      const response = await fetch(`${BACKEND_API_BASE}/api/notebooks/${id}`, {
-        method: 'DELETE',
-      });
+      // 使用我们的 deleteNotebook API 函数，传递正确的参数
+      await deleteNotebookApi(id, token);
+      
+      setNotebooks(prev => prev.filter(n => n.id !== id));
+      toast.success(`笔记本 "${titleToDelete}" 已删除`, { id: 'delete-notebook-toast' });
 
-      if (response.ok) { // Check for successful status codes (like 204 No Content)
-        setNotebooks(prev => prev.filter(n => n.id !== id));
-        toast.success(`笔记本 "${titleToDelete}" 已删除`, { id: 'delete-notebook-toast' });
-
-        // If the deleted notebook was the current one, reset and navigate home
-        if (currentNotebook?.id === id) {
-          setCurrentNotebookState(null);
-          // Maybe clear documents too?
-          // setDocuments([]); 
-          router.push('/'); 
-        }
-        console.log(`[NotebookContext] Successfully deleted notebook: ${id}`);
-        
-        // 添加删除后同步到云端的操作
-        try {
-          const configs = await syncService.getAllConfigs();
-          const activeConfig = configs.find(c => c.isActive);
-          if (activeConfig?.id) {
-            toast.loading("正在同步删除操作到云端...", { id: 'sync-delete-toast' });
-            const syncResult = await syncService.syncToCloud(activeConfig.id);
-            if (syncResult.success) {
-              toast.success("删除操作已同步到云端", { id: 'sync-delete-toast' });
-            } else {
-              toast.error(`同步删除操作失败: ${syncResult.message}`, { id: 'sync-delete-toast' });
-            }
-          }
-        } catch (syncError) {
-          console.error('[NotebookContext] Error syncing deletion to cloud:', syncError);
-          toast.error("同步删除操作到云端失败", { id: 'sync-delete-toast' });
-        }
-      } else if (response.status === 404) {
-        // 笔记本在后端找不到，但还显示在前端列表中
-        // 从前端状态中将其移除，因为实际上已经不存在了
-        setNotebooks(prev => prev.filter(n => n.id !== id));
-        toast.success(`笔记本 "${titleToDelete}" 已从列表中移除`, { id: 'delete-notebook-toast' });
-        
-        // 如果当前打开的是这个笔记本，则重置并回到主页
-        if (currentNotebook?.id === id) {
-          setCurrentNotebookState(null);
-          router.push('/');
-        }
-        
-        console.log(`[NotebookContext] Notebook ${id} not found in backend but removed from frontend state.`);
-      } else {
-        // Handle API errors (like 500 Internal Server Error)
-        let errorMsg = '删除失败。';
-        try {
-          const errorData = await response.json();
-          errorMsg = errorData.message || errorMsg;
-        } catch (e) {
-          // Ignore if response is not JSON
-        }
-        console.error(`[NotebookContext] Failed to delete notebook ${id}. Status: ${response.status}, Message: ${errorMsg}`);
-        toast.error(`删除笔记本 "${titleToDelete}" 失败: ${errorMsg}`, { id: 'delete-notebook-toast' });
+      // If the deleted notebook was the current one, reset and navigate home
+      if (currentNotebook?.id === id) {
+        setCurrentNotebookState(null);
+        router.push('/'); 
       }
+      console.log(`[NotebookContext] Successfully deleted notebook: ${id}`);
     } catch (error) {
-      console.error(`[NotebookContext] Error during notebook deletion fetch for ${id}:`, error);
-      toast.error(`删除笔记本 "${titleToDelete}" 时发生网络错误: ${error instanceof Error ? error.message : '未知错误'}`, { id: 'delete-notebook-toast' });
+      console.error(`[NotebookContext] Error during notebook deletion for ${id}:`, error);
+      toast.error(`删除笔记本 "${titleToDelete}" 失败: ${error instanceof Error ? error.message : '未知错误'}`, { id: 'delete-notebook-toast' });
     }
     // Optionally reset loading state here
-  }, [notebooks, currentNotebook, router]); // Add dependencies
+  }, [notebooks, currentNotebook, router, isAuthenticated, token]); // Add dependencies
 
   const updateNotebookTitle = useCallback(async (id: string, newTitle: string): Promise<Notebook> => {
+    if (!isAuthenticated || !token) {
+      toast.error("请登录后更新笔记本。");
+      throw new Error("User not authenticated.");
+    }
     console.log(`[NotebookContext] 更新笔记本 ${id} 的标题为: ${newTitle}`);
     try {
-      const updatedNotebook = await updateNotebookApi(id, { title: newTitle });
+      // 修复API调用，传递正确的参数
+      const updatedNotebook = await updateNotebookApi(id, newTitle, token);
       // 更新本地状态
       setNotebooks(prev => prev.map(n => n.id === id ? { ...n, title: newTitle, updatedAt: new Date().toISOString() } : n));
       // 如果当前笔记本就是被修改的笔记本，也要更新当前笔记本状态
@@ -353,7 +314,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       toast.error('更新笔记本标题失败: ' + (error instanceof Error ? error.message : '未知错误'));
       throw error;
     }
-  }, [currentNotebook?.id]);
+  }, [currentNotebook?.id, isAuthenticated, token]);
 
   const setCurrentNotebookById = useCallback((id: string | null) => {
     console.log(`[NotebookContext] Setting current notebook by ID: ${id}`);
@@ -368,7 +329,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
             setCurrentNotebookState(notebookToSet);
             // REMOVED: fetchDocsForNotebook(id); // Let the useEffect handle this
             // Optionally navigate here too, though often navigation triggers this call
-            // router.push(`/notebook/${id}`);
+            // router.push(`/notebooks/${id}`);
         } else {
             console.warn(`[NotebookContext] Notebook with ID ${id} not found in state.`);
             // Optionally navigate away or show an error
@@ -415,22 +376,20 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
         setCurrentDocuments(prev => prev.filter(d => d.id !== docId));
 
         // 添加删除后同步到云端的操作
-        try {
-            const configs = await syncService.getAllConfigs();
-            const activeConfig = configs.find(c => c.isActive);
-            if (activeConfig?.id) {
-                toast.loading("正在同步文档删除操作到云端...", { id: 'sync-doc-delete-toast' });
-                const syncResult = await syncService.syncToCloud(activeConfig.id);
-                if (syncResult.success) {
-                    toast.success("文档删除操作已同步到云端", { id: 'sync-doc-delete-toast' });
-                } else {
-                    toast.error(`同步文档删除操作失败: ${syncResult.message}`, { id: 'sync-doc-delete-toast' });
-                }
-            }
-        } catch (syncError) {
-            console.error('[NotebookContext] Error syncing document deletion to cloud:', syncError);
-            toast.error("同步文档删除操作到云端失败", { id: 'sync-doc-delete-toast' });
-        }
+        // const configs = await syncService.getAllConfigs();
+        // const activeConfig = configs.find(c => c.isActive);
+        // if (activeConfig?.id) {
+        //     toast.loading("正在同步文档删除操作到云端...", { id: 'sync-doc-delete-toast' });
+        //     const syncResult = await syncService.syncToCloud(activeConfig.id);
+        //     if (syncResult.success) {
+        //         toast.success("文档删除操作已同步到云端", { id: 'sync-doc-delete-toast' });
+        //     } else {
+        //         toast.error(`同步文档删除操作失败: ${syncResult.message}`, { id: 'sync-doc-delete-toast' });
+        //     }
+        // } catch (syncError) {
+        //     console.error('[NotebookContext] Error syncing document deletion to cloud:', syncError);
+        //     toast.error("同步文档删除操作到云端失败", { id: 'sync-doc-delete-toast' });
+        // }
     } catch (error) {
         console.error(`[NotebookContext] Failed to delete document ${docId}:`, error);
         // Optionally set an error state or show a toast
@@ -602,9 +561,14 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     // --- Placeholder NotePad Methods ---
     const createNotePadNote = useCallback(async (notebookId: string, note: Omit<NotePadNote, 'id' | 'createdAt'>): Promise<NotePadNote> => {
-        console.log(`[NotebookContext] Creating simple note for notebook ${notebookId}`);
+        console.log(`[NotebookContext] Creating simple note in notebook ${notebookId}`);
+        if (!isAuthenticated || !token) {
+            toast.error("请登录后创建便签。");
+            throw new Error("User not authenticated.");
+        }
         try {
-            const newNote = await createNotePadNoteApi(notebookId, note);
+            // NotePadNote不包含title字段，使用content作为内容
+            const newNote = await createNotePadNoteApi(notebookId, '', note.content || '', token);
             // Potentially update a separate list for NotePadNotes if displayed
             return newNote;
         } catch (error) {
@@ -612,42 +576,51 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
             toast.error(`创建便签失败: ${error instanceof Error ? error.message : '未知错误'}`);
             throw error; // Or return null
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
     const updateNotePadNote = useCallback(async (notebookId: string, noteId: string, updates: Partial<NotePadNote>): Promise<void> => {
         console.log(`[NotebookContext] Updating simple note ${noteId} in notebook ${notebookId}`);
+        if (!isAuthenticated || !token) {
+            toast.error("请登录后更新便签。");
+            return;
+        }
         try {
-            await updateNotePadNoteApi(notebookId, noteId, updates);
+            // NotePadNote不包含title字段，使用空字符串作为title，content作为内容
+            await updateNotePadNoteApi(notebookId, noteId, '', updates.content || '', token);
             // Potentially update a separate list for NotePadNotes
         } catch (error) {
             console.error('[NotebookContext] Error updating simple note:', error);
             toast.error(`更新便签失败: ${error instanceof Error ? error.message : '未知错误'}`);
             // throw error;
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
     const deleteNotePadNote = useCallback(async (notebookId: string, noteId: string): Promise<void> => {
         console.log(`[NotebookContext] Deleting simple note ${noteId} from notebook ${notebookId}`);
+        if (!isAuthenticated || !token) {
+            toast.error("请登录后删除便签。");
+            return;
+        }
         try {
-            await deleteNotePadNoteApi(notebookId, noteId);
+            await deleteNotePadNoteApi(notebookId, noteId, token);
              // Potentially update a separate list for NotePadNotes
         } catch (error) {
             console.error('[NotebookContext] Error deleting simple note:', error);
             toast.error(`删除便签失败: ${error instanceof Error ? error.message : '未知错误'}`);
             // throw error;
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
     const getNotePadNotes = useCallback(async (notebookId: string): Promise<NotePadNote[]> => {
         console.log(`[NotebookContext] Fetching simple notes for notebook ${notebookId}`);
-        if (!isAuthenticated) { // <--- 添加认证检查
+        if (!isAuthenticated || !token) { // 修复token null的问题
             console.warn('[NotebookContext] getNotePadNotes: User not authenticated. Skipping fetch.');
             toast.error('用户未认证，无法获取便签列表。');
             return [];
         }
         try {
-            // getNotePadNotesApi 内部会从 localStorage 获取 token，但依赖 isAuthenticated 和 token 确保此回调在它们变化时更新
-            const notes = await getNotePadNotesApi(notebookId);
+            // getNotePadNotesApi 需要 token 参数
+            const notes = await getNotePadNotesApi(notebookId, token);
             return notes;
         } catch (error) {
             console.error(`[NotebookContext] Error fetching simple notes for notebook ${notebookId}:`, error);
@@ -673,18 +646,21 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     // --- Refetching Logic (Keep if used) ---
     const refetchDocuments = useCallback(() => {
-        fetchDocsForNotebook(currentNotebook?.id ?? null);
-    }, [currentNotebook, fetchDocsForNotebook]);
+        if (currentNotebook?.id) {
+          fetchDocsForNotebook(currentNotebook.id);
+        }
+    }, [currentNotebook?.id, fetchDocsForNotebook]);
 
     const refreshAllNotebooksDocuments = useCallback(() => {
-        // This might need rethinking with API. Fetching all docs for all notebooks could be heavy.
-        console.warn("refreshAllNotebooksDocuments needs review for API integration");
-        // Maybe just refetch for the current notebook?
         refetchDocuments();
     }, [refetchDocuments]);
     
     // 添加刷新笔记本列表的方法
     const refreshNotebooks = useCallback(async () => {
+        if (!isAuthenticated || !token) {
+          console.log("[NotebookContext] 用户未认证，跳过刷新笔记本列表");
+          return;
+        }
         console.log("[NotebookContext] 刷新笔记本列表");
         try {
             const updatedNotebooks = await fetchNotebooksApi();
@@ -694,13 +670,17 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
             console.error("[NotebookContext] 刷新笔记本列表失败:", error);
             toast.error("刷新笔记本列表失败");
         }
-    }, []);
+    }, [isAuthenticated, token]);
 
   // 将updateNotebookFolder移到这里，在useMemo之前定义
   const updateNotebookFolder = useCallback(async (notebookId: string, folderId: string | null): Promise<Notebook | null> => {
+    if (!isAuthenticated || !token) {
+      toast.error("请登录后移动笔记本。");
+      return null;
+    }
     console.log(`[NotebookContext] Updating notebook ${notebookId} to folder ${folderId || 'root'}`);
     try {
-      const updatedNotebook = await updateNotebookApi(notebookId, { folderId });
+      const updatedNotebook = await updateNotebookGenericApi(notebookId, { folderId }, token);
       
       // 更新状态
       setNotebooks((prev: Notebook[]) => prev.map((n: Notebook) => 
@@ -715,49 +695,32 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       toast.error('移动笔记本失败: ' + (error instanceof Error ? error.message : '未知错误'));
       return null;
     }
-  }, []);
+  }, [isAuthenticated, token]);
 
-  // --- NEW: Function to update notebook notes --- 
   const updateNotebookNotes = useCallback(async (notebookId: string, notes: string): Promise<Notebook | null> => {
-      console.log(`[NotebookContext] Updating notes for notebook ${notebookId}`);
-      // Find the current notebook in state to potentially update it optimistically
-      const currentNotebookInState = notebooks.find(n => n.id === notebookId);
-      if (!currentNotebookInState) {
-          console.error(`[NotebookContext] Notebook ${notebookId} not found in state for notes update.`);
-          toast.error('找不到要更新的笔记本。');
-          return null;
+    if (!isAuthenticated || !token) {
+      toast.error("请登录后保存笔记。");
+      return null;
+    }
+    console.log(`[NotebookContext] Saving notes for notebook ${notebookId}`);
+    try {
+      const updatedNotebook = await updateNotebookGenericApi(notebookId, { notes }, token);
+      
+      // 更新状态
+      setNotebooks(prev => prev.map(n => n.id === notebookId ? { ...n, updatedAt: new Date().toISOString() } : n));
+      if (currentNotebook?.id === notebookId) {
+        setCurrentNotebookState(prev => prev ? { ...prev, updatedAt: new Date().toISOString() } : null);
       }
-
-      // Optional: Optimistic update (update local state first)
-      // setCurrentNotebookState(prev => prev ? { ...prev, notes } : null); // Need notes field in Notebook type
-      // setNotebooks(prev => prev.map(n => n.id === notebookId ? { ...n, notes } : n)); // Need notes field
-      // Note: Adding a 'notes' field to the local Notebook type might be needed for this
-
-      try {
-          // Call the service API function (which now accepts notes)
-          const updatedNotebook = await updateNotebookApi(notebookId, { notes });
-
-          // Update local state with the response from the server
-          setNotebooks(prev => prev.map(n => 
-              n.id === notebookId ? { ...n, updatedAt: updatedNotebook.updatedAt /* Add notes here if needed */ } : n
-          ));
-          if (currentNotebook?.id === notebookId) {
-              setCurrentNotebookState(prev => prev ? { ...prev, updatedAt: updatedNotebook.updatedAt /* Add notes here if needed */ } : null);
-          }
-
-          console.log(`[NotebookContext] Successfully updated notes for notebook ${notebookId}`);
-          toast.success('笔记已保存。');
-          return updatedNotebook;
-
-      } catch (error) {
-          console.error(`[NotebookContext] Failed to update notebook notes for ${notebookId}:`, error);
-          toast.error('保存笔记失败: ' + (error instanceof Error ? error.message : '未知错误'));
-          // Optional: Revert optimistic update if it was implemented
-          // setNotebooks(prev => prev.map(n => n.id === notebookId ? currentNotebookInState : n));
-          // if (currentNotebook?.id === notebookId) setCurrentNotebookState(currentNotebookInState);
-          return null;
-      }
-  }, [notebooks, currentNotebook?.id]); // Dependencies
+      
+      console.log(`[NotebookContext] Successfully updated notebook notes`);
+      toast.success('笔记已保存');
+      return updatedNotebook;
+    } catch (error) {
+      console.error(`[NotebookContext] Failed to update notebook notes for ${notebookId}:`, error);
+      toast.error('保存笔记失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      return null;
+    }
+  }, [notebooks, currentNotebook?.id, isAuthenticated, token]); // Dependencies
   // --- END NEW FUNCTION ---
 
   // Memoize the context value

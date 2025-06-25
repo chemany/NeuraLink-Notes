@@ -3,6 +3,7 @@ import { toast } from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import axios from 'axios'; // Import axios
+import ConfirmModal from './ConfirmModal';
 
 interface MarkdownNotebookProps {
   notebookId: string;
@@ -39,6 +40,8 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
   const [editTitle, setEditTitle] = useState('');
   const [isLoading, setIsLoading] = useState(true); // Loading state for initial fetch
   const [isSaving, setIsSaving] = useState(false); // Saving state for API calls
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [notesDropdownOpen, setNotesDropdownOpen] = useState(false);
@@ -117,36 +120,49 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
     }
   }, [notebookId, notes]); // Removed saveToLocalStorage dependency
 
-  // 通过 API 删除笔记
-  const deleteNote = useCallback(async (noteId: string) => {
-    const noteToDelete = notes.find(note => note.id === noteId);
-    if (!noteToDelete) {
+  // 显示删除确认
+  const showDeleteConfirmation = useCallback((noteId: string) => {
+    const noteToDeleteObj = notes.find(note => note.id === noteId);
+    if (!noteToDeleteObj) {
       toast.error('找不到要删除的笔记');
       return;
     }
+    setNoteToDelete(noteId);
+    setShowDeleteConfirm(true);
+  }, [notes]);
+
+  // 确认删除笔记
+  const confirmDeleteNote = useCallback(async () => {
+    if (!noteToDelete) return;
     
-    if (confirm(`确定要删除笔记 "${noteToDelete.title}" 吗?`)) {
-      setIsSaving(true);
-      try {
-        await axios.delete(`/api/notebooks/${notebookId}/notes/${noteId}`);
-        const updatedNotes = notes.filter(note => note.id !== noteId);
-        setNotes(updatedNotes);
-        
-        // 如果删除的是当前选中的笔记，清除选择
-        if (selectedNoteId === noteId) {
-          setSelectedNoteId(updatedNotes.length > 0 ? updatedNotes[0].id : null); // Select first or none
-          setIsEditing(false);
-        }
-        
-        toast.success('笔记已删除');
-      } catch (error: any) {
-        console.error('删除笔记失败:', error);
-        toast.error(`删除笔记失败: ${error.response?.data?.message || error.message}`);
-      } finally {
-        setIsSaving(false);
+    setIsSaving(true);
+    try {
+      await axios.delete(`/api/notebooks/${notebookId}/notes/${noteToDelete}`);
+      const updatedNotes = notes.filter(note => note.id !== noteToDelete);
+      setNotes(updatedNotes);
+      
+      // 如果删除的是当前选中的笔记，清除选择
+      if (selectedNoteId === noteToDelete) {
+        setSelectedNoteId(updatedNotes.length > 0 ? updatedNotes[0].id : null); // Select first or none
+        setIsEditing(false);
       }
+      
+      toast.success('笔记已删除');
+    } catch (error: any) {
+      console.error('删除笔记失败:', error);
+      toast.error(`删除笔记失败: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsSaving(false);
+      setShowDeleteConfirm(false);
+      setNoteToDelete(null);
     }
-  }, [notebookId, notes, selectedNoteId]); // Removed saveToLocalStorage dependency
+  }, [notebookId, notes, selectedNoteId, noteToDelete]);
+
+  // 取消删除
+  const cancelDeleteNote = useCallback(() => {
+    setShowDeleteConfirm(false);
+    setNoteToDelete(null);
+  }, []);
 
   // 编辑笔记 (准备阶段，不变)
   const startEditing = useCallback((noteId: string) => {
@@ -448,7 +464,7 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
                        disabled={isSaving} // Disable while saving
                        onClick={(e) => { 
                          e.stopPropagation();
-                         deleteNote(note.id); 
+                         showDeleteConfirmation(note.id); 
                        }}
                        style={{
                         background: 'none',
@@ -618,6 +634,15 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
            }}
         />
       )}
+
+      {/* 删除确认模态框 */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={cancelDeleteNote}
+        onConfirm={confirmDeleteNote}
+        title="确认删除"
+        message={`确定要删除笔记 "${noteToDelete ? notes.find(n => n.id === noteToDelete)?.title : ''}" 吗？此操作不可恢复。`}
+      />
     </div>
   );
 });

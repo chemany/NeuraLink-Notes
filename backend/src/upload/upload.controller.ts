@@ -58,32 +58,10 @@ export class UploadController {
       logger.error('未收到文件');
       throw new HttpException('未收到文件', HttpStatus.BAD_REQUEST);
     }
-    try {
-      // 获取请求协议、主机（含端口）
-      const protocol = (file as any)?.protocol || 'http';
-      // 兼容代理和本地开发，优先取请求头
-      const host =
-        (file as any)?.host ||
-        (typeof global !== 'undefined' && global['__HOST__']) ||
-        'localhost:3001';
-      // 尝试从请求对象获取host
-      let reqHost = 'localhost:3001';
-      try {
-        reqHost =
-          (this as any).host ||
-          (this as any).req?.headers?.host ||
-          'localhost:3001';
-      } catch {}
-      const url = `http://${reqHost}/uploads/images/${file.filename}`;
-      logger.log(`图片上传成功: ${url}`);
+    // 返回相对路径，由前端根据自身域名拼接
+    const url = `/uploads/images/${file.filename}`;
+    logger.log(`图片上传成功，返回相对URL: ${url}`);
       return { url };
-    } catch (error) {
-      logger.error(`图片上传失败: ${error.message}`);
-      throw new HttpException(
-        error.message || '图片上传失败',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
   }
 
   /**
@@ -97,13 +75,16 @@ export class UploadController {
       if (!body.url) {
         throw new HttpException('未提供图片URL', HttpStatus.BAD_REQUEST);
       }
-      // 只允许删除本地上传的图片
-      const prefix = 'http://localhost:3001/uploads/images/';
-      if (!body.url.startsWith(prefix)) {
-        throw new HttpException('禁止删除非本地图片', HttpStatus.FORBIDDEN);
+      // 从相对URL中提取文件名
+      const urlPath = body.url.startsWith('/') ? body.url : new URL(body.url).pathname;
+      const filename = path.basename(urlPath);
+      const filePath = path.join(uploadImageDir, filename);
+
+      // 安全校验，确保文件路径在允许的目录下
+      if (!filePath.startsWith(uploadImageDir)) {
+          throw new HttpException('无效的文件路径', HttpStatus.BAD_REQUEST);
       }
-      const filename = body.url.replace(prefix, '');
-      const filePath = path.join(process.cwd(), 'uploads/images', filename);
+
       if (!fs.existsSync(filePath)) {
         return { success: false, error: '文件不存在' };
       }

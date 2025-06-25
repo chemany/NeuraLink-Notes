@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import SettingsDialog from './SettingsDialog';
+import ConfirmModal from './ConfirmModal';
 import { useNotebook } from '@/contexts/NotebookContext';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { CloudIcon } from 'lucide-react';
+import Image from 'next/image';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -188,7 +190,14 @@ export default function Header({
                 </h1>
               )
             ) : (
-              <Link href="/" className="text-base font-bold text-gray-900 hover:text-blue-600 transition-colors">
+              <Link href="/" className="text-base font-bold text-gray-900 hover:text-blue-600 transition-colors flex items-center">
+                <Image 
+                  src="/notepads/favicon.svg" 
+                  alt="灵枢笔记图标" 
+                  width={24} 
+                  height={24} 
+                  className="mr-2"
+                />
                 灵枢笔记
               </Link>
             )}
@@ -261,11 +270,18 @@ export default function Header({
             )}
 
             {showCalendarButton && (
-                <Link href="/calendar" passHref legacyBehavior>
-                    <a className="bg-teal-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-teal-700 flex items-center" title="打开智能日历">
+                <a 
+                    href={typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+                        ? 'http://localhost:11000/calendars/' 
+                        : 'http://jason.cheman.top:8081/calendars/'
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-teal-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-teal-700 flex items-center" 
+                    title="打开智能日历"
+                >
                         智能日历
                     </a>
-                </Link>
             )}
 
             {showMainSettingsButton && onMainSettingsClick && (
@@ -339,28 +355,13 @@ export default function Header({
         onClose={() => setIsSettingsOpen(false)} 
       />
 
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium mb-4">删除笔记本</h3>
-            <p className="mb-4">确定要删除笔记本 <strong>{title}</strong> 吗？此操作不可恢复，所有相关文档也将被删除。</p>
-            <div className="flex justify-end space-x-2">
-              <button 
-                className="px-4 py-2 border rounded-lg hover:bg-gray-100"
-                onClick={cancelDelete}
-              >
-                取消
-              </button>
-              <button 
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                onClick={confirmDelete}
-              >
-                删除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={cancelDelete}
+        onConfirm={confirmDelete}
+        title="删除笔记本"
+        message={`确定要删除笔记本 "${title}" 吗？此操作不可恢复，所有相关文档也将被删除。`}
+      />
     </>
   );
 } 

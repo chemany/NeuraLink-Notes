@@ -8,6 +8,7 @@ import type { Editor } from '@ckeditor/ckeditor5-core'; // CKEditor 核心类型
 import type { RootElement } from '@ckeditor/ckeditor5-engine'; // RootElement 类型
 import type InlineEditorCore from '@ckeditor/ckeditor5-build-inline'; // 添加 InlineEditor 类型 (如果需要直接引用其类型)
 import { useAutosave } from '../hooks/useAutosave'; // Back to relative path
+import { convertMarkdownToHtml, containsMarkdown } from '../utils/markdownToHtml';
 
 // 移除这行，因为我们将在客户端条件中动态导入
 // const ClassicEditor = ClassicEditorCore as any;
@@ -37,7 +38,7 @@ class MyUploadAdapter {
     return this.loader.file.then((file: File) => {
       const data = new FormData();
       data.append('file', file);
-      return fetch('http://localhost:3001/api/upload/image', {
+      return fetch('/api/upload/image', {
         method: 'POST',
         body: data,
       })
@@ -202,8 +203,9 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
     const deleted = prevImageUrls.filter(url => !currentImageUrls.includes(url));
     if (deleted.length > 0) {
       deleted.forEach(url => {
-        if (url.startsWith('http://localhost:3001/uploads/images/')) {
-          fetch('http://localhost:3001/api/upload/image', {
+        // 检查URL是否为本站上传的图片
+        if (url.startsWith('/uploads/images/')) {
+          fetch('/api/upload/image', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url }),
@@ -229,10 +231,42 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
   useImperativeHandle(ref, () => ({
     addTextToNotebook: (text: string) => {
       if (editorInstanceRef.current) {
+        console.log('[RichTextNotebook] 添加文本到笔记本:', text.substring(0, 100) + '...');
+        
+        // 🔧 新增：智能检测并转换markdown格式
+        let htmlContent = text;
+        if (containsMarkdown(text)) {
+          console.log('[RichTextNotebook] 检测到markdown语法，正在转换为HTML...');
+          htmlContent = convertMarkdownToHtml(text);
+          console.log('[RichTextNotebook] Markdown转换完成:', htmlContent.substring(0, 100) + '...');
+          
+                  // 🎯 进一步处理中文排版格式
+        htmlContent = htmlContent
+          // 🔥 首先处理可能被错误分割的编号标题
+          .replace(/<p([^>]*)>\s*(\d+\.)\s*<\/p>\s*<p([^>]*)>([^<]+)<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2$4</h3>')
+          .replace(/<p([^>]*)>\s*(\d+\.)\s*<br\s*\/?>\s*([^<]+)<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2$3</h3>')
+          .replace(/<p([^>]*)>\s*(\d+\.\s*[^<]+?)\s*<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2</h3>')
+
+          // 为所有段落添加中文排版样式：首行缩进两个字符
+          .replace(/<p(?:\s[^>]*)?>([^<]*)</g, '<p style="text-indent: 2em; margin: 0.5em 0; padding: 0; white-space: normal;">$1<')
+          // 确保标题完全没有缩进和边距
+          .replace(/<(h[1-6])(?:\s[^>]*)?>([^<]*)</g, '<$1 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2<')
+          // 注意：列表项现在在markdownToHtml中已经转换为段落格式，无需额外处理
+          // 处理引用块
+          .replace(/<blockquote(?:\s[^>]*)?>/, '<blockquote style="text-indent: 0; margin: 0.5em 0; padding-left: 1em; border-left: 4px solid #ccc;">');
+                
+          console.log('[RichTextNotebook] 中文排版格式处理完成:', htmlContent.substring(0, 150) + '...');
+        } else {
+          // 对于纯文本，应用中文排版：首行缩进
+          htmlContent = `<p style="text-indent: 2em; margin: 0; padding: 0;">${text.replace(/\n/g, '<br>')}</p>`;
+        }
+        
         const currentContent = editorInstanceRef.current.getData();
-        const newContent = currentContent ? `${currentContent}\n${text}` : text;
+        const newContent = currentContent ? `${currentContent}\n${htmlContent}` : htmlContent;
         editorInstanceRef.current.setData(newContent);
         setEditorData(newContent);
+        
+        console.log('[RichTextNotebook] 文本已成功添加到编辑器');
       }
     },
     getEditorContent: () => {
@@ -274,7 +308,9 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
       // 对于 InlineEditor，工具栏默认就是浮动的，并尝试定位到选区或编辑区域。
       // isFloating: true, // 这个选项通常在 ClassicEditor 中使用，InlineEditor 默认为 true
       // viewportTopOffset: 15, // 如果工具栏被其他固定元素遮挡，可以尝试设置偏移
-    }
+    },
+    // 添加自定义CSS来强制实现中文排版格式
+    // 注意：这个配置可能在InlineEditor中不被支持
   }), []); // 依赖项为空数组，因为配置不依赖外部可变状态
 
   if (!isBrowser || !CKEditorComponent || !InlineEditorComponent) {
@@ -294,6 +330,96 @@ const RichTextNotebook = forwardRef<RichTextNotebookRef, RichTextNotebookProps>(
             console.log('[RichTextNotebook onReady] Editor is ready. Assigning to editorInstanceRef.current.');
             editorInstanceRef.current = editor;
             console.log('[RichTextNotebook onReady] editorInstanceRef.current is now:', editorInstanceRef.current);
+            
+            // 🎯 直接向编辑器DOM添加中文排版样式
+            try {
+              const editableElement = editor.ui.getEditableElement();
+              if (editableElement) {
+                // 创建并添加自定义样式
+                const styleElement = document.createElement('style');
+                styleElement.id = 'chinese-typography-fix';
+                styleElement.textContent = `
+                  /* 中文排版格式强制样式 */
+                  .ck-content h1, .ck-content h2, .ck-content h3, 
+                  .ck-content h4, .ck-content h5, .ck-content h6 {
+                    text-indent: 0 !important;
+                    margin: 0.5em 0 !important;
+                    padding: 0 !important;
+                    white-space: nowrap !important;
+                    display: block !important;
+                    width: 100% !important;
+                    line-height: 1.4 !important;
+                  }
+                  
+                  .ck-content p {
+                    text-indent: 2em !important;
+                    margin: 0.5em 0 !important;
+                    padding: 0 !important;
+                    white-space: normal !important;
+                    display: block !important;
+                    line-height: 1.6 !important;
+                  }
+                  
+                  .ck-content ul, .ck-content ol {
+                    margin: 0.5em 0 !important;
+                    padding-left: 2em !important;
+                  }
+                  
+                  .ck-content li {
+                    text-indent: 0 !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    white-space: normal !important;
+                    display: list-item !important;
+                    line-height: 1.6 !important;
+                  }
+                  
+                  .ck-content li::marker {
+                    display: inline-block !important;
+                    width: auto !important;
+                  }
+                  
+                  .ck-content blockquote {
+                    text-indent: 0 !important;
+                    margin: 0.5em 0 !important;
+                    padding-left: 1em !important;
+                    border-left: 4px solid #ccc !important;
+                  }
+                  
+                  /* 强制避免标题内容换行 */
+                  .ck-content h1 *, .ck-content h2 *, .ck-content h3 *,
+                  .ck-content h4 *, .ck-content h5 *, .ck-content h6 * {
+                    display: inline !important;
+                    white-space: nowrap !important;
+                  }
+                  
+                  /* 确保列表项标记和内容在同一行 */
+                  .ck-content li {
+                    overflow: visible !important;
+                  }
+                  
+                  .ck-content li > p {
+                    display: inline !important;
+                    text-indent: 0 !important;
+                    margin: 0 !important;
+                  }
+                  
+                  /* 覆盖CKEditor可能的内联样式 */
+                  .ck-content [style*="break"] {
+                    white-space: normal !important;
+                  }
+                `;
+                
+                // 查找head元素或者editableElement的父文档
+                const targetDocument = editableElement.ownerDocument || document;
+                if (!targetDocument.getElementById('chinese-typography-fix')) {
+                  targetDocument.head.appendChild(styleElement);
+                  console.log('[RichTextNotebook] 中文排版样式已添加到文档');
+                }
+              }
+            } catch (e) {
+              console.warn('[RichTextNotebook] 添加中文排版样式失败:', e);
+            }
             
             // 增加 editor 实例有效性检查
             if (editor && editor.ui && editor.ui.view) { 

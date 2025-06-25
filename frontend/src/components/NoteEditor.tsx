@@ -9,13 +9,13 @@ interface NoteEditorProps {
 
 export default function NoteEditor({ notebookId, note, onSave }: NoteEditorProps) {
   const [title, setTitle] = useState(note?.title || '');
-  const [content, setContent] = useState(note?.content || '');
+  const [content, setContent] = useState(note?.contentHtml || '');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (note) {
-      setTitle(note.title);
-      setContent(note.content);
+      setTitle(note.title || '');
+      setContent(note.contentHtml || '');
     } else {
       setTitle('');
       setContent('');

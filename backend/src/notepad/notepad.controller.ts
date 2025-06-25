@@ -16,15 +16,10 @@ import { NotePadService } from './notepad.service';
 import { CreateNotePadNoteDto } from './dto/create-notepad-note.dto';
 import { UpdateNotePadNoteDto } from './dto/update-notepad-note.dto';
 import { Logger } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { User as UserModel } from '@prisma/client';
-
-interface AuthenticatedRequest extends Request {
-  user: Omit<UserModel, 'password'> & { id: string };
-}
+import { UnifiedAuthGuard, AuthenticatedRequest } from '../unified-auth/unified-auth.guard';
 
 @Controller('notebooks/:notebookId/notes')
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard)
 export class NotePadController {
   private readonly logger = new Logger(NotePadController.name);
 

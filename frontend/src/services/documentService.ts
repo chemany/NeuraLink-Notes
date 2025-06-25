@@ -177,7 +177,7 @@ export const fetchDocumentsByNotebookId = async (notebookId: string): Promise<Do
     console.error('获取笔记本文档失败: notebookId 不能为空');
     return [];
   }
-  const url = `/api/documents/notebook/${notebookId}`;
+      const url = `/documents/notebook/${notebookId}`;
   console.log(`正在从以下地址获取文档: ${apiClient.defaults.baseURL}${url}`);
   try {
     const response = await apiClient.get<Document[]>(url);
@@ -209,7 +209,7 @@ export const uploadDocumentToApi = async (file: File, notebookId: string, origin
     formData.append('originalName', originalName);
   }
 
-  const url = `/api/documents/upload?notebookId=${encodeURIComponent(notebookId)}`;
+      const url = `/documents/upload?notebookId=${encodeURIComponent(notebookId)}`;
   console.log(`Uploading to: ${apiClient.defaults.baseURL}${url}`);
 
   try {
@@ -226,7 +226,7 @@ export const deleteDocumentFromApi = async (documentId: string): Promise<void> =
   if (!documentId) {
     throw new Error('Document ID is required for deletion.');
   }
-  const url = `/api/documents/${documentId}`;
+  const url = `/documents/${documentId}`;
   try {
     await apiClient.delete(url);
     console.log(`Document ${documentId} deleted successfully from API.`);
@@ -237,7 +237,7 @@ export const deleteDocumentFromApi = async (documentId: string): Promise<void> =
 
 export const fetchDocumentById = async (documentId: string): Promise<Document | null> => {
   if (!documentId) return null;
-  const url = `/api/documents/${documentId}`;
+  const url = `/documents/${documentId}`;
   try {
     const response = await apiClient.get<Document>(url);
     return response.data;
@@ -251,7 +251,7 @@ export const fetchDocumentById = async (documentId: string): Promise<Document | 
 
 export const updateDocumentApi = async (documentId: string, data: Partial<Document>): Promise<Document> => {
   if (!documentId) throw new Error('Document ID is required for update.');
-  const url = `/api/documents/${documentId}`;
+  const url = `/documents/${documentId}`;
   try {
     const response = await apiClient.patch<Document>(url, data);
     return response.data;
@@ -267,7 +267,7 @@ export const updateDocumentApi = async (documentId: string, data: Partial<Docume
  */
 export const getDocumentContent = async (documentId: string): Promise<string | null> => {
   if (!documentId) return null;
-  const url = `/api/documents/${documentId}/content`;
+  const url = `/documents/${documentId}/content`;
   try {
     const response = await apiClient.get<string>(url, { responseType: 'text' });
     return response.data;
@@ -286,7 +286,7 @@ export const getDocumentContent = async (documentId: string): Promise<string | n
  */
 export const getDocumentStatus = async (documentId: string): Promise<any | null> => {
   if (!documentId) return null;
-  const url = `/api/documents/${documentId}/status`;
+  const url = `/documents/${documentId}/status`;
   try {
     const response = await apiClient.get<any>(url);
     return response.data;
@@ -305,7 +305,7 @@ export const getDocumentStatus = async (documentId: string): Promise<any | null>
  */
 export const reprocessDocument = async (documentId: string): Promise<Document | null> => {
   if (!documentId) return null;
-  const url = `/api/documents/${documentId}/reprocess`;
+  const url = `/documents/${documentId}/reprocess`;
   try {
     const response = await apiClient.patch<Document>(url);
     return response.data;
@@ -332,7 +332,12 @@ export const processDocumentVectorization = async (document: Document): Promise<
     const embeddingSettings = getEmbeddingSettings();
     if (!embeddingSettings.apiKey) {
       console.error('API Key 未配置，无法进行向量化。');
-      throw new Error('API Key for embedding service is not configured.');
+      console.log(`文档 ${document.fileName} 有文本内容但向量化失败，仍可用于AI分析`);
+      return {
+        ...document,
+        status: DocumentStatus.VECTORIZATION_FAILED,
+        statusMessage: 'API Key未配置，向量化失败，但文档仍可用于AI分析'
+      };
     }
 
     console.log(`开始处理文档 ${document.id} 的向量化，使用模型: ${embeddingSettings.model}`);
@@ -349,7 +354,7 @@ export const processDocumentVectorization = async (document: Document): Promise<
     const embeddings = await generateEmbeddings(chunks, embeddingSettings);
     console.log(`文档 ${document.id} 向量化完成，生成了 ${embeddings.length} 个向量。`);
 
-    const vectorDataUrl = `/api/documents/${document.id}/vector-data`;
+    const vectorDataUrl = `/documents/${document.id}/vector-data`;
     await apiClient.post(vectorDataUrl, { vectorData: embeddings });
     console.log(`文档 ${document.id} 的向量数据已保存到后端。`);
 
@@ -361,10 +366,12 @@ export const processDocumentVectorization = async (document: Document): Promise<
   } catch (error) {
     console.error(`处理文档 ${document.id} 向量化时出错:`, error);
     const message = error instanceof Error ? error.message : '向量化失败';
+    
+    console.log(`文档 ${document.fileName} 向量化失败但有文本内容，仍可用于AI分析`);
     return {
       ...document,
       status: DocumentStatus.VECTORIZATION_FAILED,
-      statusMessage: message,
+      statusMessage: `${message}，但文档仍可用于AI分析`,
     };
   }
 };

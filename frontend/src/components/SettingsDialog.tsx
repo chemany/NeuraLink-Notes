@@ -13,7 +13,8 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     rerankingSettings,
     uiSettings, 
     saveAllSettings,
-    resetSettings 
+    resetSettings,
+    defaultModels 
   } = useSettings();
   
   const [isMounted, setIsMounted] = useState(false);
@@ -66,9 +67,91 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
   if (!isOpen) return null;
 
   // 处理LLM表单变更
-  const handleLLMChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleLLMChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     
+    // 如果是切换provider，需要从后端加载对应的配置
+    if (name === 'provider') {
+      console.log('切换provider到:', value);
+      
+      try {
+        const localUnifiedSettingsService = (await import('@/services/localUnifiedSettingsService')).default;
+        
+        if (localUnifiedSettingsService.isLoggedIn()) {
+          // 获取完整的LLM配置
+          const llmConfig = await localUnifiedSettingsService.getLLMSettingsFromFile();
+          console.log('获取到的完整LLM配置:', llmConfig);
+          
+          if (value === 'builtin') {
+            // 内置模型使用占位符
+            setLocalLLMSettings(prev => ({
+              ...prev,
+              provider: 'builtin',
+              apiKey: 'BUILTIN_PROXY',
+              model: 'deepseek/deepseek-chat-v3-0324:free',
+              temperature: 0.7,
+              maxTokens: 2000,
+              customEndpoint: 'BUILTIN_PROXY'
+            }));
+          } else {
+            // 其他provider从保存的配置中加载
+            const providerConfig = llmConfig?.providers?.[value];
+            
+            if (providerConfig) {
+              // 如果找到了对应provider的配置，使用保存的数据
+              const useCustom = providerConfig.use_custom_model || false;
+              let modelToDisplay = '';
+              
+              if (useCustom) {
+                // 使用自定义模型时，优先使用custom_model，回退到model_name
+                modelToDisplay = providerConfig.custom_model || providerConfig.model_name || '';
+              } else {
+                // 使用预定义模型时，优先使用predefined_model，回退到model_name
+                modelToDisplay = providerConfig.predefined_model || providerConfig.model_name || '';
+              }
+              
+              setLocalLLMSettings(prev => ({
+                ...prev,
+                provider: value as LLMSettings['provider'],
+                apiKey: providerConfig.api_key || '',
+                model: modelToDisplay,
+                temperature: prev.temperature, // 温度等参数保持当前值
+                maxTokens: prev.maxTokens,
+                customEndpoint: providerConfig.base_url || '',
+                useCustomModel: useCustom
+              }));
+              console.log(`已加载${value}的保存配置:`, providerConfig);
+            } else {
+              // 如果没有找到配置，使用默认值
+              const defaultEndpoints: Record<string, string> = {
+                'openai': 'https://api.openai.com/v1',
+                'deepseek': 'https://api.deepseek.com/v1',
+                'anthropic': 'https://api.anthropic.com',
+                'google': 'https://generativelanguage.googleapis.com/v1beta',
+                'openrouter': 'https://openrouter.ai/api/v1',
+                'ollama': 'http://localhost:11434/v1',
+                'custom': ''
+              };
+              
+              setLocalLLMSettings(prev => ({
+                ...prev,
+                provider: value as LLMSettings['provider'],
+                apiKey: '',
+                model: '',
+                customEndpoint: defaultEndpoints[value as string] || '',
+                useCustomModel: false // 新provider默认不使用自定义模型
+              }));
+              console.log(`${value}未找到保存的配置，使用默认值`);
+            }
+          }
+          return; // 提前返回，不执行下面的通用更新逻辑
+        }
+      } catch (error) {
+        console.error('切换provider时获取配置失败:', error);
+      }
+    }
+    
+    // 处理其他字段的更新
     setLocalLLMSettings(prev => ({
       ...prev,
       [name]: type === 'number' ? parseFloat(value) : value
@@ -193,6 +276,10 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
 
   const getLLMOptions = () => {
     switch (localLLMSettings.provider) {
+      case 'builtin':
+        return [
+          { value: 'deepseek/deepseek-chat-v3-0324:free', label: '🚀 DeepSeek Chat V3 (已验证可用)' }
+        ];
       case 'openai':
         return [
           { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
@@ -216,6 +303,31 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
         return [
           { value: 'deepseek-chat', label: 'DeepSeek Chat' },
           { value: 'deepseek-coder', label: 'DeepSeek Coder' }
+        ];
+      case 'openrouter':
+        return [
+          // 已验证可用的免费模型
+          { value: 'deepseek/deepseek-chat-v3-0324:free', label: '✅ DeepSeek Chat V3 (已验证)' },
+          // 其他免费模型 (标注Free)
+          { value: 'google/gemini-2.0-flash-exp:free', label: 'Gemini 2.0 Flash (Free)' },
+          { value: 'meta-llama/llama-3.1-8b-instruct:free', label: 'Llama 3.1 8B (Free)' },
+          { value: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)' },
+          { value: 'deepseek/deepseek-chat:free', label: 'DeepSeek Chat (Free)' },
+          { value: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (Free)' },
+          { value: 'qwen/qwq-32b:free', label: 'QwQ 32B Reasoning (Free)' },
+          { value: 'mistralai/mistral-7b-instruct:free', label: 'Mistral 7B (Free)' },
+          { value: 'microsoft/phi-4-reasoning:free', label: 'Phi-4 Reasoning (Free)' },
+          // 自定义输入选项
+          { value: '__custom__', label: '✏️ 自定义模型名称...' },
+          // 付费模型
+          { value: 'openai/gpt-3.5-turbo', label: 'GPT-3.5 Turbo (OpenAI)' },
+          { value: 'openai/gpt-4', label: 'GPT-4 (OpenAI)' },
+          { value: 'openai/gpt-4-turbo', label: 'GPT-4 Turbo (OpenAI)' },
+          { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (OpenAI)' },
+          { value: 'anthropic/claude-3-opus', label: 'Claude 3 Opus (Anthropic)' },
+          { value: 'anthropic/claude-3-sonnet', label: 'Claude 3 Sonnet (Anthropic)' },
+          { value: 'anthropic/claude-3-haiku', label: 'Claude 3 Haiku (Anthropic)' },
+          { value: 'google/gemini-pro', label: 'Gemini Pro (Google)' }
         ];
       case 'ollama':
         return [
@@ -379,28 +491,29 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                           className="w-full p-2 border border-gray-300 rounded-md bg-white"
                           value={localLLMSettings.provider}
                           onChange={(e) => {
-                            const newProvider = e.target.value;
-                            const newModel = !localLLMSettings.useCustomModel 
-                              ? (getLLMOptions().find(opt => opt.value)?.value || '')
-                              : localLLMSettings.model;
-                              
-                            setLocalLLMSettings(prev => ({
-                              ...prev,
-                              provider: newProvider,
-                              model: newModel
-                            }));
+                            // 使用现有的handleLLMChange函数来处理provider切换
+                            handleLLMChange({
+                              target: {
+                                name: 'provider',
+                                value: e.target.value,
+                                type: 'select-one'
+                              }
+                            } as React.ChangeEvent<HTMLSelectElement>);
                           }}
                         >
+                          <option value="builtin">🚀 内置模型 (免费可用)</option>
                           <option value="openai">OpenAI</option>
                           <option value="deepseek">DeepSeek</option>
                           <option value="anthropic">Anthropic</option>
                           <option value="google">Google AI</option>
+                          <option value="openrouter">OpenRouter</option>
                           <option value="ollama">Ollama</option>
                           <option value="custom">自定义</option>
                         </select>
                       </div>
                     </div>
                     
+                    {localLLMSettings.provider !== 'builtin' && (
                     <div className="form-group">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         API密钥
@@ -409,15 +522,61 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                         type="password"
                         name="apiKey"
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        value={localLLMSettings.apiKey}
+                        value={localLLMSettings.provider === 'builtin' ? '' : localLLMSettings.apiKey}
                         onChange={handleLLMChange}
-                        placeholder="输入API密钥"
+                        placeholder={localLLMSettings.provider === 'openrouter' ? '请输入您的OpenRouter API Key' : '输入API密钥'}
+                        disabled={localLLMSettings.provider === 'builtin'}
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        请输入您的API密钥
-                      </p>
+                      {localLLMSettings.provider === 'openrouter' ? (
+                        <div className="mt-1 space-y-1">
+                          <p className="text-xs text-gray-500">
+                            <span>在 </span>
+                            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                              OpenRouter
+                            </a>
+                            <span> 注册并创建API Key。包含多种免费模型，支持GPT、Claude、Gemini等。</span>
+                          </p>
+                          <div className="p-2 bg-blue-50 rounded-md text-xs text-blue-700">
+                            <p><strong>✨ OpenRouter优势：</strong></p>
+                            <ul className="list-disc list-inside mt-1 space-y-0.5">
+                              <li>一个API密钥访问400+模型</li>
+                              <li>包含多个免费模型（已标注Free）</li>
+                              <li>自动负载均衡和故障转移</li>
+                              <li>统一的OpenAI兼容接口</li>
+                            </ul>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500 mt-1">
+                          请输入您的API密钥
+                        </p>
+                      )}
                     </div>
+                    )}
                     
+                    {localLLMSettings.provider === 'builtin' && (
+                      <div className="form-group">
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                          <div className="flex items-center mb-2">
+                            <span className="text-lg">🚀</span>
+                            <h4 className="ml-2 font-medium text-green-800">内置模型</h4>
+                          </div>
+                          <p className="text-sm text-green-700 mb-2">
+                            已为您预配置好稳定可用的AI模型，无需任何设置即可使用。
+                          </p>
+                          <div className="text-xs text-green-600">
+                            <p><strong>✨ 特点：</strong></p>
+                            <ul className="list-disc list-inside mt-1 space-y-0.5">
+                              <li>无需申请API Key</li>
+                              <li>经过验证的稳定模型</li>
+                              <li>开箱即用</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {localLLMSettings.provider !== 'builtin' && (
                     <div className="form-group">
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-sm font-medium text-gray-700">
@@ -474,8 +633,9 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                           : `使用预定义模型列表`}
                       </p>
                     </div>
+                    )}
                     
-                    {localLLMSettings.provider === 'custom' && (
+                    {localLLMSettings.provider !== 'builtin' && (
                       <div className="form-group">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           API地址
@@ -486,8 +646,22 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                           className="w-full p-2 border border-gray-300 rounded-md"
                           value={localLLMSettings.customEndpoint || ''}
                           onChange={handleLLMChange}
-                          placeholder="输入API地址"
+                          placeholder={
+                            localLLMSettings.provider === 'custom' ? "输入API地址" :
+                            localLLMSettings.provider === 'openai' ? "https://api.openai.com/v1" :
+                            localLLMSettings.provider === 'deepseek' ? "https://api.deepseek.com/v1" :
+                            localLLMSettings.provider === 'anthropic' ? "https://api.anthropic.com" :
+                            localLLMSettings.provider === 'google' ? "https://generativelanguage.googleapis.com/v1beta" :
+                            localLLMSettings.provider === 'openrouter' ? "https://openrouter.ai/api/v1" :
+                            localLLMSettings.provider === 'ollama' ? "http://localhost:11434/v1" :
+                            "输入API地址"
+                          }
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                          {localLLMSettings.provider === 'custom' ? 
+                            '请输入完整的API地址' : 
+                            '可以使用默认地址或自定义替代地址'}
+                        </p>
                       </div>
                     )}
                     
@@ -773,4 +947,4 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
       </div>
     </div>
   );
-} 
+}

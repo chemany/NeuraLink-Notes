@@ -9,6 +9,7 @@ import {
   Param,
   Delete,
   Patch,
+  Put,
   UseGuards,
   Request,
   Query,
@@ -18,15 +19,10 @@ import { NotebooksService } from './notebooks.service'; // 导入服务
 import { Notebook } from '@prisma/client'; // 导入类型
 import { CreateNotebookDto } from './dto/create-notebook.dto'; // 导入 DTO
 import { UpdateNotebookDto } from './dto/update-notebook.dto'; // 导入更新 DTO
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // 导入 JwtAuthGuard
-import { User as UserModel } from '@prisma/client'; // Prisma User 模型
-
-interface AuthenticatedRequest extends Request {
-  user: Omit<UserModel, 'password'> & { id: string };
-}
+import { UnifiedAuthGuard, AuthenticatedRequest } from '../unified-auth/unified-auth.guard'; // 导入统一认证守卫
 
 @Controller('notebooks') // 定义基础路由为 /notebooks
-@UseGuards(JwtAuthGuard) // 应用 JwtAuthGuard 到整个控制器
+@UseGuards(UnifiedAuthGuard) // 应用统一认证守卫到整个控制器
 export class NotebooksController {
   private readonly logger = new Logger(NotebooksController.name); // Added logger instance
 
@@ -89,6 +85,22 @@ export class NotebooksController {
     const userId = req.user.id;
     this.logger.log(
       `[NotebooksController] User ${userId} PATCH /notebooks/${id}, folderId: ${updateNotebookDto.folderId}, data:`,
+      updateNotebookDto,
+    );
+    return this.notebooksService.update(id, userId, updateNotebookDto);
+  }
+
+  @Put(':id')
+  @HttpCode(HttpStatus.OK)
+  async updateWithPut(
+    @Param('id') id: string,
+    @Body(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+    updateNotebookDto: UpdateNotebookDto,
+    @Request() req: AuthenticatedRequest,
+  ): Promise<Notebook> {
+    const userId = req.user.id;
+    this.logger.log(
+      `[NotebooksController] User ${userId} PUT /notebooks/${id}, folderId: ${updateNotebookDto.folderId}, data:`,
       updateNotebookDto,
     );
     return this.notebooksService.update(id, userId, updateNotebookDto);

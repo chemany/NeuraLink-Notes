@@ -6,7 +6,7 @@ import { rerankChunks, RerankResult } from './aiService';
 import apiClient from './apiClient';
 
 // 后端 API 地址
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
+import { getApiBaseUrl } from './apiClient';
 
 // 添加API请求限流控制器
 /**
@@ -296,7 +296,7 @@ export interface SearchResult {
 /**
  * 处理文档，生成分块和嵌入向量
  */
-export async function processDocumentForRAG(document: Document): Promise<DocumentChunk[]> {
+export async function processDocumentForRAG(document: Document, embeddingSettings?: EmbeddingModelSettings): Promise<DocumentChunk[]> {
   console.log(`[VectorService] 开始处理文档: ${document.fileName}`);
   
   if (!document.textContent || document.textContent.trim() === '') {
@@ -333,7 +333,7 @@ export async function processDocumentForRAG(document: Document): Promise<Documen
       }));
       
       // 生成嵌入向量
-      await processChunksWithRateLimit(backupChunks);
+      await processChunksWithRateLimit(backupChunks, embeddingSettings);
       return backupChunks;
     }
     
@@ -353,16 +353,16 @@ export async function processDocumentForRAG(document: Document): Promise<Documen
   }));
   
   // 生成嵌入向量
-  await processChunksWithRateLimit(documentChunks);
+  await processChunksWithRateLimit(documentChunks, embeddingSettings);
   return documentChunks;
 }
 
 /**
  * 使用限流机制处理文档块
  */
-async function processChunksWithRateLimit(documentChunks: DocumentChunk[]): Promise<void> {
+async function processChunksWithRateLimit(documentChunks: DocumentChunk[], embeddingSettings?: EmbeddingModelSettings): Promise<void> {
   try {
-    const embeddingSettings = getEmbeddingSettings();
+    const settings = embeddingSettings || getEmbeddingSettings();
     const rateLimiter = ApiRateLimiter.getInstance();
     // 可以保留较大的BATCH_SIZE，因为现在是串行请求
     const MAX_BATCH_SIZE = 300; 
@@ -381,7 +381,7 @@ async function processChunksWithRateLimit(documentChunks: DocumentChunk[]): Prom
       
       try {
         // *** 直接调用 generateEmbeddings，不再在此处处理 429 ***
-        const embeddings = await generateEmbeddings(batchContents, embeddingSettings); 
+        const embeddings = await generateEmbeddings(batchContents, settings); 
         
         // 将嵌入向量分配给对应的块
         if (embeddings.length === batch.length) {
@@ -416,7 +416,7 @@ async function processChunksWithRateLimit(documentChunks: DocumentChunk[]): Prom
 }
 
 // 对多个文档进行批量处理 - 修改为串行处理以减轻API负担
-export async function processDocumentsForRAG(documents: Document[]): Promise<DocumentChunk[]> {
+export async function processDocumentsForRAG(documents: Document[], embeddingSettings?: EmbeddingModelSettings): Promise<DocumentChunk[]> {
   console.log(`[VectorService] 开始串行处理 ${documents.length} 个文档`);
   let allChunks: DocumentChunk[] = [];
   
@@ -424,7 +424,7 @@ export async function processDocumentsForRAG(documents: Document[]): Promise<Doc
   for (const document of documents) {
     try {
       console.log(`[VectorService] 处理文档: ${document.fileName}`);
-      const documentChunks = await processDocumentForRAG(document);
+      const documentChunks = await processDocumentForRAG(document, embeddingSettings);
       allChunks = [...allChunks, ...documentChunks];
       
       // 文档处理完后等待一段时间，避免API压力过大
@@ -473,7 +473,7 @@ export async function storeDocumentChunks(chunks: DocumentChunk[]): Promise<void
         try {
           console.log(`[VectorService] 存储批次，起始块ID: ${firstChunkIdInBatch}, 批次大小: ${batch.length}`);
           // 将 batch 包装在 { vectorData: batch } 中以匹配后端 DTO
-          const response = await apiClient.post(`/api/documents/${documentId}/vector-data`, { vectorData: batch });
+          const response = await apiClient.post(`/documents/${documentId}/vector-data`, { vectorData: batch });
           // 检查响应状态，确保成功
           if (response.status === 201 || response.status === 200) {
             successCount += batch.length;
@@ -496,7 +496,7 @@ export async function storeDocumentChunks(chunks: DocumentChunk[]): Promise<void
       console.log(`[VectorService] Storing single chunk (ID: ${chunk.id}) for document ${documentId}`);
       try {
         // 将 chunk 数组包装在 { vectorData: [chunk] } 中以匹配后端 DTO
-        const response = await apiClient.post(`/api/documents/${documentId}/vector-data`, { vectorData: [chunk] });
+        const response = await apiClient.post(`/documents/${documentId}/vector-data`, { vectorData: [chunk] });
         if (response.status === 201 || response.status === 200) {
           successCount = 1;
           console.log(`[VectorService] Single chunk (ID: ${chunk.id}) stored successfully.`);
@@ -544,7 +544,7 @@ export async function getDocumentChunks(documentId: string): Promise<DocumentChu
 
   try {
     // 使用 apiClient 发起请求，它会自动处理 Authorization 头
-    const response = await apiClient.get(`/api/documents/${documentId}/vector-data`);
+    const response = await apiClient.get(`/documents/${documentId}/vector-data`);
 
     // Axios 的响应数据在 response.data 中
     const chunks = response.data;
@@ -629,6 +629,7 @@ export async function searchRelevantContent(
     rerankModel?: string,      // 使用的重排序模型 (可选)
     initialCandidates?: number, // 初始向量检索数量 (默认 50)
     finalTopN?: number         // 重排序后最终返回的数量 (默认 5)
+    embeddingSettings?: EmbeddingModelSettings // 新增：embedding设置
   } = {}
 ): Promise<SearchResult[]> {
   const { 
@@ -637,7 +638,8 @@ export async function searchRelevantContent(
       enableReranking = false, // 默认不启用重排序
       rerankModel, 
       initialCandidates = 50, // 默认初始检索 50 个
-      finalTopN = 5 // 默认最终返回 5 个
+      finalTopN = 5, // 默认最终返回 5 个
+      embeddingSettings: passedEmbeddingSettings
   } = options;
   // limit 参数现在由 initialCandidates 控制
   const vectorSearchLimit = enableReranking ? initialCandidates : finalTopN; 
@@ -648,7 +650,8 @@ export async function searchRelevantContent(
 
   try {
     // 1. 获取查询向量
-    const embeddingSettings = getEmbeddingSettings();
+    const embeddingSettings = passedEmbeddingSettings || getEmbeddingSettings();
+    console.log('[VectorService] 使用的embedding设置:', embeddingSettings);
     const [queryEmbedding] = await generateEmbeddings([query], embeddingSettings);
     if (!queryEmbedding) {
       console.error('[VectorService] 无法生成查询向量');

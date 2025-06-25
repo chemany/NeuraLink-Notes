@@ -5,6 +5,12 @@ import { DocumentsController } from './documents.controller';
 import { DocumentsProcessor } from './documents.processor';
 import { DocumentProcessingScheduler } from './document-processing.scheduler';
 import { ConfigModule } from '@nestjs/config';
+import { PrismaModule } from '../prisma/prisma.module';
+import { MulterModule } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { NotebooksModule } from '../notebooks/notebooks.module';
+import { SyncModule } from '../sync/sync.module';
+import { UnifiedAuthModule } from '../unified-auth/unified-auth.module';
 // import { DOCUMENT_PROCESSING_QUEUE } from '../app.module';
 // PrismaModule 是全局的，所以这里通常不需要显式导入
 // import { PrismaModule } from '../prisma/prisma.module';
@@ -12,6 +18,13 @@ import { ConfigModule } from '@nestjs/config';
 @Module({
   imports: [
     ConfigModule,
+    PrismaModule,
+    MulterModule.register({
+      storage: memoryStorage(), // 使用内存存储，这样file.buffer会包含文件数据
+    }),
+    NotebooksModule,
+    SyncModule,
+    UnifiedAuthModule,
     // Remove BullModule.registerQueue
     // BullModule.registerQueue({ name: DOCUMENT_PROCESSING_QUEUE }),
   ],
@@ -24,5 +37,6 @@ import { ConfigModule } from '@nestjs/config';
   // 因为 PrismaModule 是 @Global()，所以 DocumentsService 可以直接注入 PrismaService
   // 如果 PrismaModule 不是全局的，则需要取消下面这行的注释：
   // imports: [PrismaModule],
+  exports: [DocumentsService],
 })
 export class DocumentsModule {} // 确保导出 DocumentsModule 类

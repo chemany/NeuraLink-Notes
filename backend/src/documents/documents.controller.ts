@@ -33,15 +33,11 @@ import * as path from 'path';
 import * as mime from 'mime-types';
 import { createReadStream } from 'fs';
 import { SaveVectorDataDto } from './dto/save-vector-data.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { UnifiedAuthGuard, AuthenticatedRequest } from '../unified-auth/unified-auth.guard';
 import { Buffer } from 'buffer';
 
-interface AuthenticatedRequest extends Request {
-  user: Omit<UserModel, 'password'> & { id: string };
-}
-
 @Controller('documents')
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard)
 export class DocumentsController {
   private readonly logger = new Logger(DocumentsController.name);
 

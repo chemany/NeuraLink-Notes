@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { CloudIcon, ArrowUpCircleIcon, ArrowDownCircleIcon, TrashIcon, PlusIcon, RefreshCwIcon } from 'lucide-react';
 import syncService, { SyncConfig } from '../../services/syncService';
-import { SyncProviderType, S3_ACL_OPTIONS } from '../../utils/constants';
+
+// Define constants directly in the component file
+export enum SyncProviderType {
+  WEBDAV = 'WEBDAV',
+  S3 = 'S3',
+}
+
+export const S3_ACL_OPTIONS = [
+  'private', 'public-read', 'public-read-write', 'authenticated-read', 
+  'aws-exec-read', 'bucket-owner-read', 'bucket-owner-full-control'
+];
 
 interface SyncSettingsProps {
   open: boolean;
@@ -650,8 +660,8 @@ const SyncSettings: React.FC<SyncSettingsProps> = ({ open, onOpenChange }) => {
                     >
                       <option value="">不设置ACL</option>
                       {S3_ACL_OPTIONS.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
+                        <option key={option} value={option}>
+                          {option}
                         </option>
                       ))}
                     </select>

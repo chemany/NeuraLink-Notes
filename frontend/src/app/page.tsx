@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import NotebookCard from '@/components/NotebookCard';
 import { useNotebook } from '@/contexts/NotebookContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Folder, Notebook } from '@/types';
 import { toast } from 'react-hot-toast';
 import dynamic from 'next/dynamic';
@@ -57,8 +58,13 @@ export default function Home() {
     deleteNotebook, 
     isInitialized,
     refreshNotebooks,
-    updateNotebookFolder
+    updateNotebookFolder,
+    isLoadingNotebooks,
+    notebooksError
   } = useNotebook();
+  
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [newNotebookTitle, setNewNotebookTitle] = useState('');
@@ -523,8 +529,35 @@ export default function Home() {
               })}
             </div>
             
-            {!isInitialized && <p className="text-center py-10 text-gray-500">加载笔记本和文件夹...</p>}
-            {isInitialized && folders.length === 0 && notebooks.length === 0 && (
+            {isAuthLoading && (
+              <p className="text-center py-10 text-gray-500">正在验证身份...</p>
+            )}
+            {!isAuthLoading && !isAuthenticated && (
+              <div className="text-center py-12 text-gray-500">
+                <p className="mb-4">请先登录以查看您的笔记本</p>
+                <Link 
+                  href="/auth/login"
+                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 inline-block"
+                >
+                  前往登录
+                </Link>
+              </div>
+            )}
+            {!isAuthLoading && isAuthenticated && !isInitialized && (
+              <p className="text-center py-10 text-gray-500">加载笔记本和文件夹...</p>
+            )}
+            {!isAuthLoading && isAuthenticated && isInitialized && notebooksError && (
+              <div className="text-center py-12 text-red-500">
+                <p className="mb-4">加载数据时出错：{notebooksError}</p>
+                <button 
+                  onClick={refreshNotebooks}
+                  className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600"
+                >
+                  重试
+                </button>
+              </div>
+            )}
+            {!isAuthLoading && isAuthenticated && isInitialized && !notebooksError && folders.length === 0 && notebooks.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 <p className="mb-4">您还没有创建任何笔记本或文件夹</p>
                 <button 

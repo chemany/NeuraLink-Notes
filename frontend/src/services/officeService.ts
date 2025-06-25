@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import { DocumentStatus } from '@/types/shared_local';
 import JSZip from 'jszip';
+import * as XLSX from 'xlsx-js-style';
 
 /**
  * 从Word文档中提取文本
@@ -44,6 +45,102 @@ export const extractTextFromWord = async (file: File): Promise<string> => {
   } catch (error) {
     console.error('Word文档处理失败:', error);
     throw new Error(`Word文档处理失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+/**
+ * 从Excel文档中提取文本
+ * @param file Excel文档文件
+ * @returns 提取的文本内容
+ */
+export const extractTextFromExcel = async (file: File): Promise<string> => {
+  try {
+    console.log(`开始从Excel文档提取文本: ${file.name}`);
+    
+    // 将文件转换为ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    
+    // 使用XLSX库读取Excel文件
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    
+    console.log(`Excel文件已读取，包含工作表: ${workbook.SheetNames.join(', ')}`);
+    
+    // 存储提取的文本
+    const textContent: string[] = [];
+    
+    // 处理每个工作表
+    for (const sheetName of workbook.SheetNames) {
+      console.log(`处理工作表: ${sheetName}`);
+      
+      const worksheet = workbook.Sheets[sheetName];
+      
+      // 添加工作表标题
+      textContent.push(`--- 工作表: ${sheetName} ---`);
+      
+      // 将工作表转换为CSV格式的文本
+      const csvText = XLSX.utils.sheet_to_csv(worksheet);
+      
+      if (csvText.trim()) {
+        // 格式化CSV文本，使其更可读
+        const formattedText = csvText
+          .split('\n')
+          .map(row => row.trim())
+          .filter(row => row.length > 0)
+          .map(row => {
+            // 处理CSV行，替换逗号为制表符以提高可读性
+            return row.split(',').map(cell => cell.replace(/"/g, '')).join('\t');
+          })
+          .join('\n');
+        
+        textContent.push(formattedText);
+      } else {
+        textContent.push('(无数据)');
+      }
+      
+      textContent.push(''); // 添加空行分隔工作表
+    }
+    
+    // 合并所有文本
+    const fullText = textContent.join('\n');
+    
+    console.log(`Excel文档文本提取完成，总长度: ${fullText.length}`);
+    return fullText;
+    
+  } catch (error) {
+    console.error('Excel文档处理失败:', error);
+    throw new Error(`Excel文档处理失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+/**
+ * 从CSV文档中提取文本
+ * @param file CSV文档文件
+ * @returns 提取的文本内容
+ */
+export const extractTextFromCSV = async (file: File): Promise<string> => {
+  try {
+    console.log(`开始从CSV文档提取文本: ${file.name}`);
+    
+    // 读取文件内容
+    const text = await file.text();
+    
+    // 格式化CSV文本，使其更可读
+    const formattedText = text
+      .split('\n')
+      .map(row => row.trim())
+      .filter(row => row.length > 0)
+      .map(row => {
+        // 处理CSV行，替换逗号为制表符以提高可读性
+        return row.split(',').map(cell => cell.replace(/"/g, '')).join('\t');
+      })
+      .join('\n');
+    
+    console.log(`CSV文档文本提取完成，总长度: ${formattedText.length}`);
+    return formattedText;
+    
+  } catch (error) {
+    console.error('CSV文档处理失败:', error);
+    throw new Error(`CSV文档处理失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 

@@ -1,0 +1,16 @@
+{
+  "name": "灵枢笔记",
+  "short_name": "灵枢笔记",
+  "description": "连接你的脑海",
+  "start_url": "/notepads/",
+  "display": "standalone",
+  "background_color": "#6366F1",
+  "theme_color": "#6366F1",
+  "icons": [
+    {
+      "src": "/notepads/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+} 

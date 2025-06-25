@@ -222,7 +222,7 @@ export default function FileUploader({ notebookId, onUploadComplete }: FileUploa
           onChange={handleFileInputChange}
           disabled={isUploading}
           ref={fileInputRef}
-          accept=".pdf,.doc,.docx,.txt,.md,.csv,.json"
+          accept=".pdf,.doc,.docx,.txt,.md,.csv,.json,.xlsx,.xls"
         />
         
         <div className="flex flex-col items-center justify-center text-gray-600">
@@ -234,7 +234,7 @@ export default function FileUploader({ notebookId, onUploadComplete }: FileUploa
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               <p className="text-xs font-medium">拖放文件到此处上传，或点击选择文件</p>
-              <p className="text-xxs text-gray-500 mt-0.5">支持PDF、Word、TXT、Markdown、CSV、JSON</p>
+              <p className="text-xxs text-gray-500 mt-0.5">支持PDF、Word、Excel、TXT、Markdown、CSV、JSON</p>
             </>
           )}
         </div>

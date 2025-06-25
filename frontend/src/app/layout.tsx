@@ -11,6 +11,12 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: '灵枢笔记',
   description: '连接你的脑海。',
+  icons: {
+    icon: '/notepads/favicon.svg',
+    shortcut: '/notepads/favicon.svg',
+    apple: '/notepads/favicon.svg',
+  },
+  manifest: '/notepads/manifest.json',
 };
 
 export default function RootLayout({
@@ -20,6 +26,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN" className="h-full">
+      <head>
+        <link rel="icon" href="/notepads/favicon.svg" type="image/svg+xml" />
+        <link rel="shortcut icon" href="/notepads/favicon.svg" />
+      </head>
       <body className={`${inter.className} h-screen overflow-hidden`}>
         <AuthProvider>
           <SettingsProvider>

@@ -9,7 +9,7 @@ import axios from 'axios';
  */
 export const registerUser = async (registerData: RegisterUserDto): Promise<any> => {
   try {
-    const response = await apiClient.post('/api/auth/register', registerData);
+    const response = await apiClient.post('/auth/register', registerData);
     return response.data;
   } catch (error) {
     throw handleApiError(error, 'registerUser');
@@ -23,7 +23,7 @@ export const registerUser = async (registerData: RegisterUserDto): Promise<any> 
  */
 export const loginUser = async (loginData: LoginUserDto): Promise<{ accessToken: string; user: any }> => {
   try {
-    const response = await apiClient.post<{ accessToken: string; user: any }>('/api/auth/login', loginData);
+    const response = await apiClient.post<{ accessToken: string; user: any }>('/auth/login', loginData);
     if (response.data && response.data.accessToken) {
       // 登录成功后，将 token 存储到 localStorage
       if (typeof window !== 'undefined') {
@@ -55,7 +55,7 @@ export const logoutUser = (): void => {
  */
 export const getProfile = async (): Promise<any> => {
   try {
-    const response = await apiClient.get('/api/auth/profile');
+    const response = await apiClient.get('/auth/profile');
     return response.data;
   } catch (error) {
     // 如果是401错误，可能意味着token无效或过期，可以在这里处理登出逻辑

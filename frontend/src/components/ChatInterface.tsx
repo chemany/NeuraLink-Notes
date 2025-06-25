@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { useNotebook } from '@/contexts/NotebookContext';
 import { useSettings } from '@/contexts/SettingsContext';
-import { generateAIResponse, generateKeywords } from '@/services/aiService';
+import { generateAIResponse } from '@/services/aiService';
 import { Message, Document } from '@/types';
 import { DocumentStatus } from '@/types/shared_local';
 import { formatDate } from '@/utils/formatters';
@@ -16,6 +16,7 @@ import { SimpleBoardRef } from './SimpleBoard';
 import { MarkdownNotebookRef } from './MarkdownNotebook';
 import DocumentPreview from './DocumentPreview';
 import { useRouter } from 'next/navigation';
+import { convertMarkdownToHtml, containsMarkdown } from '../utils/markdownToHtml';
 // 暂时注释掉ReactMarkdown导入，解决编译错误
 // import ReactMarkdown from 'react-markdown';
 
@@ -87,9 +88,13 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
   
   // 检查是否有已处理完成的文档
   const hasCompletedDocuments = React.useMemo(() => {
-    const completedDocuments = documents?.filter(doc => doc.status === DocumentStatus.COMPLETED) || [];
+    // 允许状态为COMPLETED或向量化失败但有文本内容的文档
+    const availableDocuments = documents?.filter(doc => 
+      doc.status === DocumentStatus.COMPLETED || 
+      (doc.status === DocumentStatus.VECTORIZATION_FAILED && doc.textContent && doc.textContent.trim().length > 0)
+    ) || [];
     
-    console.log(`[hasCompletedDocuments] 检查已完成文档: 总文档数=${documents?.length || 0}, 已完成文档数=${completedDocuments.length}`);
+    console.log(`[hasCompletedDocuments] 检查可用文档: 总文档数=${documents?.length || 0}, 可用文档数=${availableDocuments.length}`);
     
     // 如果没有文档，而此时使用"所有文档"模式，应该返回true而不是false
     if (!documents || documents.length === 0) {
@@ -97,7 +102,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
       return true; // 没有文档不应阻止聊天
     }
     
-    return completedDocuments.length > 0;
+    return availableDocuments.length > 0;
   }, [documents]);
 
   const scrollToBottom = () => {
@@ -109,14 +114,17 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
     if (!inputValue.trim() || isLoading) return;
 
     try {
-      // 检查是否有已处理完成的文档
-      const completedDocuments = documents?.filter(doc => doc.status === DocumentStatus.COMPLETED) || [];
+      // 检查是否有可用的文档（包括向量化失败但有文本内容的文档）
+      const availableDocuments = documents?.filter(doc => 
+        doc.status === DocumentStatus.COMPLETED || 
+        (doc.status === DocumentStatus.VECTORIZATION_FAILED && doc.textContent && doc.textContent.trim().length > 0)
+      ) || [];
       
-      console.log(`提交查询时检查文档: 总数=${documents?.length || 0}, 已完成=${completedDocuments.length}`);
+      console.log(`提交查询时检查文档: 总数=${documents?.length || 0}, 可用=${availableDocuments.length}`);
       
-      // 如果有文档但都未处理完成时才阻止发送
-      if (documents && documents.length > 0 && completedDocuments.length === 0) {
-        console.warn('没有已处理完成的文档，无法发送消息');
+      // 如果有文档但都不可用时才阻止发送
+      if (documents && documents.length > 0 && availableDocuments.length === 0) {
+        console.warn('没有可用的文档，无法发送消息');
         alert('请等待文档处理完成后再发送消息');
         return;
       }
@@ -169,7 +177,9 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
 
       try {
         // 定义流式输出的回调函数
+        let isStreamingMode = false; // 标记是否使用了流式模式
         const handleStreamingResponse = (partialResponse: string) => {
+          isStreamingMode = true; // 标记已进入流式模式
           // 更新AI消息内容，但保持loading状态
           setLocalMessages(prevMessages => {
             const newMessages = [...prevMessages];
@@ -190,18 +200,18 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
         // 生成AI响应，传入流式输出回调
         console.log('开始生成AI响应...');
         
-        console.log(`检查完成文档状态: 总文档数=${documents?.length || 0}, 已完成文档数=${completedDocuments.length}`);
+        console.log(`检查可用文档状态: 总文档数=${documents?.length || 0}, 可用文档数=${availableDocuments.length}`);
         
         let aiResponse;
-        if (completedDocuments.length === 0) {
-          console.warn('没有已处理完成的文档');
-          // 如果没有已完成的文档，返回提示信息而不是生成响应
+        if (availableDocuments.length === 0) {
+          console.warn('没有可用的文档');
+          // 如果没有可用的文档，返回提示信息而不是生成响应
           aiResponse = "请先上传并等待文档处理完成后再提问。";
         } else {
           // 调用支持流式输出的AI服务生成响应
           aiResponse = await generateAIResponse(
             inputValue,
-            completedDocuments,
+            availableDocuments,
             handleStreamingResponse
           );
         }
@@ -212,19 +222,37 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
           throw new Error('AI返回了空响应');
         }
         
-        // 最终更新AI消息内容并设置为成功状态
-        setLocalMessages(prevMessages => {
-          const newMessages = [...prevMessages];
-          const aiMessageIndex = newMessages.length - 1;
-          
-          newMessages[aiMessageIndex] = {
-            ...newMessages[aiMessageIndex],
-            content: aiResponse,
-            status: 'sent'
-          };
-          
-          return newMessages;
-        });
+        // 只有在非流式模式下才用返回值更新消息内容
+        // 在流式模式下，内容已经通过handleStreamingResponse更新了
+        if (!isStreamingMode) {
+          console.log('使用非流式模式，更新最终消息内容');
+          setLocalMessages(prevMessages => {
+            const newMessages = [...prevMessages];
+            const aiMessageIndex = newMessages.length - 1;
+            
+            newMessages[aiMessageIndex] = {
+              ...newMessages[aiMessageIndex],
+              content: aiResponse,
+              status: 'sent'
+            };
+            
+            return newMessages;
+          });
+        } else {
+          console.log('流式模式已完成，仅更新消息状态为sent');
+          // 在流式模式下，只需要更新状态为sent，不更新内容
+          setLocalMessages(prevMessages => {
+            const newMessages = [...prevMessages];
+            const aiMessageIndex = newMessages.length - 1;
+            
+            newMessages[aiMessageIndex] = {
+              ...newMessages[aiMessageIndex],
+              status: 'sent'
+            };
+            
+            return newMessages;
+          });
+        }
         
         console.log('AI响应生成完成');
       } catch (error) {
@@ -333,9 +361,10 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
           // When using old regex, assume the full chatMessageContent is the content
           // noteContentHtml is already set to chatMessageContent by default
         } else {
-          console.log('[ChatInterface] OLD Regex did not match. Falling back to generateKeywords or default.');
-          const keywordsTitle = generateKeywords(chatMessageContent); // chatMessageContent here is the full AI response
-          console.log('[ChatInterface] Title from generateKeywords:', keywordsTitle);
+          console.log('[ChatInterface] OLD Regex did not match. Using default title.');
+          // const keywordsTitle = generateKeywords(chatMessageContent); // generateKeywords函数暂时不可用
+          const keywordsTitle = '对话摘要'; // 使用默认标题
+          console.log('[ChatInterface] Using default title:', keywordsTitle);
           noteTitle = keywordsTitle || `聊天记录 ${formatDate(new Date().toISOString())}`;
           console.log('[ChatInterface] Title after fallback:', noteTitle);
           // noteContentHtml is already set to chatMessageContent
@@ -356,6 +385,38 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
 
     console.log('[ChatInterface] Final noteContentHtml (first 100 chars):', noteContentHtml.substring(0, 100));
     console.log('[ChatInterface] Final noteContentHtml length:', noteContentHtml.length);
+
+    // 🔧 新增：将markdown格式转换为HTML格式，以便富文本编辑器正确显示
+    if (containsMarkdown(noteContentHtml)) {
+      console.log('[ChatInterface] 检测到markdown语法，正在转换为HTML...');
+      const originalContent = noteContentHtml;
+      noteContentHtml = convertMarkdownToHtml(noteContentHtml);
+      
+      // 🎯 进一步处理中文排版格式
+      noteContentHtml = noteContentHtml
+        // 🔥 首先处理可能被错误分割的编号标题
+        .replace(/<p([^>]*)>\s*(\d+\.)\s*<\/p>\s*<p([^>]*)>([^<]+)<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2$4</h3>')
+        .replace(/<p([^>]*)>\s*(\d+\.)\s*<br\s*\/?>\s*([^<]+)<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2$3</h3>')
+        .replace(/<p([^>]*)>\s*(\d+\.\s*[^<]+?)\s*<\/p>/g, '<h3 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2</h3>')
+
+        // 为所有段落添加中文排版样式：首行缩进两个字符
+        .replace(/<p(?:\s[^>]*)?>([^<]*)</g, '<p style="text-indent: 2em; margin: 0.5em 0; padding: 0; white-space: normal;">$1<')
+        // 确保标题完全没有缩进和边距
+        .replace(/<(h[1-6])(?:\s[^>]*)?>([^<]*)</g, '<$1 style="text-indent: 0; margin: 0.5em 0; padding: 0; white-space: nowrap; display: block; font-weight: bold;">$2<')
+        // 注意：列表项现在在markdownToHtml中已经转换为段落格式，无需额外处理
+        // 处理引用块
+        .replace(/<blockquote(?:\s[^>]*)?>/, '<blockquote style="text-indent: 0; margin: 0.5em 0; padding-left: 1em; border-left: 4px solid #ccc;">');
+      
+      console.log('[ChatInterface] Markdown转换完成:', {
+        原始长度: originalContent.length,
+        转换后长度: noteContentHtml.length,
+        预览: noteContentHtml.substring(0, 100) + '...'
+      });
+    } else {
+      console.log('[ChatInterface] 未检测到markdown语法，保持原格式');
+      // 对于纯文本，应用中文排版格式
+      noteContentHtml = `<p style="text-indent: 2em; margin: 0; padding: 0;">${noteContentHtml.replace(/\n/g, '<br>')}</p>`;
+    }
 
     try {
       let targetNotebookId: string | undefined = currentNotebook?.id;
@@ -407,7 +468,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
         
         // 如果是新创建的笔记本，导航到它
         if (newNotebookCreated) {
-          router.push(`/notebook/${targetNotebookId}`);
+          router.push(`/${targetNotebookId}`);
           //  当 NotebookLayout 加载时，它会获取 currentNotes。
           //  可以考虑在 NotebookLayout 中添加逻辑，如果 URL query param 中有 noteId，则自动设为 activeNote。
           //  或者，在这里调用一个方法（如果 NotebookContext 或 Layout 暴露的话）来设置 activeNote。
@@ -419,7 +480,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
           console.log('[ChatInterface] 笔记已保存到当前笔记本。NotebookLayout应处理笔记列表的更新。');
         }
         // 如果希望总是导航到新笔记（即使在当前笔记本中创建）
-        // router.push(`/notebook/${targetNotebookId}?note=${newNote.id}`); // 这需要NotebookLayout支持从query读取noteId
+        // router.push(`/notebooks/${targetNotebookId}?note=${newNote.id}`); // 这需要NotebookLayout支持从query读取noteId
         
       } else {
         toast.error('在笔记本中创建笔记失败。');

@@ -20,6 +20,17 @@ const defaultLLMSettings: LLMSettingsDto = {
   customEndpoint: '',
 };
 
+// 提供商默认模型映射
+const providerDefaultModels: Record<string, string> = {
+  'openai': 'gpt-3.5-turbo',
+  'deepseek': 'deepseek-chat',
+  'anthropic': 'claude-instant-1',
+  'google': 'gemini-pro',
+  'openrouter': 'google/gemini-2.0-flash-exp:free',
+  'ollama': 'llama2',
+  'custom': ''
+};
+
 const defaultEmbeddingSettings: EmbeddingModelSettingsDto = {
   provider: 'siliconflow',
   apiKey: '', // API Key 在这里是占位符
@@ -132,7 +143,8 @@ export class SettingsService {
     const currentLLMSettings = existingSettings?.llmSettings ? JSON.parse(existingSettings.llmSettings as string) as LLMSettingsDto : defaultLLMSettings;
     if (data.llmSettings) {
       const updatedLLMSettings = { ...currentLLMSettings, ...data.llmSettings };
-      if (data.llmSettings.apiKey === undefined && currentLLMSettings.apiKey) { // 如果 DTO 中没有 apiKey，保留旧的
+      // 如果 DTO 中的 apiKey 为空字符串或 undefined，保留旧的 apiKey
+      if ((data.llmSettings.apiKey === undefined || data.llmSettings.apiKey === '' || data.llmSettings.apiKey?.trim() === '') && currentLLMSettings.apiKey) {
          updatedLLMSettings.apiKey = currentLLMSettings.apiKey;
       }
       newSettingsData.llmSettings = JSON.stringify(updatedLLMSettings);
@@ -145,7 +157,8 @@ export class SettingsService {
     const currentEmbeddingSettings = existingSettings?.embeddingSettings ? JSON.parse(existingSettings.embeddingSettings as string) as EmbeddingModelSettingsDto : defaultEmbeddingSettings;
     if (data.embeddingSettings) {
       const updatedEmbeddingSettings = { ...currentEmbeddingSettings, ...data.embeddingSettings };
-       if (data.embeddingSettings.apiKey === undefined && currentEmbeddingSettings.apiKey) { // 如果 DTO 中没有 apiKey，保留旧的
+      // 如果 DTO 中的 apiKey 为空字符串或 undefined，保留旧的 apiKey
+      if ((data.embeddingSettings.apiKey === undefined || data.embeddingSettings.apiKey === '' || data.embeddingSettings.apiKey?.trim() === '') && currentEmbeddingSettings.apiKey) {
          updatedEmbeddingSettings.apiKey = currentEmbeddingSettings.apiKey;
       }
       newSettingsData.embeddingSettings = JSON.stringify(updatedEmbeddingSettings);
@@ -189,5 +202,39 @@ export class SettingsService {
         uiSettings: newSettingsData.uiSettings,
       },
     });
+  }
+
+  /**
+   * 获取包含敏感信息(API Key)的完整用户设置，仅供服务器端AI调用使用
+   * 注意：此方法返回包含API Key的敏感信息，应谨慎使用
+   */
+  async getFullUserSettings(userId: string): Promise<{
+    llmSettings: LLMSettingsDto;
+    embeddingSettings: EmbeddingModelSettingsDto;
+    rerankingSettings: RerankingSettingsDto;
+    uiSettings: UISettingsDto;
+  }> {
+    const userSettings = await this.prisma.userSettings.findUnique({
+      where: { userId },
+    });
+
+    // 从数据库解析的设置，如果为 null 则为空对象
+    const dbLLMSettings = userSettings?.llmSettings ? JSON.parse(userSettings.llmSettings as string) as LLMSettingsDto : {};
+    const dbEmbeddingSettings = userSettings?.embeddingSettings ? JSON.parse(userSettings.embeddingSettings as string) as EmbeddingModelSettingsDto : {};
+    const dbRerankingSettings = userSettings?.rerankingSettings ? JSON.parse(userSettings.rerankingSettings as string) as RerankingSettingsDto : {};
+    const dbUISettings = userSettings?.uiSettings ? JSON.parse(userSettings.uiSettings as string) as UISettingsDto : {};
+    
+    // 合并默认设置和数据库中的设置，保留API Key
+    const llmSettings = this.deepMerge({}, defaultLLMSettings, dbLLMSettings);
+    const embeddingSettings = this.deepMerge({}, defaultEmbeddingSettings, dbEmbeddingSettings);
+    const rerankingSettings = this.deepMerge({}, defaultRerankingSettings, dbRerankingSettings);
+    const uiSettings = this.deepMerge({}, defaultUISettings, dbUISettings);
+
+    return {
+      llmSettings,
+      embeddingSettings,
+      rerankingSettings,
+      uiSettings,
+    };
   }
 }
