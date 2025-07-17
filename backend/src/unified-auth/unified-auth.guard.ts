@@ -9,7 +9,7 @@ export interface AuthenticatedRequest extends Request {
 
 /**
  * 统一认证守卫
- * 替代原有的JWT认证，使用统一设置服务验证token
+ * 恢复完整的token验证，确保用户数据隔离
  */
 @Injectable()
 export class UnifiedAuthGuard implements CanActivate {
@@ -27,7 +27,7 @@ export class UnifiedAuthGuard implements CanActivate {
     try {
       console.log('[UnifiedAuthGuard] 验证token...');
       const verification = await this.unifiedAuthService.verifyToken(token);
-      
+
       if (!verification.valid || !verification.user) {
         console.log('[UnifiedAuthGuard] token验证失败');
         throw new UnauthorizedException('用户未认证或 Token 无效');
@@ -57,4 +57,4 @@ export class UnifiedAuthGuard implements CanActivate {
     const [type, token] = authorization.split(' ') ?? [];
     return type === 'Bearer' ? token : undefined;
   }
-} 
+}

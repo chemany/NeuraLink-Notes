@@ -3,6 +3,10 @@ import { PrismaService } from '../prisma/prisma.service'; // 确保 PrismaServic
 import { Note, Prisma } from '@prisma/client'; // 从 @prisma/client 导入 Note 和 Prisma 类型
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { ConfigService } from '@nestjs/config';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as fsExtra from 'fs-extra';
 
 /**
  * Service responsible for business logic related to rich text Notes.
@@ -11,8 +15,14 @@ import { UpdateNoteDto } from './dto/update-note.dto';
 @Injectable()
 export class NotesService {
   private readonly logger = new Logger(NotesService.name);
+  private readonly uploadsDir: string;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+  }
 
   /**
    * 工具函数：将数据库 Note 对象的 contentJson 字段序列化为字符串，时间字段转为 ISO 字符串
@@ -57,6 +67,14 @@ export class NotesService {
       };
       
       const newNote = await this.prisma.note.create({ data: dataToCreate });
+
+      // 保存富文本笔记到文件系统
+      try {
+        await this.saveRichNoteAsFile(notebookId, userId, newNote.id, createNoteDto.title || '', createNoteDto.contentHtml || '');
+      } catch (error) {
+        this.logger.error(`Failed to save rich note ${newNote.id} to file system: ${error.message}`, error.stack);
+      }
+
       this.logger.log(`User ${userId} successfully created note ID ${newNote.id} in notebook ${notebookId}`);
       return this.serializeNote(newNote);
     } catch (error) {
@@ -151,6 +169,22 @@ export class NotesService {
         where: { id: noteId }, // id is unique
         data: dataToUpdate,
       });
+
+      // 更新文件系统中的富文本笔记
+      if (updatedNote.notebookId) {
+        try {
+          await this.saveRichNoteAsFile(
+            updatedNote.notebookId,
+            userId,
+            noteId,
+            updateNoteDto.title || updatedNote.title || '',
+            updateNoteDto.contentHtml || updatedNote.contentHtml || ''
+          );
+        } catch (error) {
+          this.logger.error(`Failed to update rich note ${noteId} file: ${error.message}`, error.stack);
+        }
+      }
+
       this.logger.log(`User ${userId} successfully updated note ID: ${noteId}`);
       return this.serializeNote(updatedNote);
     } catch (error) {
@@ -178,6 +212,15 @@ export class NotesService {
       const existingNote = await this.findOne(noteId, userId); // findOne performs ownership check
       // existingNote will throw if not found or not owned
 
+      // 删除文件系统中的富文本笔记文件
+      if (existingNote.notebookId) {
+        try {
+          await this.deleteRichNoteFile(existingNote.notebookId, userId, noteId, existingNote.title || '');
+        } catch (error) {
+          this.logger.error(`Failed to delete rich note ${noteId} file: ${error.message}`, error.stack);
+        }
+      }
+
       const deletedNote = await this.prisma.note.delete({
         where: { id: noteId }, // id is unique
       });
@@ -193,4 +236,148 @@ export class NotesService {
       throw new InternalServerErrorException('Failed to delete note.');
     }
   }
-} 
+
+  /**
+   * 保存富文本笔记到文件系统
+   */
+  private async saveRichNoteAsFile(notebookId: string, userId: string, noteId: string, title: string, contentHtml: string) {
+    try {
+      // 使用用户名和笔记本名称构建路径
+      const username = await this.getUsernameFromUserId(userId);
+      const notebookName = await this.getNotebookNameFromId(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const richNotesDir = path.join(notebookDir, 'rich-notes');
+      await fsExtra.ensureDir(richNotesDir);
+
+      // 使用笔记标题作为主要文件名，noteId作为后缀以避免重复
+      const safeTitle = this.sanitizeFileName(title) || 'untitled';
+      const fileName = `${safeTitle}_${noteId}.html`;
+      const filePath = path.join(richNotesDir, fileName);
+
+      // 保存为HTML格式，包含标题
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+</head>
+<body>
+    <h1>${title}</h1>
+    ${contentHtml}
+</body>
+</html>`;
+
+      await fs.promises.writeFile(filePath, htmlContent, 'utf-8');
+      this.logger.log(`User ${userId} successfully saved rich note ${noteId} as HTML file: ${filePath}`);
+
+      return filePath;
+    } catch (error) {
+      this.logger.error(`User ${userId} failed to save rich note ${noteId} as HTML file: ${error.message}`, error.stack);
+      return null;
+    }
+  }
+
+  /**
+   * 删除富文本笔记文件
+   */
+  private async deleteRichNoteFile(notebookId: string, userId: string, noteId: string, title: string) {
+    try {
+      // 使用用户名和笔记本名称构建路径
+      const username = await this.getUsernameFromUserId(userId);
+      const notebookName = await this.getNotebookNameFromId(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const richNotesDir = path.join(notebookDir, 'rich-notes');
+
+      if (!(await fsExtra.pathExists(richNotesDir))) {
+        this.logger.warn(`Rich notes directory for notebook ${notebookId} (User ${userId}) does not exist, skipping file deletion`);
+        return;
+      }
+
+      // 使用笔记标题作为主要文件名，noteId作为后缀
+      const safeTitle = this.sanitizeFileName(title) || 'untitled';
+      const fileName = `${safeTitle}_${noteId}.html`;
+      const filePath = path.join(richNotesDir, fileName);
+
+      if (await fsExtra.pathExists(filePath)) {
+        await fs.promises.unlink(filePath);
+        this.logger.log(`User ${userId} successfully deleted HTML file for rich note ${noteId}: ${filePath}`);
+      } else {
+        this.logger.warn(`HTML file for rich note ${noteId} not found: ${filePath}`);
+      }
+    } catch (error) {
+      this.logger.error(`User ${userId} failed to delete HTML file for rich note ${noteId}: ${error.message}`, error.stack);
+    }
+  }
+
+  /**
+   * 根据用户ID获取用户名（通过邮箱映射）
+   */
+  private async getUsernameFromUserId(userId: string): Promise<string> {
+    try {
+      // 首先从数据库获取用户邮箱
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      });
+
+      if (!user || !user.email) {
+        console.log(`[NotesService] 未找到用户ID ${userId} 对应的邮箱，使用用户ID`);
+        return userId;
+      }
+
+      // 邮箱到用户名的映射
+      const emailToUsername: Record<string, string> = {
+        'link918@qq.com': 'jason'
+        // 可以在这里添加更多映射
+      };
+
+      const username = emailToUsername[user.email] || user.email.split('@')[0];
+      console.log(`[NotesService] 邮箱映射: ${user.email} -> ${username}`);
+      return username;
+    } catch (error) {
+      console.error(`[NotesService] 获取用户名失败，使用用户ID:`, error);
+      return userId;
+    }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    try {
+      const notebook = await this.prisma.notebook.findUnique({
+        where: { id: notebookId },
+        select: { title: true }
+      });
+
+      if (!notebook || !notebook.title) {
+        console.log(`[NotesService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
+        return notebookId;
+      }
+
+      // 清理文件名，移除不安全的字符
+      const safeName = notebook.title
+        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+        .replace(/\s+/g, '_')           // 替换空格为下划线
+        .trim();
+
+      console.log(`[NotesService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
+      return safeName || notebookId;
+    } catch (error) {
+      console.error(`[NotesService] 获取笔记本名称失败，使用笔记本ID:`, error);
+      return notebookId;
+    }
+  }
+
+  /**
+   * 清理文件名，使其适合作为文件名
+   */
+  private sanitizeFileName(title: string): string {
+    const safeName = title
+      .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+      .replace(/\s+/g, '_')           // 替换空格为下划线
+      .trim();
+
+    return safeName || 'untitled';
+  }
+}

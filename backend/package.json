@@ -1,10 +1,10 @@
 {
-  "name": "backend",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "name": "neuralink-notes-backend",
+  "version": "2.0.0",
+  "description": "灵枢笔记后端服务 - 基于AI的智能笔记管理系统后端API",
+  "author": "Jason",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

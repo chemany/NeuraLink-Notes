@@ -58,6 +58,78 @@ export class DocumentsService {
     return this.uploadsDir;
   }
 
+  /**
+   * 根据用户ID获取用户名（通过邮箱映射）
+   */
+  private async getUsernameFromUserId(userId: string): Promise<string> {
+    try {
+      // 首先从数据库获取用户邮箱
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      });
+
+      if (!user || !user.email) {
+        console.log(`[DocumentsService] 未找到用户ID ${userId} 对应的邮箱，使用用户ID`);
+        return userId;
+      }
+
+      // 邮箱到用户名的映射
+      const emailToUsername: Record<string, string> = {
+        'link918@qq.com': 'jason'
+        // 可以在这里添加更多映射
+      };
+
+      const username = emailToUsername[user.email] || user.email.split('@')[0];
+      console.log(`[DocumentsService] 邮箱映射: ${user.email} -> ${username}`);
+      return username;
+    } catch (error) {
+      console.error(`[DocumentsService] 获取用户名失败，使用用户ID:`, error);
+      return userId;
+    }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    try {
+      const notebook = await this.prisma.notebook.findUnique({
+        where: { id: notebookId },
+        select: { title: true }
+      });
+
+      if (!notebook || !notebook.title) {
+        console.log(`[DocumentsService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
+        return notebookId;
+      }
+
+      // 清理文件名，移除不安全的字符
+      const safeName = notebook.title
+        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+        .replace(/\s+/g, '_')           // 替换空格为下划线
+        .trim();
+
+      console.log(`[DocumentsService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
+      return safeName || notebookId;
+    } catch (error) {
+      console.error(`[DocumentsService] 获取笔记本名称失败，使用笔记本ID:`, error);
+      return notebookId;
+    }
+  }
+
+  /**
+   * 清理文件名，使其适合作为文件名
+   */
+  private sanitizeFileName(fileName: string): string {
+    const safeName = fileName
+      .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+      .replace(/\s+/g, '_')           // 替换空格为下划线
+      .trim();
+
+    return safeName || 'untitled';
+  }
+
   // --- create method (modified) ---
   async create(
     notebookId: string,
@@ -147,8 +219,13 @@ export class DocumentsService {
         finalFilePath = '';
         let counter = 0;
         let fileExists = true;
-        const userNotebookUploadPath = path.join(this.uploadsDir, userId, notebookId);
-        const finalFileDir = path.join(userNotebookUploadPath, docId);
+        // 使用用户名和笔记本名称，文档直接放在笔记本文件夹中
+        const username = await this.getUsernameFromUserId(userId);
+        const notebookName = await this.getNotebookNameFromId(notebookId);
+        const userNotebookUploadPath = path.join(this.uploadsDir, username, notebookName);
+
+        // 文档直接放在笔记本文件夹中，不再创建单独的文档文件夹
+        const finalFileDir = userNotebookUploadPath;
         
         await fsExtra.ensureDir(finalFileDir);
         this.logger.verbose(`[Transaction] Ensured directory exists: ${finalFileDir} for User ${userId}`);
@@ -730,7 +807,7 @@ export class DocumentsService {
     this.logger.log(`Attempting to save vector data for document ID: ${documentId}`);
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
-      select: { notebookId: true, isVectorized: true }, // Need notebookId to construct the path and check vectorization status
+      select: { notebookId: true, isVectorized: true, fileName: true }, // 添加fileName字段
     });
 
     if (!document) {
@@ -743,27 +820,28 @@ export class DocumentsService {
         throw new InternalServerErrorException(`Document ${documentId} is missing notebook association.`);
     }
 
-    // 两个存储路径：
-    // 1. 文档目录下的向量数据文件
-    const documentVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
-    const documentDir = path.dirname(documentVectorDataPath);
+    // 使用用户名和笔记本名称构建路径
+    const username = await this.getUsernameFromUserId(userId);
+    const notebookName = await this.getNotebookNameFromId(document.notebookId);
 
-    // 2. 笔记本vectors目录下的向量数据文件
-    const notebookVectorsDir = path.join(this.uploadsDir, userId, document.notebookId, 'vectors');
-    const notebookVectorDataPath = path.join(notebookVectorsDir, `${documentId}_vector_data.json`);
+    // 使用文件名而不是文档ID
+    const safeFileName = this.sanitizeFileName(document.fileName || documentId);
+    const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
+
+    // 向量数据存储在笔记本的vectors目录下，使用文件名命名
+    const notebookVectorsDir = path.join(this.uploadsDir, username, notebookName, 'vectors');
+    const notebookVectorDataPath = path.join(notebookVectorsDir, `${fileBaseName}_vector_data.json`);
     
     try {
       // 确保目录存在
-      await fsExtra.ensureDir(documentDir);
       await fsExtra.ensureDir(notebookVectorsDir);
-      
+
       // 准备数据
       const jsonData = JSON.stringify(vectorData, null, 2); // Pretty print JSON
-      
-      // 同时保存到两个位置
-      await fs.promises.writeFile(documentVectorDataPath, jsonData, 'utf-8');
+
+      // 只保存到笔记本vectors目录，使用文件名命名
       await fs.promises.writeFile(notebookVectorDataPath, jsonData, 'utf-8');
-      
+
       // 更新文档的向量化状态标记
       if (!document.isVectorized) {
         await this.prisma.document.update({
@@ -772,9 +850,8 @@ export class DocumentsService {
         });
         this.logger.log(`Updated document ${documentId} isVectorized status to true`);
       }
-      
-      this.logger.log(`Successfully saved vector data to document path: ${documentVectorDataPath}`);
-      this.logger.log(`Successfully saved vector data to notebook vectors path: ${notebookVectorDataPath}`);
+
+      this.logger.log(`Successfully saved vector data to: ${notebookVectorDataPath}`);
     } catch (error: any) {
       this.logger.error(`Failed to save vector data for document ${documentId}: ${error.message}`, error.stack);
       throw new InternalServerErrorException(`Failed to save vector data: ${error.message}`);
@@ -790,7 +867,7 @@ export class DocumentsService {
     this.logger.log(`Attempting to retrieve vector data for document ID: ${documentId}`);
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
-      select: { notebookId: true },
+      select: { notebookId: true, fileName: true },
     });
 
     // If document record doesn't exist in DB, the vector data cannot exist either
@@ -804,23 +881,24 @@ export class DocumentsService {
          return null; // Treat as not found if path cannot be determined
      }
 
-    // 尝试从两个位置获取
-    const documentVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, documentId, this.VECTOR_DATA_FILENAME);
-    const notebookVectorDataPath = path.join(this.uploadsDir, userId, document.notebookId, 'vectors', `${documentId}_vector_data.json`);
+    // 使用用户名和笔记本名称构建路径
+    const username = await this.getUsernameFromUserId(userId);
+    const notebookName = await this.getNotebookNameFromId(document.notebookId);
+
+    // 使用文件名而不是文档ID
+    const safeFileName = this.sanitizeFileName(document.fileName || documentId);
+    const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
+
+    // 从笔记本vectors目录获取向量数据
+    const notebookVectorDataPath = path.join(this.uploadsDir, username, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
 
     try {
       let vectorData = null;
       
-      // 首先检查笔记本vectors目录
+      // 检查笔记本vectors目录
       if (await fsExtra.pathExists(notebookVectorDataPath)) {
         this.logger.log(`Vector data found in notebook vectors directory: ${notebookVectorDataPath}`);
         const jsonData = await fs.promises.readFile(notebookVectorDataPath, 'utf-8');
-        vectorData = JSON.parse(jsonData);
-      } 
-      // 如果没有，检查文档目录
-      else if (await fsExtra.pathExists(documentVectorDataPath)) {
-        this.logger.log(`Vector data found in document directory: ${documentVectorDataPath}`);
-        const jsonData = await fs.promises.readFile(documentVectorDataPath, 'utf-8');
         vectorData = JSON.parse(jsonData);
       } else {
         this.logger.log(`Vector data not found for document ${documentId}`);
@@ -854,18 +932,25 @@ export class DocumentsService {
    */
   async deleteVectorData(documentId: string, notebookId: string, userId: string): Promise<void> {
     this.logger.log(`Attempting to delete vector data for document ID: ${documentId}`);
-    
-    // 删除两个位置的向量数据
-    const documentVectorDataPath = path.join(this.uploadsDir, userId, notebookId, documentId, this.VECTOR_DATA_FILENAME);
-    const notebookVectorDataPath = path.join(this.uploadsDir, userId, notebookId, 'vectors', `${documentId}_vector_data.json`);
+
+    // 获取文档信息以构建正确的路径
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      select: { fileName: true }
+    });
+
+    // 使用用户名和笔记本名称构建路径
+    const username = await this.getUsernameFromUserId(userId);
+    const notebookName = await this.getNotebookNameFromId(notebookId);
+
+    // 使用文件名而不是文档ID
+    const safeFileName = this.sanitizeFileName(document?.fileName || documentId);
+    const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
+
+    // 删除笔记本vectors目录下的向量数据
+    const notebookVectorDataPath = path.join(this.uploadsDir, username, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
     
     try {
-      // 删除文档目录下的向量数据
-      if (await fsExtra.pathExists(documentVectorDataPath)) {
-        await fs.promises.unlink(documentVectorDataPath);
-        this.logger.log(`Deleted vector data from document directory: ${documentVectorDataPath}`);
-      }
-      
       // 删除笔记本vectors目录下的向量数据
       if (await fsExtra.pathExists(notebookVectorDataPath)) {
         await fs.promises.unlink(notebookVectorDataPath);

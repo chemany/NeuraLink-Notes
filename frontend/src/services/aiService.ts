@@ -39,7 +39,16 @@ const fetchFullSettingsFromBackend = async (): Promise<LLMSettings | null> => {
 
     const data = await response.json();
     console.log('[fetchFullSettingsFromBackend] 成功获取后端设置:', data);
-    return data.llm;
+
+    // 后端返回的是 { llmSettings: {...}, embeddingSettings: {...}, ... }
+    // 前端需要的是 LLMSettings 格式
+    if (data.llmSettings) {
+      console.log('[fetchFullSettingsFromBackend] 解析LLM设置:', data.llmSettings);
+      return data.llmSettings;
+    } else {
+      console.log('[fetchFullSettingsFromBackend] 后端数据中未找到llmSettings字段');
+      return null;
+    }
   } catch (error: any) {
     console.log('[fetchFullSettingsFromBackend] 获取设置失败:', error.message);
     return null;

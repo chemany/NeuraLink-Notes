@@ -69,7 +69,8 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
   // 处理LLM表单变更
   const handleLLMChange = async (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    
+    console.log(`[SettingsDialog] handleLLMChange: name=${name}, value=${value}, type=${type}`);
+
     // 如果是切换provider，需要从后端加载对应的配置
     if (name === 'provider') {
       console.log('切换provider到:', value);
@@ -132,15 +133,37 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                 'ollama': 'http://localhost:11434/v1',
                 'custom': ''
               };
-              
+
+              // 获取该provider的默认模型（第一个选项）
+              const getDefaultModelForProvider = (provider: string): string => {
+                switch (provider) {
+                  case 'openai':
+                    return 'gpt-3.5-turbo';
+                  case 'deepseek':
+                    return 'deepseek-chat';
+                  case 'anthropic':
+                    return 'claude-instant-1';
+                  case 'google':
+                    return 'gemini-pro';
+                  case 'openrouter':
+                    return 'deepseek/deepseek-chat-v3-0324:free';
+                  case 'ollama':
+                    return 'llama2';
+                  default:
+                    return '';
+                }
+              };
+
+              const defaultModel = getDefaultModelForProvider(value as string);
               setLocalLLMSettings(prev => ({
                 ...prev,
                 provider: value as LLMSettings['provider'],
                 apiKey: '',
-                model: '',
+                model: defaultModel,
                 customEndpoint: defaultEndpoints[value as string] || '',
                 useCustomModel: false // 新provider默认不使用自定义模型
               }));
+              console.log(`${value}未找到保存的配置，使用默认模型: ${defaultModel}`);
               console.log(`${value}未找到保存的配置，使用默认值`);
             }
           }
@@ -152,10 +175,15 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     }
     
     // 处理其他字段的更新
-    setLocalLLMSettings(prev => ({
-      ...prev,
-      [name]: type === 'number' ? parseFloat(value) : value
-    }));
+    console.log(`[SettingsDialog] 更新LLM字段: ${name} = ${value}`);
+    setLocalLLMSettings(prev => {
+      const newSettings = {
+        ...prev,
+        [name]: type === 'number' ? parseFloat(value) : value
+      };
+      console.log(`[SettingsDialog] 更新后的LLM设置:`, newSettings);
+      return newSettings;
+    });
   };
 
   // 处理Embedding表单变更

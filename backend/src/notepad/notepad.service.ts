@@ -139,10 +139,13 @@ export class NotePadService {
   
   private async saveNoteAsMarkdownFile(notebookId: string, userId: string, noteId: string, title: string, content: string) {
     try {
-      const notebookDir = path.join(this.uploadsDir, notebookId);
+      // 使用用户名和笔记本名称构建路径
+      const username = await this.getUsernameFromUserId(userId);
+      const notebookName = await this.getNotebookNameFromId(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, notebookName);
       const notesDir = path.join(notebookDir, 'notes');
       await fsExtra.ensureDir(notesDir);
-      
+
       const fileName = `${noteId}_${this.sanitizeFileName(title)}.md`;
       const filePath = path.join(notesDir, fileName);
       
@@ -160,14 +163,17 @@ export class NotePadService {
   
   private async deleteNoteMarkdownFile(notebookId: string, userId: string, noteId: string, title: string) {
     try {
-      const notebookDir = path.join(this.uploadsDir, notebookId);
+      // 使用用户名和笔记本名称构建路径
+      const username = await this.getUsernameFromUserId(userId);
+      const notebookName = await this.getNotebookNameFromId(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, notebookName);
       const notesDir = path.join(notebookDir, 'notes');
-      
+
       if (!(await fsExtra.pathExists(notesDir))) {
         this.logger.warn(`Notes directory for notebook ${notebookId} (User ${userId}) does not exist, skipping file deletion`);
         return;
       }
-      
+
       const fileName = `${noteId}_${this.sanitizeFileName(title)}.md`;
       const filePath = path.join(notesDir, fileName);
       
@@ -198,5 +204,65 @@ export class NotePadService {
       safeTitle = 'untitled';
     }
     return safeTitle;
+  }
+
+  /**
+   * 根据用户ID获取用户名（通过邮箱映射）
+   */
+  private async getUsernameFromUserId(userId: string): Promise<string> {
+    try {
+      // 首先从数据库获取用户邮箱
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      });
+
+      if (!user || !user.email) {
+        console.log(`[NotePadService] 未找到用户ID ${userId} 对应的邮箱，使用用户ID`);
+        return userId;
+      }
+
+      // 邮箱到用户名的映射
+      const emailToUsername: Record<string, string> = {
+        'link918@qq.com': 'jason'
+        // 可以在这里添加更多映射
+      };
+
+      const username = emailToUsername[user.email] || user.email.split('@')[0];
+      console.log(`[NotePadService] 邮箱映射: ${user.email} -> ${username}`);
+      return username;
+    } catch (error) {
+      console.error(`[NotePadService] 获取用户名失败，使用用户ID:`, error);
+      return userId;
+    }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    try {
+      const notebook = await this.prisma.notebook.findUnique({
+        where: { id: notebookId },
+        select: { title: true }
+      });
+
+      if (!notebook || !notebook.title) {
+        console.log(`[NotePadService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
+        return notebookId;
+      }
+
+      // 清理文件名，移除不安全的字符
+      const safeName = notebook.title
+        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+        .replace(/\s+/g, '_')           // 替换空格为下划线
+        .trim();
+
+      console.log(`[NotePadService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
+      return safeName || notebookId;
+    } catch (error) {
+      console.error(`[NotePadService] 获取笔记本名称失败，使用笔记本ID:`, error);
+      return notebookId;
+    }
   }
 } 

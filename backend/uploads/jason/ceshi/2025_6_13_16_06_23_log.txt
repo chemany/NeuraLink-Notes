@@ -1,0 +1,100 @@
+2025-06-13T04:13:42.256329503Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[IP Ranges][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Fetching https://www.cloudflare.com/ips-v6
+2025-06-13T04:13:42.490091965Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Let's Encrypt Renewal Timer initialized
+2025-06-13T04:13:42.490475655Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Renewing SSL certs expiring within 30 days ...
+2025-06-13T04:13:42.494359067Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[IP Ranges][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m IP Ranges Renewal Timer initialized
+2025-06-13T04:13:42.498376471Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[Global   ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Backend PID 164 listening on port 3000 ...
+2025-06-13T04:13:42.501564980Z [90m[6/13/2025][39m [90m[4:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Completed SSL cert renew process
+2025-06-13T04:22:20.154184387Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:22:20.168116633Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:22:20.182732962Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:22:20.203527686Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:22:20.213323184Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:22:20.213385632Z [90m[6/13/2025][39m [90m[4:22:20 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T04:29:14.804301834Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:29:14.814611466Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:29:14.825474086Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:29:14.843084750Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:29:14.853930558Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:29:14.854029633Z [90m[6/13/2025][39m [90m[4:29:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T04:41:50.690086073Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:41:50.710139757Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:41:50.716708275Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:41:50.735691372Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:41:50.745935722Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:41:50.745960228Z [90m[6/13/2025][39m [90m[4:41:50 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T04:43:57.440316757Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:43:57.457513485Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:43:57.465144885Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:43:57.485223537Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:43:57.496387241Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:43:57.496423589Z [90m[6/13/2025][39m [90m[4:43:57 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T04:45:19.443669340Z [90m[6/13/2025][39m [90m[4:45:19 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:45:19.444170991Z [90m[6/13/2025][39m [90m[4:45:19 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:45:19.455602117Z [90m[6/13/2025][39m [90m[4:45:19 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:45:19.455667499Z [90m[6/13/2025][39m [90m[4:45:19 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T04:46:30.099015251Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:46:30.108757470Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T04:46:30.108918171Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Could not delete file: {
+2025-06-13T04:46:30.108929723Z   "errno": -2,
+2025-06-13T04:46:30.108934282Z   "code": "ENOENT",
+2025-06-13T04:46:30.108937387Z   "syscall": "unlink",
+2025-06-13T04:46:30.108940263Z   "path": "/data/nginx/proxy_host/2.conf"
+2025-06-13T04:46:30.108943118Z }
+2025-06-13T04:46:30.116305354Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:46:30.129187851Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T04:46:30.140340685Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T04:46:30.140373837Z [90m[6/13/2025][39m [90m[4:46:30 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T05:12:00.262297315Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:00.278005751Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T05:12:00.292279197Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:00.317775929Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:00.331338842Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T05:12:00.331369670Z [90m[6/13/2025][39m [90m[5:12:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T05:12:11.625215479Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:11.640275028Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T05:12:11.648905552Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:11.673227190Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:12:11.686672152Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T05:12:11.686708010Z [90m[6/13/2025][39m [90m[5:12:11 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T05:13:42.491484313Z [90m[6/13/2025][39m [90m[5:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Renewing SSL certs expiring within 30 days ...
+2025-06-13T05:13:42.494073378Z [90m[6/13/2025][39m [90m[5:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Completed SSL cert renew process
+2025-06-13T05:52:25.804156129Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:52:25.818139290Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T05:52:25.830513374Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:52:25.850839810Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T05:52:25.862768038Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T05:52:25.862790660Z [90m[6/13/2025][39m [90m[5:52:25 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T06:13:42.491759115Z [90m[6/13/2025][39m [90m[6:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Renewing SSL certs expiring within 30 days ...
+2025-06-13T06:13:42.494493853Z [90m[6/13/2025][39m [90m[6:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Completed SSL cert renew process
+2025-06-13T07:13:42.506346376Z [90m[6/13/2025][39m [90m[7:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Renewing SSL certs expiring within 30 days ...
+2025-06-13T07:13:42.507619954Z [90m[6/13/2025][39m [90m[7:13:42 AM][39m [90m[SSL      ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Completed SSL cert renew process
+2025-06-13T07:58:00.527174904Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T07:58:00.551850125Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T07:58:00.567120420Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T07:58:00.587636231Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T07:58:00.601652184Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T07:58:00.601711055Z [90m[6/13/2025][39m [90m[7:58:00 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T08:03:46.202773552Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:03:46.223216377Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T08:03:46.233168629Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:03:46.254954442Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:03:46.266915852Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T08:03:46.266953142Z [90m[6/13/2025][39m [90m[8:03:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T08:04:14.049161476Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:04:14.060924504Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T08:04:14.068899098Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:04:14.091056809Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:04:14.103028889Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T08:04:14.103054186Z [90m[6/13/2025][39m [90m[8:04:14 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T08:05:09.698464744Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:09.719682902Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T08:05:09.727468041Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:09.747129480Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:09.760209518Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T08:05:09.760241869Z [90m[6/13/2025][39m [90m[8:05:09 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload
+2025-06-13T08:05:46.845777655Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:46.864091948Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Nginx    ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m Deleting file: /data/nginx/proxy_host/2.conf
+2025-06-13T08:05:46.870097589Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:46.889824391Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -t -g "error_log off;"
+2025-06-13T08:05:46.901435414Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Nginx    ][39m [90m›[39m [34mℹ [39m [34m[4minfo[24m     [39m Reloading Nginx
+2025-06-13T08:05:46.901468677Z [90m[6/13/2025][39m [90m[8:05:46 AM][39m [90m[Global   ][39m [90m›[39m [31m⬤ [39m [31m[4mdebug[24m    [39m CMD: /usr/sbin/nginx -s reload

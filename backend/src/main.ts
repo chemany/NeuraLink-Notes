@@ -41,13 +41,31 @@ async function bootstrap() {
         logger.log(`CORS: Allowing request with no origin (e.g., Postman)`);
         return callback(null, true);
       }
+
+      // 检查是否在预定义的允许列表中
       if (allowedOrigins.indexOf(origin) !== -1) {
-        logger.log(`CORS: Allowing origin: ${origin}`);
+        logger.log(`CORS: Allowing predefined origin: ${origin}`);
         return callback(null, true);
-      } else {
-        logger.error(`CORS: Blocking origin: ${origin}. It is not in the allowed list.`);
-        return callback(new Error('Not allowed by CORS'));
       }
+
+      // 检查是否是局域网IP地址 (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+      try {
+        const urlObj = new URL(origin);
+        const hostname = urlObj.hostname;
+        const isPrivateIP = /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                           /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                           /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+        if (isPrivateIP && (urlObj.port === '3000' || urlObj.port === '3002')) {
+          logger.log(`CORS: Allowing private IP access: ${origin}`);
+          return callback(null, true);
+        }
+      } catch (e) {
+        logger.error(`CORS: Error parsing origin URL: ${origin}`);
+      }
+
+      logger.error(`CORS: Blocking origin: ${origin}. It is not in the allowed list.`);
+      return callback(new Error('Not allowed by CORS'));
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,

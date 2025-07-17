@@ -28,6 +28,74 @@ export class NotebooksService {
     this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
   }
 
+  /**
+   * 根据用户ID获取用户名（通过邮箱映射）
+   */
+  private async getUsernameFromUserId(userId: string): Promise<string> {
+    try {
+      // 首先从数据库获取用户邮箱
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      });
+
+      if (!user || !user.email) {
+        console.log(`[NotebooksService] 未找到用户ID ${userId} 对应的邮箱，使用用户ID`);
+        return userId;
+      }
+
+      // 邮箱到用户名的映射
+      const emailToUsername: Record<string, string> = {
+        'link918@qq.com': 'jason'
+        // 可以在这里添加更多映射
+      };
+
+      const username = emailToUsername[user.email] || user.email.split('@')[0];
+      console.log(`[NotebooksService] 邮箱映射: ${user.email} -> ${username}`);
+      return username;
+    } catch (error) {
+      console.error(`[NotebooksService] 获取用户名失败，使用用户ID:`, error);
+      return userId;
+    }
+  }
+
+  /**
+   * 清理笔记本名称，使其适合作为文件夹名
+   */
+  private sanitizeNotebookName(title: string): string {
+    const safeName = title
+      .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
+      .replace(/\s+/g, '_')           // 替换空格为下划线
+      .trim();
+
+    console.log(`[NotebooksService] 笔记本名称清理: "${title}" -> "${safeName}"`);
+    return safeName || 'untitled';
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    try {
+      const notebook = await this.prisma.notebook.findUnique({
+        where: { id: notebookId },
+        select: { title: true }
+      });
+
+      if (!notebook || !notebook.title) {
+        console.log(`[NotebooksService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
+        return notebookId;
+      }
+
+      const safeName = this.sanitizeNotebookName(notebook.title);
+      console.log(`[NotebooksService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
+      return safeName;
+    } catch (error) {
+      console.error(`[NotebooksService] 获取笔记本名称失败，使用笔记本ID:`, error);
+      return notebookId;
+    }
+  }
+
   // 获取所有笔记本的方法
   async findAll(userId: string, folderId?: string | null): Promise<Notebook[]> {
     this.logger.log(`User ${userId} fetching notebooks. FolderId filter: ${folderId === undefined ? 'all' : (folderId === null ? 'root' : folderId)}`);
@@ -89,7 +157,10 @@ export class NotebooksService {
 
       // --- Ensure local directory exists after creation ---
       if (newNotebook) {
-        const notebookDir = path.join(this.uploadsDir, userId, newNotebook.id); // Add userId to path
+        // 使用用户名和笔记本名称而不是随机ID来创建文件夹
+        const username = await this.getUsernameFromUserId(userId);
+        const notebookName = this.sanitizeNotebookName(newNotebook.title);
+        const notebookDir = path.join(this.uploadsDir, username, notebookName);
         try {
           await fsExtra.ensureDir(notebookDir);
           this.logger.log(
@@ -244,7 +315,10 @@ export class NotebooksService {
       this.logger.log(`User ${userId} successfully updated notebook ${id} in database.`);
 
       if (notesContent !== undefined) { // Check if notesContent was explicitly passed
-        const notebookDir = path.join(this.uploadsDir, userId, id); // Add userId to path
+        // 使用用户名和笔记本名称而不是随机ID来创建文件夹
+        const username = await this.getUsernameFromUserId(userId);
+        const notebookName = this.sanitizeNotebookName(updatedNotebook.title);
+        const notebookDir = path.join(this.uploadsDir, username, notebookName);
         const notesFilePath = path.join(notebookDir, this.NOTES_FILENAME);
         try {
           await fsExtra.ensureDir(notebookDir);
@@ -274,7 +348,11 @@ export class NotebooksService {
   // Method to read notes.json from local filesystem for a specific notebook
   async getNotebookNotesFromFile(notebookId: string, userId: string): Promise<string | null> {
     await this.findOne(notebookId, userId); // Permission check
-    const notebookDir = path.join(this.uploadsDir, userId, notebookId); // Add userId to path
+
+    // 使用用户名和笔记本名称构建路径
+    const username = await this.getUsernameFromUserId(userId);
+    const notebookName = await this.getNotebookNameFromId(notebookId);
+    const notebookDir = path.join(this.uploadsDir, username, notebookName);
     const notesFilePath = path.join(notebookDir, this.NOTES_FILENAME);
     try {
       if (await fsExtra.pathExists(notesFilePath)) {

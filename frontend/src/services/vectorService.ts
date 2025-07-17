@@ -125,7 +125,15 @@ export function splitTextIntoChunks(text: string, maxChunkSize: number = 2000, o
         while (chunkStart < endIdx) {
           const chunkEnd = Math.min(chunkStart + maxChunkSize, endIdx);
           chunks.push(text.substring(chunkStart, chunkEnd));
-          chunkStart = chunkEnd - overlapSize;
+          const nextStart = chunkEnd - overlapSize;
+          // 防止无限循环：确保chunkStart至少前进1个字符
+          chunkStart = Math.max(nextStart, chunkStart + 1);
+
+          // 安全检查：如果chunks数组过大，停止处理
+          if (chunks.length > 10000) {
+            console.warn(`[VectorService] 文本块数量过多 (${chunks.length})，停止分块以防止内存溢出`);
+            break;
+          }
         }
       } else if (endIdx - startIdx > 0) {
         // 如果块大小合适，直接添加
@@ -142,7 +150,15 @@ export function splitTextIntoChunks(text: string, maxChunkSize: number = 2000, o
         while (chunkStart < text.length) {
           const chunkEnd = Math.min(chunkStart + maxChunkSize, text.length);
           chunks.push(text.substring(chunkStart, chunkEnd));
-          chunkStart = chunkEnd - overlapSize;
+          const nextStart = chunkEnd - overlapSize;
+          // 防止无限循环：确保chunkStart至少前进1个字符
+          chunkStart = Math.max(nextStart, chunkStart + 1);
+
+          // 安全检查：如果chunks数组过大，停止处理
+          if (chunks.length > 10000) {
+            console.warn(`[VectorService] 文本块数量过多 (${chunks.length})，停止分块以防止内存溢出`);
+            break;
+          }
         }
       } else {
         chunks.push(text.substring(startIdx));

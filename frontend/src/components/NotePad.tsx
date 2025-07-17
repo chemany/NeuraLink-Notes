@@ -170,8 +170,8 @@ const NotePad: React.FC<NotePadProps> = ({ notebookId, onSaveNotes, initialNotes
     e.stopPropagation();
     const note = notes.find(n => n.id === id);
     if (!note) return;
-    
-    const currentColorIndex = COLORS.indexOf(note.color);
+
+    const currentColorIndex = COLORS.indexOf(note.color || COLORS[0]);
     const nextColorIndex = (currentColorIndex + 1) % COLORS.length;
     
     setNotes(notes.map(n => 

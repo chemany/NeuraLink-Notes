@@ -1,53 +1,67 @@
-# 🧠 灵枢笔记 (Notebook LM Clone)
+# 🧠 灵枢笔记 (NeuraLink-Notes)
 
-基于AI的智能笔记管理系统，支持多种编辑器、文档解析和智能对话。
+基于AI的智能笔记管理系统，支持多种编辑器、文档解析和智能对话。集成统一设置服务，提供无缝的用户体验。
 
 ## ✨ 功能特性
 
 ### 📝 多编辑器支持
-- **Tiptap编辑器** - 现代化富文本编辑
-- **CKEditor** - 传统富文本编辑
-- **Markdown编辑器** - 原生Markdown支持
-- **NotePad** - 简洁文本编辑
+- **Tiptap编辑器** - 现代化富文本编辑，支持实时协作
+- **CKEditor** - 传统富文本编辑，功能完整
+- **Markdown编辑器** - 原生Markdown支持，程序员友好
+- **NotePad** - 简洁文本编辑，快速记录
 
 ### 🤖 AI功能
-- **智能文档解析** - 支持PDF、Word、Excel等多种格式
-- **AI对话** - 基于文档内容的智能问答
-- **内容总结** - 自动生成文档摘要
-- **学习指南** - AI生成的学习建议
+- **智能文档解析** - 支持PDF、Word、Excel、PPT等多种格式
+- **AI对话** - 基于文档内容的智能问答，支持多轮对话
+- **内容总结** - 自动生成文档摘要和关键点提取
+- **学习指南** - AI生成的个性化学习建议和测试题
 
 ### 📚 文档管理
-- **多格式支持** - PDF、DOCX、XLSX、TXT、Markdown
-- **文档预览** - 实时预览文档内容
-- **版本控制** - 文档历史记录
-- **搜索功能** - 全文搜索和语义搜索
+- **多格式支持** - PDF、DOCX、XLSX、PPTX、TXT、Markdown
+- **文档预览** - 实时预览文档内容，支持同步滚动
+- **版本控制** - 文档历史记录和变更追踪
+- **搜索功能** - 全文搜索、语义搜索和向量检索
+- **文件系统存储** - 自动保存笔记到本地文件系统
 
 ### 🎨 界面特性
-- **响应式设计** - 适配各种屏幕尺寸
-- **主题切换** - 明暗主题支持
-- **可调整布局** - 三栏布局可自由调整
+- **响应式设计** - 完美适配桌面、平板和移动设备
+- **主题切换** - 明暗主题支持，护眼模式
+- **可调整布局** - 三栏布局可自由调整，个性化工作空间
+- **拖拽上传** - 支持拖拽上传文档和图片
+
+### 🔐 统一认证
+- **统一账号系统** - 集成统一设置服务认证
+- **用户数据隔离** - 每个用户独立的数据存储空间
+- **安全存储** - 加密存储敏感信息和用户数据
 
 ## 🏗️ 技术架构
 
 ### 前端技术栈
-- **Next.js 14** - React全栈框架
-- **TypeScript** - 类型安全
-- **Tailwind CSS** - 原子化CSS框架
-- **Tiptap** - 现代富文本编辑器
-- **Zustand** - 状态管理
+- **Next.js 14** - React全栈框架，支持SSR和SSG
+- **TypeScript** - 类型安全的开发体验
+- **Tailwind CSS** - 原子化CSS框架，快速样式开发
+- **Tiptap** - 现代富文本编辑器，可扩展性强
+- **Zustand** - 轻量级状态管理，简单易用
 
 ### 后端技术栈
-- **NestJS** - Node.js企业级框架
+- **NestJS** - Node.js企业级框架，模块化架构
 - **TypeScript** - 类型安全的后端开发
-- **SQLite** - 轻量级数据库
-- **JWT** - 身份认证
-- **Multer** - 文件上传处理
+- **Prisma** - 现代化ORM，类型安全的数据库操作
+- **SQLite** - 轻量级嵌入式数据库
+- **JWT** - 安全的身份认证机制
+- **Multer** - 文件上传中间件
 
 ### AI集成
-- **OpenAI GPT** - 智能对话和内容生成
-- **本地LLM支持** - Ollama等本地模型
-- **向量数据库** - 文档语义搜索
-- **文档解析** - PDF.js、XLSX等
+- **多LLM支持** - OpenAI GPT、Claude、本地模型等
+- **统一设置服务** - 集中管理AI模型配置
+- **向量化服务** - 文档语义搜索和相似度匹配
+- **重排序服务** - 搜索结果智能排序
+- **文档解析引擎** - PDF.js、Mammoth、XLSX等多格式支持
+
+### 服务集成
+- **统一设置服务** - 用户认证和配置管理
+- **文件系统存储** - 自动保存笔记到本地文件
+- **用户数据隔离** - 基于用户名的文件夹隔离
 
 ## 🚀 快速开始
 
@@ -84,20 +98,28 @@
    # 编辑环境变量文件，配置API密钥等
    ```
 
-4. **启动服务**
+4. **启动统一设置服务**
+   ```bash
+   # 需要先启动统一设置服务
+   cd ../unified-settings-service
+   npm start
+   ```
+
+5. **启动灵枢笔记服务**
    ```bash
    # 启动后端服务 (端口3001)
-   cd backend
+   cd ../NeuraLink-Notes/backend
    npm run start:dev
-   
+
    # 启动前端服务 (端口3000)
    cd ../frontend
    npm run dev
    ```
 
-5. **访问应用**
+6. **访问应用**
    - 前端: http://localhost:3000
    - 后端API: http://localhost:3001
+   - 统一设置服务: http://localhost:3002
 
 ## ⚙️ 配置说明
 
@@ -106,27 +128,36 @@
 # 数据库配置
 DATABASE_URL="./data/notebook.db"
 
-# JWT配置
-JWT_SECRET="your-jwt-secret"
-JWT_EXPIRES_IN="24h"
-
-# AI模型配置
-OPENAI_API_KEY="your-openai-api-key"
-OPENAI_BASE_URL="https://api.openai.com/v1"
+# 统一设置服务配置
+UNIFIED_SETTINGS_URL="http://localhost:3002"
 
 # 文件上传配置
 UPLOAD_PATH="./uploads"
 MAX_FILE_SIZE="50MB"
+
+# 服务配置
+PORT=3001
+NODE_ENV=development
+
+# 文件系统存储配置
+ENABLE_FILE_STORAGE=true
+FILE_STORAGE_PATH="./uploads"
 ```
 
 ### 前端配置 (frontend/.env.local)
 ```env
 # API配置
 NEXT_PUBLIC_API_BASE_URL="http://localhost:3001"
+NEXT_PUBLIC_UNIFIED_SETTINGS_URL="http://localhost:3002"
 
 # 应用配置
 NEXT_PUBLIC_APP_NAME="灵枢笔记"
-NEXT_PUBLIC_APP_VERSION="1.0.0"
+NEXT_PUBLIC_APP_VERSION="2.0.0"
+
+# 功能开关
+NEXT_PUBLIC_ENABLE_AI_CHAT=true
+NEXT_PUBLIC_ENABLE_DOCUMENT_PREVIEW=true
+NEXT_PUBLIC_ENABLE_FILE_STORAGE=true
 ```
 
 ## 📖 使用指南

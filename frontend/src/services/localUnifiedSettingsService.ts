@@ -28,8 +28,8 @@ class LocalUnifiedSettingsService {
    * 获取Authorization头
    */
   private getAuthHeaders(): HeadersInit {
-    // 修复：使用正确的令牌键名，与统一设置服务保持一致
-    const token = localStorage.getItem('calendar_unified_token');
+    // 使用NeuraLink-Notes的token键名
+    const token = localStorage.getItem('token');
     return {
       'Content-Type': 'application/json',
       'Authorization': token ? `Bearer ${token}` : '',
@@ -40,8 +40,8 @@ class LocalUnifiedSettingsService {
    * 检查是否已登录
    */
   isLoggedIn(): boolean {
-    // 修复：使用正确的令牌键名
-    const token = localStorage.getItem('calendar_unified_token');
+    // 使用NeuraLink-Notes的token键名
+    const token = localStorage.getItem('token');
     return !!token;
   }
 

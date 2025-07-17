@@ -4,27 +4,76 @@ import * as path from 'path';
 
 /**
  * 统一设置服务
- * 直接操作用户设置文件夹中的JSON文件
+ * 使用新的统一用户数据管理系统
  */
 @Injectable()
 export class UnifiedSettingsService {
-  private readonly settingsBasePath = 'C:\\code\\unified-settings-service\\user-settings';
+  private readonly userDataPath = 'C:\\code\\unified-settings-service\\user-data-v2';
+  private readonly usersCSVPath = path.join(this.userDataPath, 'users.csv');
   private readonly defaultModelsPath = 'C:\\code\\unified-settings-service\\config\\default-models.json';
 
   /**
-   * 获取用户设置目录
+   * 根据用户ID获取用户名
+   * 如果输入的已经是用户名，则直接返回
    */
-  private getUserSettingsPath(userId: string): string {
-    return path.join(this.settingsBasePath, userId);
+  private getUsernameFromId(userId: string): string {
+    try {
+      if (!fs.existsSync(this.usersCSVPath)) {
+        console.log(`[UnifiedSettingsService] CSV文件不存在，使用用户ID: ${this.usersCSVPath}`);
+        return userId;
+      }
+
+      const csvData = fs.readFileSync(this.usersCSVPath, 'utf8');
+      const lines = csvData.trim().split('\n');
+
+      if (lines.length <= 1) {
+        console.log(`[UnifiedSettingsService] CSV文件为空，使用用户ID`);
+        return userId;
+      }
+
+      // 跳过表头，查找用户
+      for (let i = 1; i < lines.length; i++) {
+        const columns = lines[i].split(',');
+        if (columns.length >= 2) {
+          const csvUserId = columns[0];
+          const csvUsername = columns[1];
+
+          // 如果输入的是用户ID，返回对应的用户名
+          if (csvUserId === userId) {
+            console.log(`[UnifiedSettingsService] 通过用户ID找到用户名: ${userId} -> ${csvUsername}`);
+            return csvUsername;
+          }
+
+          // 如果输入的已经是用户名，直接返回
+          if (csvUsername === userId) {
+            console.log(`[UnifiedSettingsService] 输入已经是用户名: ${userId}`);
+            return userId;
+          }
+        }
+      }
+
+      console.log(`[UnifiedSettingsService] 未找到用户ID/用户名 ${userId}，使用原值`);
+      return userId;
+    } catch (error) {
+      console.error(`[UnifiedSettingsService] 获取用户名失败，使用用户ID:`, error);
+      return userId;
+    }
   }
 
   /**
-   * 确保用户设置目录存在
+   * 获取用户设置文件路径
    */
-  private ensureUserDirectory(userId: string): void {
-    const userPath = this.getUserSettingsPath(userId);
-    if (!fs.existsSync(userPath)) {
-      fs.mkdirSync(userPath, { recursive: true });
+  private getUserSettingsFilePath(userId: string): string {
+    const username = this.getUsernameFromId(userId);
+    return path.join(this.userDataPath, `${username}_settings.json`);
+  }
+
+  /**
+   * 确保用户数据目录存在
+   */
+  private ensureUserDataDirectory(): void {
+    if (!fs.existsSync(this.userDataPath)) {
+      fs.mkdirSync(this.userDataPath, { recursive: true });
     }
   }
 
@@ -87,114 +136,341 @@ export class UnifiedSettingsService {
   }
 
   /**
-   * 获取LLM设置 - 只返回providers配置，不包含current_provider
+   * 获取LLM设置 - 从统一设置文件中获取
    */
   getLLMSettings(userId: string): any {
-    this.ensureUserDirectory(userId);
-    const llmPath = path.join(this.getUserSettingsPath(userId), 'llm.json');
-    
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    const defaultLLMSettings = {
+      provider: 'builtin-free',
+      model: 'deepseek/deepseek-chat-v3-0324:free',
+      updated_at: new Date().toISOString()
+    };
+
     const defaultSettings = {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      llm: defaultLLMSettings,
+      vectorization: {
+        provider: 'builtin-free',
+        model: 'text-embedding-3-small',
+        updated_at: new Date().toISOString()
+      },
+      reranking: {
+        provider: 'builtin-free',
+        model: 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    };
+
+    const settings = this.readJsonFile(settingsPath, defaultSettings);
+
+    // 返回providers配置格式（保持向后兼容）
+    return {
       providers: {
         builtin: {
           api_key: 'builtin-free-key',
-          model_name: 'builtin-free',
+          model_name: settings.llm?.model || defaultLLMSettings.model,
           base_url: '',
           description: '内置免费模型',
-          updated_at: new Date().toISOString()
+          updated_at: settings.llm?.updated_at || defaultLLMSettings.updated_at
         }
       },
-      updated_at: new Date().toISOString()
+      updated_at: settings.updated_at
     };
-    
-    return this.readJsonFile(llmPath, defaultSettings);
   }
 
   /**
-   * 保存LLM设置 - 只保存provider配置，不保存current_provider
+   * 保存LLM设置 - 保存到统一设置文件
    */
   saveLLMSettings(userId: string, provider: string, settings: any): boolean {
-    this.ensureUserDirectory(userId);
-    const llmPath = path.join(this.getUserSettingsPath(userId), 'llm.json');
-    
-    // 读取现有配置
-    const currentConfig = this.getLLMSettings(userId);
-    
-    // 更新配置 - 移除current_provider，只更新providers
-    const updatedConfig = {
-      providers: {
-        ...currentConfig.providers,
-        [provider]: {
-          ...settings,
-          updated_at: new Date().toISOString()
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    // 读取现有的完整设置
+    const currentSettings = this.readJsonFile(settingsPath, {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      llm: {
+        provider: 'builtin-free',
+        model: 'deepseek/deepseek-chat-v3-0324:free',
+        updated_at: new Date().toISOString()
+      },
+      vectorization: {
+        provider: 'builtin-free',
+        model: 'text-embedding-3-small',
+        updated_at: new Date().toISOString()
+      },
+      reranking: {
+        provider: 'builtin-free',
+        model: 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    });
+
+    // 更新LLM设置
+    let modelName = 'USE_DEFAULT_CONFIG';
+
+    // 根据前端数据结构确定模型名称
+    if (settings.use_custom_model && settings.custom_model) {
+      modelName = settings.custom_model;
+    } else if (settings.predefined_model) {
+      modelName = settings.predefined_model;
+    } else if (settings.model_name) {
+      modelName = settings.model_name;
+    } else if (settings.model) {
+      modelName = settings.model;
+    }
+
+    const llmSettings: any = {
+      provider: provider,
+      model: modelName,
+      updated_at: new Date().toISOString()
+    };
+
+    // 保存API密钥和基础URL
+    if (settings.api_key && typeof settings.api_key === 'string' && settings.api_key.trim() !== '') {
+      llmSettings.api_key = settings.api_key.trim();
+    }
+
+    if (settings.base_url && typeof settings.base_url === 'string' && settings.base_url.trim() !== '') {
+      llmSettings.base_url = settings.base_url.trim();
+    }
+
+    const updatedSettings = {
+      ...currentSettings,
+      llm: llmSettings,
+      updated_at: new Date().toISOString()
+    };
+
+    console.log(`[UnifiedSettingsService] 保存LLM设置: ${userId} -> ${provider}`);
+    return this.writeJsonFile(settingsPath, updatedSettings);
+  }
+
+  /**
+   * 获取Embedding（向量化）设置
+   */
+  getEmbeddingSettings(userId: string): any {
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    const defaultSettings = {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      vectorization: {
+        provider: 'builtin-free',
+        model: 'text-embedding-3-small',
+        updated_at: new Date().toISOString()
+      }
+    };
+
+    const settings = this.readJsonFile(settingsPath, defaultSettings);
+
+    // 返回向量化设置，保持向后兼容的格式
+    const vectorizationSettings: any = {
+      provider: settings.vectorization?.provider || 'builtin-free',
+      model: settings.vectorization?.model || 'text-embedding-3-small',
+      updated_at: settings.vectorization?.updated_at || new Date().toISOString()
+    };
+
+    // 添加API相关字段（返回前端期望的字段名）
+    if (settings.vectorization?.api_key) {
+      vectorizationSettings.apiKey = settings.vectorization.api_key;
+    }
+    if (settings.vectorization?.base_url) {
+      vectorizationSettings.baseUrl = settings.vectorization.base_url;
+    }
+    if (settings.vectorization?.custom_endpoint) {
+      vectorizationSettings.customEndpoint = settings.vectorization.custom_endpoint;
+    }
+
+    return vectorizationSettings;
+  }
+
+  /**
+   * 保存Embedding（向量化）设置
+   */
+  saveEmbeddingSettings(userId: string, settings: any): boolean {
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    // 读取现有的完整设置
+    const currentSettings = this.readJsonFile(settingsPath, {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      llm: {
+        provider: 'builtin-free',
+        model: 'deepseek/deepseek-chat-v3-0324:free',
+        updated_at: new Date().toISOString()
+      },
+      vectorization: {
+        provider: 'builtin-free',
+        model: 'text-embedding-3-small',
+        updated_at: new Date().toISOString()
+      },
+      reranking: {
+        provider: 'builtin-free',
+        model: 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    });
+
+    // 更新向量化设置
+    const vectorizationSettings: any = {
+      provider: settings.provider || 'builtin-free',
+      model: settings.model || 'text-embedding-3-small',
+      updated_at: new Date().toISOString()
+    };
+
+    // 安全地处理API相关字段
+    try {
+      // 处理API密钥 - 使用更严格的过滤条件
+      const apiKey = settings.api_key || settings.apiKey;
+      if (apiKey && typeof apiKey === 'string') {
+        const cleanApiKey = apiKey.trim();
+        // 只保存看起来像正常API密钥的值（不包含日志信息）
+        if (cleanApiKey.length > 0 &&
+            cleanApiKey.length < 200 &&
+            !cleanApiKey.includes('[') &&
+            !cleanApiKey.includes(']') &&
+            !cleanApiKey.includes('UnifiedAuth') &&
+            !cleanApiKey.includes('UnifiedSettings') &&
+            !cleanApiKey.includes('LOG') &&
+            !cleanApiKey.includes('认证成功')) {
+          vectorizationSettings.api_key = cleanApiKey;
         }
+      }
+
+      // 处理基础URL
+      const baseUrl = settings.base_url || settings.baseUrl;
+      if (baseUrl && typeof baseUrl === 'string') {
+        const cleanBaseUrl = baseUrl.trim();
+        if (cleanBaseUrl.length > 0 && cleanBaseUrl.length < 500) {
+          vectorizationSettings.base_url = cleanBaseUrl;
+        }
+      }
+
+      // 处理自定义端点
+      const customEndpoint = settings.custom_endpoint || settings.customEndpoint;
+      if (customEndpoint && typeof customEndpoint === 'string') {
+        const cleanEndpoint = customEndpoint.trim();
+        if (cleanEndpoint.length > 0 && cleanEndpoint.length < 500) {
+          vectorizationSettings.custom_endpoint = cleanEndpoint;
+        }
+      }
+    } catch (fieldError) {
+      console.error(`[UnifiedSettingsService] 处理API字段时出错:`, fieldError);
+    }
+
+    const updatedSettings = {
+      ...currentSettings,
+      vectorization: vectorizationSettings,
+      updated_at: new Date().toISOString()
+    };
+
+    console.log(`[UnifiedSettingsService] 保存向量化设置: ${userId} -> ${settings.provider}/${settings.model}`);
+
+    // 创建安全的日志输出（隐藏敏感信息）
+    const safeLogSettings = { ...vectorizationSettings };
+    if (safeLogSettings.api_key) {
+      safeLogSettings.api_key = '***HIDDEN***';
+    }
+    console.log(`[UnifiedSettingsService] 完整向量化设置:`, JSON.stringify(safeLogSettings, null, 2));
+    return this.writeJsonFile(settingsPath, updatedSettings);
+  }
+
+  /**
+   * 获取Reranking（重排序）设置
+   */
+  getRerankingSettings(userId: string): any {
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    const defaultSettings = {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      reranking: {
+        provider: 'builtin-free',
+        model: 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
+      }
+    };
+
+    const settings = this.readJsonFile(settingsPath, defaultSettings);
+
+    // 返回重排序设置，保持向后兼容的格式
+    return {
+      enableReranking: true,
+      rerankingProvider: settings.reranking?.provider || 'builtin-free',
+      rerankingModel: settings.reranking?.model || 'jina-reranker-v1-base-en',
+      rerankingCustomEndpoint: '',
+      updated_at: settings.reranking?.updated_at || new Date().toISOString()
+    };
+  }
+
+  /**
+   * 保存Reranking（重排序）设置
+   */
+  saveRerankingSettings(userId: string, settings: any): boolean {
+    this.ensureUserDataDirectory();
+    const settingsPath = this.getUserSettingsFilePath(userId);
+
+    // 读取现有的完整设置
+    const currentSettings = this.readJsonFile(settingsPath, {
+      user_info: {
+        user_id: userId,
+        username: this.getUsernameFromId(userId),
+        email: `${this.getUsernameFromId(userId)}@example.com`
+      },
+      llm: {
+        provider: 'builtin-free',
+        model: 'deepseek/deepseek-chat-v3-0324:free',
+        updated_at: new Date().toISOString()
+      },
+      vectorization: {
+        provider: 'builtin-free',
+        model: 'text-embedding-3-small',
+        updated_at: new Date().toISOString()
+      },
+      reranking: {
+        provider: 'builtin-free',
+        model: 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
+      },
+      updated_at: new Date().toISOString()
+    });
+
+    // 更新重排序设置
+    const updatedSettings = {
+      ...currentSettings,
+      reranking: {
+        provider: settings.rerankingProvider || 'builtin-free',
+        model: settings.rerankingModel || 'jina-reranker-v1-base-en',
+        updated_at: new Date().toISOString()
       },
       updated_at: new Date().toISOString()
     };
-    
-    return this.writeJsonFile(llmPath, updatedConfig);
-  }
 
-  /**
-   * 获取Embedding设置
-   */
-  getEmbeddingSettings(userId: string): any {
-    this.ensureUserDirectory(userId);
-    const embeddingPath = path.join(this.getUserSettingsPath(userId), 'embedding.json');
-    
-    const defaultSettings = {
-      provider: 'openai',
-      model: 'BAAI/bge-m3',
-      updated_at: new Date().toISOString()
-    };
-    
-    return this.readJsonFile(embeddingPath, defaultSettings);
-  }
-
-  /**
-   * 保存Embedding设置
-   */
-  saveEmbeddingSettings(userId: string, settings: any): boolean {
-    this.ensureUserDirectory(userId);
-    const embeddingPath = path.join(this.getUserSettingsPath(userId), 'embedding.json');
-    
-    const settingsWithTimestamp = {
-      ...settings,
-      updated_at: new Date().toISOString()
-    };
-    
-    return this.writeJsonFile(embeddingPath, settingsWithTimestamp);
-  }
-
-  /**
-   * 获取Reranking设置
-   */
-  getRerankingSettings(userId: string): any {
-    this.ensureUserDirectory(userId);
-    const rerankingPath = path.join(this.getUserSettingsPath(userId), 'reranking.json');
-    
-    const defaultSettings = {
-      enableReranking: false,
-      rerankingProvider: 'siliconflow',
-      rerankingModel: 'BAAI/bge-reranker-v2-m3',
-      rerankingCustomEndpoint: '',
-      updated_at: new Date().toISOString()
-    };
-    
-    return this.readJsonFile(rerankingPath, defaultSettings);
-  }
-
-  /**
-   * 保存Reranking设置
-   */
-  saveRerankingSettings(userId: string, settings: any): boolean {
-    this.ensureUserDirectory(userId);
-    const rerankingPath = path.join(this.getUserSettingsPath(userId), 'reranking.json');
-    
-    const settingsWithTimestamp = {
-      ...settings,
-      updated_at: new Date().toISOString()
-    };
-    
-    return this.writeJsonFile(rerankingPath, settingsWithTimestamp);
+    console.log(`[UnifiedSettingsService] 保存重排序设置: ${userId} -> ${settings.rerankingProvider}/${settings.rerankingModel}`);
+    return this.writeJsonFile(settingsPath, updatedSettings);
   }
 }

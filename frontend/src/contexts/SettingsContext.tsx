@@ -157,12 +157,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // 从统一设置服务获取LLM配置（多提供商格式）
   const fetchLLMSettingsFromUnified = useCallback(async () => {
     try {
-      if (!localUnifiedSettingsService.isLoggedIn()) {
+      const isLoggedIn = localUnifiedSettingsService.isLoggedIn();
+      console.log('[fetchLLMSettingsFromUnified] 检查登录状态:', isLoggedIn);
+
+      if (!isLoggedIn) {
         console.log('未登录本地统一设置服务，使用默认设置');
         return null;
       }
 
+      console.log('[fetchLLMSettingsFromUnified] 开始调用 getLLMSettingsFromFile...');
       const llmConfig = await localUnifiedSettingsService.getLLMSettingsFromFile();
+      console.log('[fetchLLMSettingsFromUnified] 获取到的LLM配置:', llmConfig);
       return llmConfig;
     } catch (error) {
       console.error('获取LLM设置文件失败:', error);
@@ -190,11 +195,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   // Fetch settings from unified service or legacy API
   useEffect(() => {
     const fetchSettings = async () => {
+      console.log('[SettingsContext] fetchSettings被调用，token:', token);
       if (token) {
+        console.log('[SettingsContext] token存在，开始获取设置');
         setIsLoading(true);
         
         // 首先尝试本地统一设置服务
-        if (localUnifiedSettingsService.isLoggedIn()) {
+        const isLoggedIn = localUnifiedSettingsService.isLoggedIn();
+        console.log('[SettingsContext] 检查本地统一设置服务登录状态:', isLoggedIn);
+        console.log('[SettingsContext] localStorage中的token:', localStorage.getItem('token'));
+
+        if (isLoggedIn) {
           console.log('从本地统一设置服务获取LLM配置...');
           const llmConfig = await fetchLLMSettingsFromUnified();
           const defaultModelsData = await fetchDefaultModels();
@@ -288,10 +299,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 // 转换embedding设置格式以匹配前端接口
                 const embeddingSettings = {
                   provider: embeddingData.data.provider || 'siliconflow',
-                  apiKey: embeddingData.data.api_key || '', // 正确从文件中读取API密钥
+                  apiKey: embeddingData.data.apiKey || embeddingData.data.api_key || '', // 支持两种字段名
                   model: embeddingData.data.model || defaultEmbeddingSettings.model,
-                  encodingFormat: (embeddingData.data.encoding_format as 'float' | 'base64') || defaultEmbeddingSettings.encodingFormat,
-                  customEndpoint: embeddingData.data.custom_endpoint || defaultEmbeddingSettings.customEndpoint
+                  encodingFormat: (embeddingData.data.encodingFormat || embeddingData.data.encoding_format as 'float' | 'base64') || defaultEmbeddingSettings.encodingFormat,
+                  customEndpoint: embeddingData.data.customEndpoint || embeddingData.data.custom_endpoint || defaultEmbeddingSettings.customEndpoint
                 };
                 setEmbeddingSettings(embeddingSettings);
                 console.log('[SettingsContext] 从统一设置服务读取embedding设置:', embeddingSettings);

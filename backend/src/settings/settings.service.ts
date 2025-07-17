@@ -237,4 +237,90 @@ export class SettingsService {
       uiSettings,
     };
   }
+
+  /**
+   * 从统一设置服务获取完整用户设置
+   * 这个方法直接从统一设置服务的JSON文件中读取设置，而不是从本地数据库
+   */
+  async getFullUserSettingsFromUnified(unifiedUserId: string): Promise<{
+    llmSettings: LLMSettingsDto;
+    embeddingSettings: EmbeddingModelSettingsDto;
+    rerankingSettings: RerankingSettingsDto;
+    uiSettings: UISettingsDto;
+  }> {
+    const fs = require('fs');
+    const path = require('path');
+
+    // 统一设置服务的用户设置文件路径
+    const settingsFilePath = path.join(
+      'C:', 'code', 'unified-settings-service', 'user-data-v2',
+      `${unifiedUserId}_settings.json`
+    );
+
+    console.log('[SettingsService] 从统一设置服务读取设置:', settingsFilePath);
+
+    let unifiedSettings: any = {};
+
+    try {
+      if (fs.existsSync(settingsFilePath)) {
+        const fileContent = fs.readFileSync(settingsFilePath, 'utf8');
+        unifiedSettings = JSON.parse(fileContent);
+        console.log('[SettingsService] 成功读取统一设置:', Object.keys(unifiedSettings));
+      } else {
+        console.log('[SettingsService] 统一设置文件不存在，使用默认设置');
+      }
+    } catch (error) {
+      console.error('[SettingsService] 读取统一设置失败:', error);
+    }
+
+    // 转换统一设置格式到前端期望的格式
+    const llmSettings: LLMSettingsDto = {
+      provider: unifiedSettings.llm?.provider || defaultLLMSettings.provider,
+      apiKey: unifiedSettings.llm?.api_key || defaultLLMSettings.apiKey,
+      model: unifiedSettings.llm?.model || defaultLLMSettings.model,
+      temperature: unifiedSettings.llm?.temperature || defaultLLMSettings.temperature,
+      maxTokens: unifiedSettings.llm?.max_tokens || unifiedSettings.llm?.maxTokens || defaultLLMSettings.maxTokens,
+      useCustomModel: unifiedSettings.llm?.use_custom_model || unifiedSettings.llm?.useCustomModel || defaultLLMSettings.useCustomModel,
+      customEndpoint: unifiedSettings.llm?.base_url || unifiedSettings.llm?.customEndpoint || defaultLLMSettings.customEndpoint,
+    };
+
+    console.log('[SettingsService] 转换LLM设置 - 原始:', unifiedSettings.llm);
+    console.log('[SettingsService] 转换LLM设置 - 结果:', llmSettings);
+
+    const embeddingSettings: EmbeddingModelSettingsDto = {
+      provider: unifiedSettings.vectorization?.provider || 'openai',
+      apiKey: unifiedSettings.vectorization?.api_key || '',
+      model: unifiedSettings.vectorization?.model || 'text-embedding-3-small',
+      customEndpoint: unifiedSettings.vectorization?.custom_endpoint || unifiedSettings.vectorization?.base_url || unifiedSettings.vectorization?.customEndpoint || '',
+      encodingFormat: 'float',
+    };
+
+    console.log('[SettingsService] 转换向量化设置 - 原始:', unifiedSettings.vectorization);
+    console.log('[SettingsService] 转换向量化设置 - 结果:', embeddingSettings);
+
+    const rerankingSettings: RerankingSettingsDto = {
+      enableReranking: unifiedSettings.reranking?.enable_reranking || false,
+      rerankingProvider: unifiedSettings.reranking?.provider || 'cohere',
+      rerankingModel: unifiedSettings.reranking?.model || 'rerank-multilingual-v2.0',
+      rerankingCustomEndpoint: unifiedSettings.reranking?.base_url || '',
+      initialRerankCandidates: 100,
+      finalRerankTopN: 10,
+    };
+
+    const uiSettings: UISettingsDto = {
+      darkMode: false,
+      fontSize: 'medium',
+      saveConversationHistory: true,
+      customEndpoint: '',
+    };
+
+    console.log('[SettingsService] 转换后的LLM设置:', llmSettings);
+
+    return {
+      llmSettings,
+      embeddingSettings,
+      rerankingSettings,
+      uiSettings,
+    };
+  }
 }
