@@ -420,6 +420,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
 
     try {
       let targetNotebookId: string | undefined = currentNotebook?.id;
+      let targetNotebookName: string | undefined = currentNotebook?.title;
       let newNotebookCreated = false;
 
       if (!targetNotebookId) {
@@ -436,6 +437,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
         const newNotebook = await createNotebook(userNotebookTitle.trim());
         if (newNotebook) {
           targetNotebookId = newNotebook.id;
+          targetNotebookName = newNotebook.title;
           newNotebookCreated = true;
           toast.success(`新笔记本 "${newNotebook.title}" 已创建。`);
         } else {
@@ -467,8 +469,11 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
         // 为了更好的用户体验，可以尝试导航并激活笔记。
         
         // 如果是新创建的笔记本，导航到它
-        if (newNotebookCreated) {
-          router.push(`/${targetNotebookId}`);
+        if (newNotebookCreated && targetNotebookName) {
+          // 新创建的笔记本默认在根目录，使用 'default' 作为文件夹名
+          const encodedFolderName = encodeURIComponent('default');
+          const encodedNotebookName = encodeURIComponent(targetNotebookName);
+          router.push(`/${encodedFolderName}/${encodedNotebookName}`);
           //  当 NotebookLayout 加载时，它会获取 currentNotes。
           //  可以考虑在 NotebookLayout 中添加逻辑，如果 URL query param 中有 noteId，则自动设为 activeNote。
           //  或者，在这里调用一个方法（如果 NotebookContext 或 Layout 暴露的话）来设置 activeNote。

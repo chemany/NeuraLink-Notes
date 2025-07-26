@@ -25,7 +25,35 @@ export class NotebooksService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    console.log(`[NotebooksService] Storage configuration - STORAGE_TYPE: ${storageType}, NAS_PATH: ${nasPath}`);
+
+    if (storageType === 'nas') {
+      this.uploadsDir = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    }
+
+    console.log(`[NotebooksService] Using uploads directory: ${this.uploadsDir}`);
+  }
+
+  /**
+   * 根据用户ID获取用户邮箱
+   */
+  private async getUserEmailFromUserId(userId: string): Promise<string> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true }
+      });
+      return user?.email || `unknown-${userId}`;
+    } catch (error) {
+      console.error(`[NotebooksService] 获取用户邮箱失败:`, error);
+      return `error-${userId}`;
+    }
   }
 
   /**
@@ -98,7 +126,10 @@ export class NotebooksService {
 
   // 获取所有笔记本的方法
   async findAll(userId: string, folderId?: string | null): Promise<Notebook[]> {
-    this.logger.log(`User ${userId} fetching notebooks. FolderId filter: ${folderId === undefined ? 'all' : (folderId === null ? 'root' : folderId)}`);
+    // 获取用户名用于显示
+    const username = await this.getUsernameFromUserId(userId);
+    this.logger.log(`User ${username} (${userId}) fetching notebooks. FolderId filter: ${folderId === undefined ? 'all' : (folderId === null ? 'root' : folderId)}`);
+
     try {
       const whereClause: Prisma.NotebookWhereInput = { userId };
 
@@ -107,7 +138,7 @@ export class NotebooksService {
       }
       // If folderId is undefined, no folderId filter is applied, returning all user's notebooks.
 
-      return await this.prisma.notebook.findMany({
+      const notebooks = await this.prisma.notebook.findMany({
         where: whereClause,
         orderBy: { updatedAt: 'desc' }, // Changed from createdAt to updatedAt for more relevant sorting
          include: { // Optionally include folder info
@@ -119,6 +150,27 @@ export class NotebooksService {
            }
          }
       });
+
+      // 为每个笔记本添加可读的显示信息
+      const notebooksWithDisplayInfo = notebooks.map(notebook => {
+        const folderName = notebook.folder?.name || 'default';
+        const displayPath = `${username}/${folderName}/${notebook.title}`;
+
+        return {
+          ...notebook,
+          displayPath,
+          ownerName: username,
+          // 添加调试信息
+          debugInfo: {
+            id: notebook.id,
+            userId: notebook.userId,
+            username: username
+          }
+        };
+      });
+
+      this.logger.log(`User ${username} has ${notebooks.length} notebooks`);
+      return notebooksWithDisplayInfo;
     } catch (error) {
       this.logger.error(
         `User ${userId} failed to fetch notebooks (folderId: ${folderId}): ${error.message}`,
@@ -133,6 +185,21 @@ export class NotebooksService {
     this.logger.log(
       `User ${userId} creating notebook: "${createNotebookDto.title}" ${createNotebookDto.folderId ? `in folder ${createNotebookDto.folderId}` : ''}`,
     );
+
+    // 检查同一文件夹内是否已存在同名笔记本
+    const existingNotebook = await this.prisma.notebook.findFirst({
+      where: {
+        userId: userId,
+        title: createNotebookDto.title.trim(),
+        folderId: createNotebookDto.folderId || null, // null 表示根目录
+      },
+    });
+
+    if (existingNotebook) {
+      const folderName = createNotebookDto.folderId ? '指定文件夹' : '根目录';
+      throw new BadRequestException(`${folderName}中已存在名为"${createNotebookDto.title.trim()}"的笔记本`);
+    }
+
     let newNotebook: Notebook | null = null; // Define here to access ID later
     try {
       const data: Prisma.NotebookCreateInput = {
@@ -157,10 +224,23 @@ export class NotebooksService {
 
       // --- Ensure local directory exists after creation ---
       if (newNotebook) {
-        // 使用用户名和笔记本名称而不是随机ID来创建文件夹
+        // 使用用户名、文件夹名称和笔记本名称来创建文件夹结构
         const username = await this.getUsernameFromUserId(userId);
         const notebookName = this.sanitizeNotebookName(newNotebook.title);
-        const notebookDir = path.join(this.uploadsDir, username, notebookName);
+
+        // 获取文件夹名称
+        let folderName = 'default'; // 默认文件夹名称
+        if (newNotebook.folderId) {
+          const folder = await this.prisma.folder.findUnique({
+            where: { id: newNotebook.folderId },
+          });
+          if (folder) {
+            folderName = this.sanitizeNotebookName(folder.name);
+          }
+        }
+
+        // 创建路径：uploads/用户名/文件夹名称/笔记本名称
+        const notebookDir = path.join(this.uploadsDir, username, folderName, notebookName);
         try {
           await fsExtra.ensureDir(notebookDir);
           this.logger.log(
@@ -209,12 +289,81 @@ export class NotebooksService {
 
   // Add the remove method here
   async remove(id: string, userId: string): Promise<Notebook> {
-    this.logger.log(`User ${userId} attempting to delete notebook with ID: ${id}`);
-    const notebook = await this.findOne(id, userId); // Ensures notebook exists and belongs to user
-    if (!notebook) { // findOne already throws if not found, but as a safeguard
-      throw new NotFoundException(`找不到 ID 为 ${id} 的笔记本或您没有权限删除。`);
+    // 获取用户名用于更直观的日志
+    const username = await this.getUsernameFromUserId(userId);
+    this.logger.log(`用户 ${username} 尝试删除笔记本 ID: ${id}`);
+
+    try {
+      // 首先获取笔记本信息，同时验证权限
+      const notebook = await this.prisma.notebook.findFirst({
+        where: { id, userId }, // 确保笔记本属于用户
+        include: {
+          folder: { select: { name: true } }
+        }
+      });
+
+      if (!notebook) {
+        // 调试：检查笔记本是否存在但属于其他用户
+        const existingNotebook = await this.prisma.notebook.findUnique({
+          where: { id },
+          select: { id: true, title: true, userId: true, createdAt: true }
+        });
+
+        if (existingNotebook) {
+          const notebookOwnerName = await this.getUsernameFromUserId(existingNotebook.userId);
+          const currentUserEmail = await this.getUserEmailFromUserId(userId);
+          const notebookOwnerEmail = await this.getUserEmailFromUserId(existingNotebook.userId);
+
+          this.logger.warn(`❌ 权限错误 - 笔记本存在但属于其他用户:`);
+          this.logger.warn(`   📝 笔记本: "${existingNotebook.title}"`);
+          this.logger.warn(`   👤 实际所有者: ${notebookOwnerName} (${notebookOwnerEmail})`);
+          this.logger.warn(`   🚫 当前用户: ${username} (${currentUserEmail})`);
+          this.logger.warn(`   📅 创建时间: ${existingNotebook.createdAt}`);
+
+        } else {
+          this.logger.warn(`❌ 笔记本不存在: ID ${id}`);
+        }
+
+        throw new NotFoundException(`找不到笔记本或您没有权限删除。`);
+      }
+
+      const folderName = notebook.folder?.name || 'default';
+      const displayPath = `${username}/${folderName}/${notebook.title}`;
+      this.logger.log(`✅ 找到要删除的笔记本: ${displayPath}`);
+
+      // 执行删除操作
+      await this.performNotebookDeletion(id, userId, notebook);
+
+      this.logger.log(`🗑️ 成功删除笔记本: ${displayPath}`);
+      return notebook;
+
+    } catch (error) {
+      this.logger.error(`❌ 删除笔记本失败 (用户: ${username}, ID: ${id}):`, error.message);
+      throw error;
     }
-    const notebookUploadsPath = path.join(this.uploadsDir, userId, id); // Add userId to path
+  }
+
+  /**
+   * 执行实际的笔记本删除操作
+   */
+  private async performNotebookDeletion(id: string, userId: string, notebook: Notebook): Promise<void> {
+    // 使用用户名、文件夹名称和笔记本名称来构建删除路径，与创建时保持一致
+    const username = await this.getUsernameFromUserId(userId);
+    const notebookName = this.sanitizeNotebookName(notebook.title);
+
+    // 获取文件夹名称
+    let folderName = 'default'; // 默认文件夹名称
+    if (notebook.folderId) {
+      const folder = await this.prisma.folder.findUnique({
+        where: { id: notebook.folderId },
+      });
+      if (folder) {
+        folderName = this.sanitizeNotebookName(folder.name);
+      }
+    }
+
+    // 构建路径：uploads/用户名/文件夹名称/笔记本名称
+    const notebookUploadsPath = path.join(this.uploadsDir, username, folderName, notebookName);
 
     try {
       // Use a transaction to ensure atomicity of DB operations
@@ -225,10 +374,11 @@ export class NotebooksService {
           `Deleted ${deletedDocs.count} documents associated with notebook ${id}.`,
         );
 
-        // 2. Delete the notebook itself
-        const nb = await tx.notebook.delete({ where: { id } }); // id is unique
+        // 2. Delete the notebook itself (we already verified it exists and belongs to user)
+        const deletedNotebook = await tx.notebook.delete({ where: { id } });
         this.logger.log(`Deleted notebook record for ${id} from database.`);
-        return nb; // Return the deleted notebook data
+
+        return deletedNotebook;
       });
 
       // --- Modified File Deletion Logic ---
@@ -251,7 +401,7 @@ export class NotebooksService {
       }
       // --- End File Deletion Logic ---
 
-      return deletedNotebook; // Return the notebook data that was deleted
+      // 删除操作成功完成
     } catch (error) {
       // Handle specific Prisma error for record not found
       if (

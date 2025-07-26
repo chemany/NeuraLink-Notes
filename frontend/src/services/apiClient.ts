@@ -13,26 +13,42 @@ import axios from 'axios';
 export const getApiBaseUrl = (): string => {
   // 检查是否在浏览器环境中
   if (typeof window !== 'undefined') {
-    // 在开发环境中，直接连接到后端
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[getApiBaseUrl] Using localhost backend URL');
-      }
+    const hostname = window.location.hostname;
+
+    // 添加详细的调试信息
+    console.log('[getApiBaseUrl] 当前hostname:', hostname);
+    console.log('[getApiBaseUrl] 当前完整URL:', window.location.href);
+
+    // 检查是否是本地环境（localhost或127.0.0.1）
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+    // 检查是否是局域网IP地址（192.168.x.x, 10.x.x.x, 172.16-31.x.x）
+    const isPrivateIP = /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                       /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                       /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+    console.log('[getApiBaseUrl] isLocalhost:', isLocalhost);
+    console.log('[getApiBaseUrl] isPrivateIP:', isPrivateIP);
+
+    if (isLocalhost) {
+      // 本地开发环境：直接连接到后端
+      console.log('[getApiBaseUrl] 检测到本地环境，使用localhost连接');
       return 'http://localhost:3001';
+    } else if (isPrivateIP) {
+      // 局域网IP访问：使用当前IP访问后端端口
+      const backendUrl = `http://${hostname}:3001`;
+      console.log(`[getApiBaseUrl] 检测到局域网环境(${hostname})，使用IP连接:`, backendUrl);
+      return backendUrl;
+    } else {
+      // 外网环境：通过nginx代理访问
+      console.log('[getApiBaseUrl] 检测到外网环境，使用nginx代理');
+      return '/notepads';
     }
-    
-    // 在生产环境中使用相对路径，考虑basePath
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[getApiBaseUrl] Using relative path for production with basePath');
-    }
-    return '/notepads';
   }
-  
-  // 服务端渲染环境下的默认值，也需要考虑basePath
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[getApiBaseUrl] Using basePath for SSR');
-  }
-  return '/notepads';
+
+  // 服务端渲染环境下的默认值 - 在SSR时也使用localhost
+  console.log('[getApiBaseUrl] 服务端环境，使用默认配置');
+  return 'http://localhost:3001';
 };
 
 const apiClient = axios.create({

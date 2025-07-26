@@ -17,7 +17,15 @@ export class NotePadService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    if (storageType === 'nas') {
+      this.uploadsDir = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    }
   }
 
   async create(notebookId: string, userId: string, createNoteDto: CreateNotePadNoteDto): Promise<NotePadNote> {
@@ -139,10 +147,10 @@ export class NotePadService {
   
   private async saveNoteAsMarkdownFile(notebookId: string, userId: string, noteId: string, title: string, content: string) {
     try {
-      // 使用用户名和笔记本名称构建路径
+      // 使用用户名、文件夹名称和笔记本名称构建路径，与笔记本创建逻辑保持一致
       const username = await this.getUsernameFromUserId(userId);
-      const notebookName = await this.getNotebookNameFromId(notebookId);
-      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, folderName, notebookName);
       const notesDir = path.join(notebookDir, 'notes');
       await fsExtra.ensureDir(notesDir);
 
@@ -163,10 +171,10 @@ export class NotePadService {
   
   private async deleteNoteMarkdownFile(notebookId: string, userId: string, noteId: string, title: string) {
     try {
-      // 使用用户名和笔记本名称构建路径
+      // 使用用户名、文件夹名称和笔记本名称构建路径，与创建逻辑保持一致
       const username = await this.getUsernameFromUserId(userId);
-      const notebookName = await this.getNotebookNameFromId(notebookId);
-      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, folderName, notebookName);
       const notesDir = path.join(notebookDir, 'notes');
 
       if (!(await fsExtra.pathExists(notesDir))) {
@@ -238,31 +246,48 @@ export class NotePadService {
   }
 
   /**
-   * 根据笔记本ID获取笔记本名称
+   * 根据笔记本ID获取笔记本名称和文件夹名称
    */
-  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+  private async getNotebookAndFolderNames(notebookId: string): Promise<{ notebookName: string; folderName: string }> {
     try {
       const notebook = await this.prisma.notebook.findUnique({
         where: { id: notebookId },
-        select: { title: true }
+        select: {
+          title: true,
+          folderId: true,
+          folder: {
+            select: { name: true }
+          }
+        }
       });
 
       if (!notebook || !notebook.title) {
-        console.log(`[NotePadService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
-        return notebookId;
+        console.log(`[NotePadService] 未找到笔记本ID ${notebookId} 对应的信息，使用笔记本ID`);
+        return { notebookName: notebookId, folderName: 'default' };
       }
 
-      // 清理文件名，移除不安全的字符
-      const safeName = notebook.title
-        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
-        .replace(/\s+/g, '_')           // 替换空格为下划线
-        .trim();
+      // 清理笔记本名称
+      const notebookName = this.sanitizeFileName(notebook.title) || notebookId;
 
-      console.log(`[NotePadService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
-      return safeName || notebookId;
+      // 获取文件夹名称
+      let folderName = 'default';
+      if (notebook.folderId && notebook.folder) {
+        folderName = this.sanitizeFileName(notebook.folder.name) || 'default';
+      }
+
+      console.log(`[NotePadService] 笔记本和文件夹映射: ${notebookId} -> ${folderName}/${notebookName}`);
+      return { notebookName, folderName };
     } catch (error) {
-      console.error(`[NotePadService] 获取笔记本名称失败，使用笔记本ID:`, error);
-      return notebookId;
+      console.error(`[NotePadService] 获取笔记本和文件夹信息失败，使用默认值:`, error);
+      return { notebookName: notebookId, folderName: 'default' };
     }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称（保留向后兼容性）
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    const { notebookName } = await this.getNotebookAndFolderNames(notebookId);
+    return notebookName;
   }
 } 

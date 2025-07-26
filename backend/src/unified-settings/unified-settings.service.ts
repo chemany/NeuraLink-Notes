@@ -8,9 +8,27 @@ import * as path from 'path';
  */
 @Injectable()
 export class UnifiedSettingsService {
-  private readonly userDataPath = 'C:\\code\\unified-settings-service\\user-data-v2';
-  private readonly usersCSVPath = path.join(this.userDataPath, 'users.csv');
-  private readonly defaultModelsPath = 'C:\\code\\unified-settings-service\\config\\default-models.json';
+  private readonly userDataPath: string;
+  private readonly usersCSVPath: string;
+  private readonly defaultModelsPath: string;
+
+  constructor() {
+    // 使用环境变量确定存储路径
+    const storageType = process.env.STORAGE_TYPE || 'local';
+    const nasPath = process.env.NAS_PATH || '/mnt/nas-sata12';
+
+    if (storageType === 'nas') {
+      this.userDataPath = path.join(nasPath, 'MindOcean', 'user-data', 'settings');
+      this.defaultModelsPath = path.join(nasPath, 'MindOcean', 'user-data', 'settings', 'default-models.json');
+    } else {
+      this.userDataPath = 'C:\\code\\unified-settings-service\\user-data-v2';
+      this.defaultModelsPath = 'C:\\code\\unified-settings-service\\config\\default-models.json';
+    }
+
+    this.usersCSVPath = path.join(this.userDataPath, 'users.csv');
+
+    console.log(`[UnifiedSettingsService] 使用存储路径: ${this.userDataPath}`);
+  }
 
   /**
    * 根据用户ID获取用户名

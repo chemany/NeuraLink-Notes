@@ -1,8 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { StorageProvider } from './storage-provider.interface';
-import * as WebDAV from 'webdav';
-import { FileStat, ResponseDataDetailed } from 'webdav/dist/node/types';
-import { BufferLike } from 'webdav/dist/node/types.js'; // Import BufferLike
+// import * as WebDAV from 'webdav';
+// import { FileStat, ResponseDataDetailed } from 'webdav/dist/node/types';
+// import { BufferLike } from 'webdav/dist/node/types.js'; // Import BufferLike
+
+// 暂时禁用 WebDAV 功能以解决 ES Module 导入问题
+const WebDAV = null as any;
+type FileStat = any;
+type ResponseDataDetailed = any;
+type BufferLike = any;
+
+// 定义 WebDAV 命名空间类型
+namespace WebDAV {
+  export type FileStat = any;
+  export type GetFileContentsOptions = any;
+  export type PutFileContentsOptions = any;
+  export type GetDirectoryContentsOptions = any;
+  export type WebDAVClient = any;
+}
 import { Readable } from 'stream';
 import { EventEmitter } from 'events';
 import * as path from 'path'; // Import path module
@@ -27,6 +42,12 @@ export class WebDAVProvider extends EventEmitter implements StorageProvider {
   constructor(config: any) {
     // 1. 先调用 super()
     super();
+
+    // 暂时禁用 WebDAV 功能
+    if (WebDAV === null) {
+      this.logger.error('WebDAV functionality is temporarily disabled due to ES Module import issues');
+      throw new Error('WebDAV functionality is temporarily disabled');
+    }
 
     // 检查配置对象的有效性
     if (!config || typeof config !== 'object') {

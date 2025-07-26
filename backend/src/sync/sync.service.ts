@@ -63,15 +63,22 @@ export class SyncService {
     private configService: ConfigService,
     private notebooksService: NotebooksService,
   ) {
-    // Ensure UPLOAD_PATH is used consistently if it's defined in config
-    this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    if (storageType === 'nas') {
+      this.uploadsDir = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    }
+
     if (!this.uploadsDir) {
-      this.logger.error('UPLOAD_PATH configuration is missing or empty!');
-      // Consider throwing an error or setting a default with a warning
+      this.logger.error('Upload path configuration is missing or empty!');
       this.uploadsDir = 'uploads'; // Default fallback
     }
     this.logger.log(
-      `Uploads directory set to: ${path.resolve(this.uploadsDir)}`,
+      `[SyncService] 使用存储路径: ${path.resolve(this.uploadsDir)}`,
     );
   }
 

@@ -47,6 +47,8 @@ interface NotebookContextType {
 
   // Methods
   setCurrentNotebookById: (id: string | null) => void;
+  setCurrentNotebookByName: (name: string | null) => void;
+  setCurrentNotebookByFolderAndName: (folderName: string, notebookName: string) => void;
   createNotebook: (title: string, folderId?: string) => Promise<Notebook | null>;
   deleteNotebook: (id: string) => void;
   updateNotebookTitle: (id: string, newTitle: string) => Promise<Notebook>;
@@ -107,6 +109,8 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [notebooksError, setNotebooksError] = useState<string | null>(null);
   const [isCreatingNotebook, setIsCreatingNotebook] = useState<boolean>(false); // Init new state
   const [createNotebookError, setCreateNotebookError] = useState<string | null>(null); // Init new state
+  const [isDeletingNotebook, setIsDeletingNotebook] = useState<string | null>(null);
+  const [deletedNotebooks, setDeletedNotebooks] = useState<Set<string>>(new Set()); // 已删除的笔记本ID缓存 // 记录正在删除的笔记本ID
   const [isInitialized, setIsInitialized] = useState<boolean>(false); // Keep if used
 
   // Rich Text Note states
@@ -115,7 +119,7 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [notesError, setNotesError] = useState<string | null>(null);
 
   const router = useRouter();
-  const { isAuthenticated, isLoading: isAuthLoading, token } = useAuth(); // <--- 使用 AuthContext
+  const { isAuthenticated, isLoading: isAuthLoading, token, user } = useAuth(); // <--- 使用 AuthContext
 
     // Effect for initial loading, dependent on authentication status
   useEffect(() => {
@@ -198,9 +202,10 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
 
 
   const fetchNotesForNotebook = useCallback(async (notebookId: string | null) => {
+    console.log(`[NotebookContext] fetchNotesForNotebook called with notebookId: ${notebookId}, isAuthenticated: ${isAuthenticated}`);
     if (!notebookId || !isAuthenticated) { // <--- 增加 isAuthenticated 检查
       setCurrentNotes([]);
-      // console.log('[NotebookContext] Cleared notes because notebookId is null or user not authenticated.');
+      console.log('[NotebookContext] Cleared notes because notebookId is null or user not authenticated.');
       return;
     }
     // console.log(`[NotebookContext] Fetching notes for notebook: ${notebookId}...`);
@@ -264,33 +269,85 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       toast.error("请登录后删除笔记本。");
       return;
     }
-    console.log(`[NotebookContext] Attempting to delete notebook: ${id}`);
-    // Optionally add a loading state specific to deletion if needed
 
+    // 防止重复删除 - 更严格的检查
+    if (isDeletingNotebook === id) {
+      console.log(`[NotebookContext] Already deleting notebook: ${id}, ignoring duplicate request`);
+      return;
+    }
+
+    // 检查是否已经删除过
+    if (deletedNotebooks.has(id)) {
+      console.log(`[NotebookContext] Notebook ${id} already deleted, ignoring request`);
+      toast.error("笔记本已被删除");
+      return;
+    }
+
+    // 检查笔记本是否还存在于本地状态中
     const notebookToDelete = notebooks.find(nb => nb.id === id);
+    if (!notebookToDelete) {
+      console.log(`[NotebookContext] Notebook ${id} not found in local state, may already be deleted`);
+      toast.error("笔记本不存在或已被删除");
+      return;
+    }
+
+    console.log(`[NotebookContext] 开始删除笔记本: ${notebookToDelete.displayPath || notebookToDelete.title} (ID: ${id})`);
+    setIsDeletingNotebook(id); // 设置删除状态
+
     const titleToDelete = notebookToDelete?.title || id;
 
-    toast.loading(`正在删除笔记本 "${titleToDelete}"...`, { id: 'delete-notebook-toast' });
+    // 构建更友好的显示路径
+    let displayPath = titleToDelete;
+    if (notebookToDelete?.displayPath) {
+      displayPath = notebookToDelete.displayPath;
+    } else {
+      // 如果没有displayPath，手动构建一个友好的路径
+      const ownerName = notebookToDelete?.ownerName || user?.email?.split('@')[0] || '用户';
+
+      // 尝试获取文件夹名称
+      let folderName = 'default';
+      if (notebookToDelete?.folderId && folders) {
+        const folder = folders.find(f => f.id === notebookToDelete.folderId);
+        folderName = folder?.name || 'default';
+      }
+
+      displayPath = `${ownerName}/${folderName}/${titleToDelete}`;
+    }
+
+    toast.loading(`正在删除笔记本 "${displayPath}"...`, { id: 'delete-notebook-toast' });
 
     try {
       // 使用我们的 deleteNotebook API 函数，传递正确的参数
       await deleteNotebookApi(id, token);
-      
-      setNotebooks(prev => prev.filter(n => n.id !== id));
-      toast.success(`笔记本 "${titleToDelete}" 已删除`, { id: 'delete-notebook-toast' });
+
+      // 立即从本地状态中移除，防止重复删除
+      setNotebooks(prev => {
+        const filtered = prev.filter(n => n.id !== id);
+        console.log(`[NotebookContext] 从本地状态移除笔记本，剩余 ${filtered.length} 个`);
+        return filtered;
+      });
+
+      // 添加到已删除缓存
+      setDeletedNotebooks(prev => new Set([...prev, id]));
+
+      // 立即重置删除状态，防止重复请求
+      setIsDeletingNotebook(null);
+
+      toast.success(`笔记本 "${displayPath}" 已删除`, { id: 'delete-notebook-toast' });
 
       // If the deleted notebook was the current one, reset and navigate home
       if (currentNotebook?.id === id) {
         setCurrentNotebookState(null);
-        router.push('/'); 
+        router.push('/');
       }
-      console.log(`[NotebookContext] Successfully deleted notebook: ${id}`);
+      console.log(`[NotebookContext] 成功删除笔记本: ${displayPath}`);
     } catch (error) {
-      console.error(`[NotebookContext] Error during notebook deletion for ${id}:`, error);
-      toast.error(`删除笔记本 "${titleToDelete}" 失败: ${error instanceof Error ? error.message : '未知错误'}`, { id: 'delete-notebook-toast' });
+      console.error(`[NotebookContext] 删除笔记本失败 ${displayPath}:`, error);
+      toast.error(`删除笔记本 "${displayPath}" 失败: ${error instanceof Error ? error.message : '未知错误'}`, { id: 'delete-notebook-toast' });
+      // 只有在失败时才重置删除状态
+      setIsDeletingNotebook(null);
     }
-    // Optionally reset loading state here
-  }, [notebooks, currentNotebook, router, isAuthenticated, token]); // Add dependencies
+  }, [notebooks, currentNotebook, router, isAuthenticated, token, isDeletingNotebook]); // Add dependencies
 
   const updateNotebookTitle = useCallback(async (id: string, newTitle: string): Promise<Notebook> => {
     if (!isAuthenticated || !token) {
@@ -338,6 +395,84 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [notebooks, router]); // Dependencies: notebooks list and router
 
+  const setCurrentNotebookByName = useCallback((name: string | null) => {
+    console.log(`[NotebookContext] Setting current notebook by name: ${name}, isAuthenticated: ${isAuthenticated}, notebooks.length: ${notebooks.length}`);
+    if (name === null) {
+        setCurrentNotebookState(null);
+        router.push('/'); // Navigate home if notebook is deselected
+    } else {
+        // 如果用户未认证，不要尝试设置笔记本
+        if (!isAuthenticated) {
+            console.log(`[NotebookContext] User not authenticated, cannot set notebook by name`);
+            return;
+        }
+
+        // Log the names currently in the state *before* trying to find
+        console.log(`[NotebookContext] Notebooks currently in state:`, notebooks.map(n => n.title));
+        const notebookToSet = notebooks.find(n => n.title === name);
+        if (notebookToSet) {
+            console.log(`[NotebookContext] Found notebook by name "${name}":`, notebookToSet);
+            setCurrentNotebookState(notebookToSet);
+        } else {
+            console.warn(`[NotebookContext] Notebook with name "${name}" not found in current state.`);
+            console.log(`[NotebookContext] Available notebooks:`, notebooks.map(n => ({ id: n.id, title: n.title })));
+            // 如果笔记本列表为空，可能还在加载中，不要立即导航走
+            if (notebooks.length === 0) {
+                console.log(`[NotebookContext] Notebooks list is empty, might still be loading...`);
+            }
+        }
+    }
+  }, [notebooks, router, isAuthenticated]); // Dependencies: notebooks list, router, and authentication
+
+  const setCurrentNotebookByFolderAndName = useCallback((folderName: string, notebookName: string) => {
+    console.log(`[NotebookContext] Setting current notebook by folder and name: ${folderName}/${notebookName}, isAuthenticated: ${isAuthenticated}, notebooks.length: ${notebooks.length}`);
+
+    // 如果用户未认证，不要尝试设置笔记本
+    if (!isAuthenticated) {
+        console.log(`[NotebookContext] User not authenticated, cannot set notebook by folder and name`);
+        return;
+    }
+
+    // 根据文件夹名称和笔记本名称查找笔记本
+    // 首先需要找到对应的文件夹ID
+    let targetFolderId: string | null = null;
+
+    if (folderName === 'default') {
+        // 默认文件夹，folderId 为 null
+        targetFolderId = null;
+    } else {
+        // 查找对应的文件夹
+        const folder = folders.find(f => f.name === folderName);
+        if (folder) {
+            targetFolderId = folder.id;
+        } else {
+            console.warn(`[NotebookContext] Folder with name "${folderName}" not found`);
+            return;
+        }
+    }
+
+    // 查找在指定文件夹中的笔记本
+    const notebookToSet = notebooks.find(nb =>
+        nb.title === notebookName &&
+        (nb.folderId === targetFolderId || (targetFolderId === null && !nb.folderId))
+    );
+
+    if (notebookToSet) {
+        console.log(`[NotebookContext] Found notebook by folder and name "${folderName}/${notebookName}":`, notebookToSet);
+        setCurrentNotebookState(notebookToSet);
+    } else {
+        console.warn(`[NotebookContext] Notebook with name "${notebookName}" not found in folder "${folderName}"`);
+        console.log(`[NotebookContext] Available notebooks:`, notebooks.map(n => ({
+            id: n.id,
+            title: n.title,
+            folderId: n.folderId
+        })));
+        console.log(`[NotebookContext] Available folders:`, folders.map(f => ({
+            id: f.id,
+            name: f.name
+        })));
+    }
+  }, [notebooks, folders, isAuthenticated]); // Dependencies: notebooks list, folders list, and authentication
 
   // --- Existing API-Integrated Document Functions (Keep as is) ---
   const addDocumentToChat = useCallback(async (docId: string): Promise<Document | null> => {
@@ -747,6 +882,8 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       
       // Core methods
       setCurrentNotebookById,
+      setCurrentNotebookByName,
+      setCurrentNotebookByFolderAndName,
       createNotebook,
       deleteNotebook,
       updateNotebookTitle,

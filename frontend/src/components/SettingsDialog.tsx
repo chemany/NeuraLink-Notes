@@ -7,14 +7,15 @@ interface SettingsDialogProps {
 }
 
 export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
-  const { 
-    llmSettings, 
-    embeddingSettings, 
+  const {
+    llmSettings,
+    embeddingSettings,
     rerankingSettings,
-    uiSettings, 
+    uiSettings,
     saveAllSettings,
     resetSettings,
-    defaultModels 
+    defaultModels,
+    refreshSettings
   } = useSettings();
   
   const [isMounted, setIsMounted] = useState(false);
@@ -46,7 +47,38 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
   // 当设置变化或对话框打开时，更新本地状态
   useEffect(() => {
     if (isOpen && isMounted) {
-      // 当对话框打开或 context 中的值变化时，用 context 的值重置 local state
+      // 当对话框打开时，先刷新设置数据，然后用 context 的值重置 local state
+      console.log('[SettingsDialog] 对话框打开，刷新设置数据');
+      refreshSettings().then(() => {
+        console.log('[SettingsDialog] 设置刷新完成，更新本地状态');
+        setLocalLLMSettings(llmSettings);
+        setLocalEmbeddingSettings(embeddingSettings);
+        setLocalRerankingSettings(rerankingSettings);
+        setLocalUISettings(prev => ({
+          ...prev,
+          ...uiSettings,
+          saveConversationHistory: uiSettings.saveConversationHistory
+        }));
+        setSaveStatus('idle');
+      }).catch(error => {
+        console.error('[SettingsDialog] 刷新设置失败:', error);
+        // 即使刷新失败，也要更新本地状态
+        setLocalLLMSettings(llmSettings);
+        setLocalEmbeddingSettings(embeddingSettings);
+        setLocalRerankingSettings(rerankingSettings);
+        setLocalUISettings(prev => ({
+          ...prev,
+          ...uiSettings,
+          saveConversationHistory: uiSettings.saveConversationHistory
+        }));
+        setSaveStatus('idle');
+      });
+    }
+  }, [isOpen, isMounted, refreshSettings]);
+
+  // 监听设置变化，更新本地状态
+  useEffect(() => {
+    if (isMounted) {
       setLocalLLMSettings(llmSettings);
       setLocalEmbeddingSettings(embeddingSettings);
       setLocalRerankingSettings(rerankingSettings);
@@ -55,10 +87,9 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
         ...uiSettings,
         saveConversationHistory: uiSettings.saveConversationHistory
       }));
-      setSaveStatus('idle');
     }
-  }, [isOpen, isMounted, llmSettings, embeddingSettings, rerankingSettings, uiSettings]);
-  
+  }, [llmSettings, embeddingSettings, rerankingSettings, uiSettings, isMounted]);
+
   // 服务器端渲染时不显示任何内容，避免hydration错误
   if (!isMounted) {
     return null;

@@ -240,7 +240,7 @@ export class SettingsService {
 
   /**
    * 从统一设置服务获取完整用户设置
-   * 这个方法直接从统一设置服务的JSON文件中读取设置，而不是从本地数据库
+   * 直接从NAS读取统一设置文件，学习潮汐志的方式
    */
   async getFullUserSettingsFromUnified(unifiedUserId: string): Promise<{
     llmSettings: LLMSettingsDto;
@@ -248,29 +248,35 @@ export class SettingsService {
     rerankingSettings: RerankingSettingsDto;
     uiSettings: UISettingsDto;
   }> {
+    console.log('[SettingsService] 直接从NAS读取统一设置，用户ID:', unifiedUserId);
+
+    let unifiedSettings: any = {};
     const fs = require('fs');
     const path = require('path');
 
-    // 统一设置服务的用户设置文件路径
-    const settingsFilePath = path.join(
-      'C:', 'code', 'unified-settings-service', 'user-data-v2',
-      `${unifiedUserId}_settings.json`
-    );
-
-    console.log('[SettingsService] 从统一设置服务读取设置:', settingsFilePath);
-
-    let unifiedSettings: any = {};
-
     try {
-      if (fs.existsSync(settingsFilePath)) {
-        const fileContent = fs.readFileSync(settingsFilePath, 'utf8');
+      // 直接从NAS读取统一设置文件，学习潮汐志的方式
+      const nasBasePath = process.env.STORAGE_TYPE === 'nas'
+        ? (process.env.NAS_PATH || '/mnt/nas-sata12')
+        : '/mnt/nas-sata12'; // 默认使用NAS路径
+
+      const settingsPath = path.join(nasBasePath, 'MindOcean', 'user-data', 'settings', `${unifiedUserId}_settings.json`);
+
+      console.log('[SettingsService] 尝试读取NAS设置文件:', settingsPath);
+
+      if (fs.existsSync(settingsPath)) {
+        const fileContent = fs.readFileSync(settingsPath, 'utf8');
         unifiedSettings = JSON.parse(fileContent);
-        console.log('[SettingsService] 成功读取统一设置:', Object.keys(unifiedSettings));
+        console.log('[SettingsService] 成功从NAS读取统一设置:', Object.keys(unifiedSettings));
       } else {
-        console.log('[SettingsService] 统一设置文件不存在，使用默认设置');
+        console.log('[SettingsService] NAS设置文件不存在，使用默认设置');
       }
+
+      console.log('[SettingsService] 从NAS读取的统一设置对象:', Object.keys(unifiedSettings));
+
     } catch (error) {
-      console.error('[SettingsService] 读取统一设置失败:', error);
+      console.error('[SettingsService] 调用统一设置服务API失败:', error);
+      // 如果API调用失败，返回默认设置
     }
 
     // 转换统一设置格式到前端期望的格式

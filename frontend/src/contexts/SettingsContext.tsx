@@ -118,6 +118,7 @@ export interface SettingsContextType {
     uiSettings: UISettings;
   } | null>;
   defaultModels: any;
+  refreshSettings: () => Promise<void>;
 }
 
 // Helper function to validate and fix LLM settings
@@ -747,8 +748,107 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return null;
   };
 
+  // 手动刷新设置的方法
+  const refreshSettings = useCallback(async () => {
+    console.log('[SettingsContext] 手动刷新设置被调用');
+    if (token) {
+      setIsLoading(true);
+
+      // 重新从统一设置服务获取最新设置
+      const isLoggedIn = localUnifiedSettingsService.isLoggedIn();
+      console.log('[SettingsContext] 刷新设置 - 检查登录状态:', isLoggedIn);
+
+      if (isLoggedIn) {
+        try {
+          console.log('[SettingsContext] 从统一设置服务刷新LLM配置...');
+          const llmConfig = await fetchLLMSettingsFromUnified();
+          const defaultModelsData = await fetchDefaultModels();
+          setDefaultModels(defaultModelsData);
+
+          if (llmConfig) {
+            console.log('[SettingsContext] 刷新获取的LLM配置:', llmConfig);
+
+            // 处理多提供商LLM设置
+            const currentProvider = llmConfig.current_provider || 'builtin';
+            let llmSettings: LLMSettings;
+
+            if (currentProvider === 'builtin') {
+              if (defaultModelsData?.builtin_free) {
+                llmSettings = {
+                  provider: 'builtin',
+                  apiKey: 'BUILTIN_PROXY',
+                  model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                  temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                  maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                  customEndpoint: 'BUILTIN_PROXY'
+                };
+              } else {
+                llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+              }
+            } else {
+              const providerConfig = llmConfig.providers?.[currentProvider];
+              if (providerConfig) {
+                llmSettings = {
+                  provider: currentProvider,
+                  apiKey: providerConfig.api_key || '',
+                  model: providerConfig.model_name || defaultLLMSettings.model,
+                  temperature: providerConfig.temperature || defaultLLMSettings.temperature,
+                  maxTokens: providerConfig.max_tokens || defaultLLMSettings.maxTokens,
+                  customEndpoint: providerConfig.base_url || defaultLLMSettings.customEndpoint
+                };
+              } else {
+                llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+              }
+            }
+
+            setLLMSettings(validateAndFixLLMSettings(llmSettings));
+          }
+
+          // 刷新embedding和reranking设置
+          try {
+            const embeddingData = await localUnifiedSettingsService.getEmbeddingSettingsFromFile();
+            if (embeddingData && embeddingData.data) {
+              const embeddingSettings = {
+                provider: embeddingData.data.provider || 'siliconflow',
+                apiKey: embeddingData.data.apiKey || embeddingData.data.api_key || '',
+                model: embeddingData.data.model || defaultEmbeddingSettings.model,
+                encodingFormat: (embeddingData.data.encodingFormat || embeddingData.data.encoding_format as 'float' | 'base64') || defaultEmbeddingSettings.encodingFormat,
+                customEndpoint: embeddingData.data.customEndpoint || embeddingData.data.custom_endpoint || defaultEmbeddingSettings.customEndpoint
+              };
+              setEmbeddingSettings(embeddingSettings);
+              console.log('[SettingsContext] 刷新的embedding设置:', embeddingSettings);
+            }
+          } catch (error) {
+            console.error('[SettingsContext] 刷新embedding设置失败:', error);
+          }
+
+          try {
+            const rerankingData = await localUnifiedSettingsService.getRerankingSettingsFromFile();
+            if (rerankingData && rerankingData.data) {
+              const rerankingSettings = {
+                provider: rerankingData.data.provider || 'builtin-free',
+                model: rerankingData.data.model || defaultRerankingSettings.model,
+                apiKey: rerankingData.data.apiKey || rerankingData.data.api_key || '',
+                customEndpoint: rerankingData.data.customEndpoint || rerankingData.data.custom_endpoint || defaultRerankingSettings.customEndpoint
+              };
+              setRerankingSettings(rerankingSettings);
+              console.log('[SettingsContext] 刷新的reranking设置:', rerankingSettings);
+            }
+          } catch (error) {
+            console.error('[SettingsContext] 刷新reranking设置失败:', error);
+          }
+
+        } catch (error) {
+          console.error('[SettingsContext] 刷新设置失败:', error);
+        }
+      }
+
+      setIsLoading(false);
+    }
+  }, [token, fetchLLMSettingsFromUnified]);
+
   return (
-    <SettingsContext.Provider 
+    <SettingsContext.Provider
       value={{
         llmSettings,
         embeddingSettings,
@@ -763,6 +863,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         saveAllSettings,
         getFullSettings,
         defaultModels,
+        refreshSettings, // 添加刷新方法
       }}
     >
       {children}

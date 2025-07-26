@@ -15,7 +15,7 @@ interface NotebookCardProps {
 }
 
 export default function NotebookCard({ notebookId, onDelete, onRename }: NotebookCardProps) {
-  const { notebooks, deleteNotebook } = useNotebook();
+  const { notebooks, deleteNotebook, folders } = useNotebook();
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState<boolean>(false);
@@ -62,18 +62,27 @@ export default function NotebookCard({ notebookId, onDelete, onRename }: Noteboo
   // 确认删除
   const confirmDelete = async () => {
     if (!notebook) return;
+
+    // 防止重复删除
+    if (isDeleting) {
+      console.log(`[NotebookCard] Already deleting notebook ${notebook.id}, ignoring duplicate request`);
+      return;
+    }
+
     setIsDeleting(true); // 表示删除正在开始
     try {
       await deleteNotebook(notebook.id);
-      // 如果需要父组件更新，可以在此处使用 onDelete 回调
-      if (onDelete) {
-        onDelete(notebook.id);
-      }
-      // 删除后，关闭模态框
+
+      // 删除成功后，关闭模态框
       setIsConfirmModalOpen(false);
-    } catch (error) { 
+
+      // 注意：不再调用 onDelete 回调，因为它会导致重复删除
+      // deleteNotebook 已经处理了所有必要的状态更新
+      console.log(`[NotebookCard] Successfully deleted notebook: ${notebook.title}`);
+
+    } catch (error) {
       // 错误处理在 deleteNotebook 上下文函数内完成(toast)
-      console.error("Deletion failed in card:", error);
+      console.error(`[NotebookCard] Deletion failed for notebook ${notebook.title}:`, error);
     } finally {
       setIsDeleting(false);
     }
@@ -100,7 +109,23 @@ export default function NotebookCard({ notebookId, onDelete, onRename }: Noteboo
   const handleCardClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    router.push(`/${notebook.id}`);
+
+    // 获取文件夹名称来构建正确的URL
+    let folderName = 'default'; // 默认文件夹名称
+
+    if (notebook.folderId) {
+      // 查找对应的文件夹名称
+      const folder = folders.find(f => f.id === notebook.folderId);
+      if (folder) {
+        folderName = folder.name;
+      } else {
+        console.warn(`[NotebookCard] Folder with ID ${notebook.folderId} not found, using default`);
+      }
+    }
+
+    const encodedFolderName = encodeURIComponent(folderName);
+    const encodedNotebookName = encodeURIComponent(notebook.title);
+    router.push(`/${encodedFolderName}/${encodedNotebookName}`);
   };
 
   // 拖拽事件处理

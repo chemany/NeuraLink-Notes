@@ -269,13 +269,13 @@ class UnifiedSettingsService {
         }
     }
 
-    // 直接读取LLM设置文件（多提供商格式）
+    // 直接读取LLM设置文件（多提供商格式）- 使用统一设置服务
     async getLLMSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/llm-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/llm', {
                 headers: this.getAuthHeaders()
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('读取LLM设置文件错误:', error);
@@ -283,15 +283,15 @@ class UnifiedSettingsService {
         }
     }
 
-    // 保存LLM设置到文件（多提供商格式）
+    // 保存LLM设置到文件（多提供商格式）- 使用统一设置服务
     async saveLLMSettingsToFile(provider, settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/llm-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/llm', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify({ provider, settings })
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('保存LLM设置到文件错误:', error);
@@ -316,10 +316,10 @@ class UnifiedSettingsService {
     // 获取embedding设置
     async getEmbeddingSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/embedding-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/embedding', {
                 headers: this.getAuthHeaders()
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('获取embedding设置错误:', error);
@@ -330,12 +330,12 @@ class UnifiedSettingsService {
     // 保存embedding设置
     async saveEmbeddingSettingsToFile(settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/embedding-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/embedding', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify(settings)
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('保存embedding设置错误:', error);
@@ -346,10 +346,10 @@ class UnifiedSettingsService {
     // 获取reranking设置
     async getRerankingSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/reranking-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/reranking', {
                 headers: this.getAuthHeaders()
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('获取reranking设置错误:', error);
@@ -360,12 +360,12 @@ class UnifiedSettingsService {
     // 保存reranking设置
     async saveRerankingSettingsToFile(settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/reranking-file', {
+            const response = await fetch(this.getApiBase() + '/file-settings/reranking', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify(settings)
             });
-            
+
             return this.handleResponse(response);
         } catch (error) {
             console.error('保存reranking设置错误:', error);
@@ -453,12 +453,12 @@ class UnifiedSettingsService {
         if (process.env.NEXT_PUBLIC_UNIFIED_SETTINGS_URL) {
             return process.env.NEXT_PUBLIC_UNIFIED_SETTINGS_URL;
         }
-        
+
         // 如果在浏览器环境中，根据当前访问地址判断
         if (typeof window !== 'undefined') {
             const currentHost = window.location.host;
             const currentProtocol = window.location.protocol;
-            
+
             // 仅在非生产环境输出详细日志
             if (process.env.NODE_ENV !== 'production') {
                 console.log('[UnifiedSettingsService] 当前访问环境:', {
@@ -467,14 +467,26 @@ class UnifiedSettingsService {
                     href: window.location.href
                 });
             }
-            
+
             // 如果是localhost或127.0.0.1的3000端口（本地开发）
             if (currentHost === 'localhost:3000' || currentHost === '127.0.0.1:3000') {
                 if (process.env.NODE_ENV !== 'production') {
-                    console.log('[UnifiedSettingsService] 检测到本地开发环境，使用直接连接');
+                    console.log('[UnifiedSettingsService] 检测到本地开发环境，使用独立统一设置服务');
                 }
                 return 'http://localhost:3002/api';
-            } 
+            }
+            // 检查是否是局域网IP地址（192.168.x.x, 10.x.x.x, 172.16-31.x.x）
+            else if (/^192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
+                     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
+                     /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost)) {
+                // 局域网IP访问，连接到独立统一设置服务的3002端口
+                const hostname = currentHost.split(':')[0]; // 去掉端口号，只保留IP
+                const apiBase = `http://${hostname}:3002/api`;
+                if (process.env.NODE_ENV !== 'production') {
+                    console.log('[UnifiedSettingsService] 检测到局域网环境，使用独立统一设置服务:', apiBase);
+                }
+                return apiBase;
+            }
             // 如果是通过nginx代理访问（外网环境）
             else {
                 const apiBase = `${currentProtocol}//${currentHost}/unified-settings/api`;
@@ -484,12 +496,41 @@ class UnifiedSettingsService {
                 return apiBase;
             }
         }
-        
+
         // 服务端渲染时的默认值
         if (process.env.NODE_ENV !== 'production') {
             console.log('[UnifiedSettingsService] 服务端环境，使用默认配置');
         }
         return 'http://localhost:3002/api';
+    }
+
+    // 获取灵枢笔记后端的统一设置API路径
+    getNotebookApiBase() {
+        // 如果在浏览器环境中，根据当前访问地址判断
+        if (typeof window !== 'undefined') {
+            const currentHost = window.location.host;
+            const currentProtocol = window.location.protocol;
+
+            // 如果是localhost或127.0.0.1的3000端口（本地开发）
+            if (currentHost === 'localhost:3000' || currentHost === '127.0.0.1:3000') {
+                return 'http://localhost:3001/api/unified-settings';
+            }
+            // 检查是否是局域网IP地址
+            else if (/^192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
+                     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
+                     /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost)) {
+                // 局域网IP访问，连接到灵枢笔记后端的3001端口
+                const hostname = currentHost.split(':')[0];
+                return `http://${hostname}:3001/api/unified-settings`;
+            }
+            // 外网环境
+            else {
+                return `${currentProtocol}//${currentHost}/api/unified-settings`;
+            }
+        }
+
+        // 服务端渲染时的默认值
+        return 'http://localhost:3001/api/unified-settings';
     }
 }
 

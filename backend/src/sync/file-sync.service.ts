@@ -16,7 +16,15 @@ export class FileSyncService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    this.uploadsDir = this.configService.get<string>('UPLOADS_DIR') || 'uploads';
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    if (storageType === 'nas') {
+      this.uploadsDir = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      this.uploadsDir = this.configService.get<string>('UPLOADS_DIR') || 'uploads';
+    }
   }
 
   /**

@@ -74,7 +74,13 @@ export const createNotebook = async (title: string, folderId: string | undefined
 // 删除笔记本
 export const deleteNotebook = async (id: string, token: string) => {
   try {
-    const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${id}`, {
+    const baseUrl = getApiBaseUrl();
+    const fullUrl = `${baseUrl}/api/notebooks/${id}`;
+    console.log('[deleteNotebook] 使用的API基础URL:', baseUrl);
+    console.log('[deleteNotebook] 完整请求URL:', fullUrl);
+    console.log('[deleteNotebook] 笔记本ID:', id);
+
+    const response = await fetch(fullUrl, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${token}`,

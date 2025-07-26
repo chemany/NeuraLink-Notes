@@ -21,7 +21,15 @@ export class NotesService {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    if (storageType === 'nas') {
+      this.uploadsDir = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      this.uploadsDir = this.configService.get<string>('UPLOAD_PATH', 'uploads');
+    }
   }
 
   /**
@@ -173,6 +181,12 @@ export class NotesService {
       // 更新文件系统中的富文本笔记
       if (updatedNote.notebookId) {
         try {
+          // 如果标题发生了变化，需要先删除旧文件
+          if (updateNoteDto.title !== undefined && updateNoteDto.title !== existingNote.title) {
+            await this.deleteRichNoteFile(updatedNote.notebookId, userId, noteId, existingNote.title || '');
+          }
+
+          // 保存新文件（可能是新标题的文件名）
           await this.saveRichNoteAsFile(
             updatedNote.notebookId,
             userId,
@@ -242,10 +256,10 @@ export class NotesService {
    */
   private async saveRichNoteAsFile(notebookId: string, userId: string, noteId: string, title: string, contentHtml: string) {
     try {
-      // 使用用户名和笔记本名称构建路径
+      // 使用用户名、文件夹名称和笔记本名称构建路径，与笔记本创建逻辑保持一致
       const username = await this.getUsernameFromUserId(userId);
-      const notebookName = await this.getNotebookNameFromId(notebookId);
-      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, folderName, notebookName);
       const richNotesDir = path.join(notebookDir, 'rich-notes');
       await fsExtra.ensureDir(richNotesDir);
 
@@ -282,10 +296,10 @@ export class NotesService {
    */
   private async deleteRichNoteFile(notebookId: string, userId: string, noteId: string, title: string) {
     try {
-      // 使用用户名和笔记本名称构建路径
+      // 使用用户名、文件夹名称和笔记本名称构建路径，与创建逻辑保持一致
       const username = await this.getUsernameFromUserId(userId);
-      const notebookName = await this.getNotebookNameFromId(notebookId);
-      const notebookDir = path.join(this.uploadsDir, username, notebookName);
+      const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+      const notebookDir = path.join(this.uploadsDir, username, folderName, notebookName);
       const richNotesDir = path.join(notebookDir, 'rich-notes');
 
       if (!(await fsExtra.pathExists(richNotesDir))) {
@@ -302,7 +316,17 @@ export class NotesService {
         await fs.promises.unlink(filePath);
         this.logger.log(`User ${userId} successfully deleted HTML file for rich note ${noteId}: ${filePath}`);
       } else {
-        this.logger.warn(`HTML file for rich note ${noteId} not found: ${filePath}`);
+        // 如果确切的文件名不存在，尝试查找以noteId开头的文件
+        const files = await fs.promises.readdir(richNotesDir);
+        const matchingFile = files.find(file => file.includes(`_${noteId}.html`));
+
+        if (matchingFile) {
+          const matchingFilePath = path.join(richNotesDir, matchingFile);
+          await fs.promises.unlink(matchingFilePath);
+          this.logger.log(`User ${userId} successfully deleted HTML file for rich note ${noteId}: ${matchingFilePath}`);
+        } else {
+          this.logger.warn(`No HTML file found for rich note ${noteId} (User ${userId}) in ${richNotesDir}`);
+        }
       }
     } catch (error) {
       this.logger.error(`User ${userId} failed to delete HTML file for rich note ${noteId}: ${error.message}`, error.stack);
@@ -341,32 +365,49 @@ export class NotesService {
   }
 
   /**
-   * 根据笔记本ID获取笔记本名称
+   * 根据笔记本ID获取笔记本名称和文件夹名称
    */
-  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+  private async getNotebookAndFolderNames(notebookId: string): Promise<{ notebookName: string; folderName: string }> {
     try {
       const notebook = await this.prisma.notebook.findUnique({
         where: { id: notebookId },
-        select: { title: true }
+        select: {
+          title: true,
+          folderId: true,
+          folder: {
+            select: { name: true }
+          }
+        }
       });
 
       if (!notebook || !notebook.title) {
-        console.log(`[NotesService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
-        return notebookId;
+        console.log(`[NotesService] 未找到笔记本ID ${notebookId} 对应的信息，使用笔记本ID`);
+        return { notebookName: notebookId, folderName: 'default' };
       }
 
-      // 清理文件名，移除不安全的字符
-      const safeName = notebook.title
-        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
-        .replace(/\s+/g, '_')           // 替换空格为下划线
-        .trim();
+      // 清理笔记本名称
+      const notebookName = this.sanitizeFileName(notebook.title) || notebookId;
 
-      console.log(`[NotesService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
-      return safeName || notebookId;
+      // 获取文件夹名称
+      let folderName = 'default';
+      if (notebook.folderId && notebook.folder) {
+        folderName = this.sanitizeFileName(notebook.folder.name) || 'default';
+      }
+
+      console.log(`[NotesService] 笔记本和文件夹映射: ${notebookId} -> ${folderName}/${notebookName}`);
+      return { notebookName, folderName };
     } catch (error) {
-      console.error(`[NotesService] 获取笔记本名称失败，使用笔记本ID:`, error);
-      return notebookId;
+      console.error(`[NotesService] 获取笔记本和文件夹信息失败，使用默认值:`, error);
+      return { notebookName: notebookId, folderName: 'default' };
     }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称（保留向后兼容性）
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    const { notebookName } = await this.getNotebookAndFolderNames(notebookId);
+    return notebookName;
   }
 
   /**

@@ -9,37 +9,41 @@ import Link from 'next/link';
 const NotebookDetailPage = () => {
   const params = useParams();
 
-  // 更稳健地获取 notebookId
-  let notebookId: string | undefined = undefined;
-  if (params && typeof params.notebookId === 'string') {
-    notebookId = params.notebookId;
+  // 获取文件夹名称和笔记本名称
+  let folderName: string | undefined = undefined;
+  let notebookName: string | undefined = undefined;
+
+  if (params && typeof params.folderName === 'string') {
+    folderName = decodeURIComponent(params.folderName);
+  }
+  if (params && typeof params.notebookName === 'string') {
+    notebookName = decodeURIComponent(params.notebookName);
   }
 
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
-  const { 
-    currentNotebook, 
-    setCurrentNotebookById, 
+  const {
+    currentNotebook,
+    setCurrentNotebookByFolderAndName,
     isLoadingNotebooks, // NotebookContext 提供的加载状态
-    isLoadingDocuments, 
+    isLoadingDocuments,
     currentDocuments,
     // ... (可以按需添加其他需要的状态或函数)
   } = useNotebook();
 
-  // 如果 notebookId 无法从 params 中获取，则显示错误或加载状态
-  // 注意：这个检查应该在 Auth 加载完成后进行，以避免在 Auth 确定前就判定 notebookId 无效
+  // 如果 folderName 或 notebookName 无法从 params 中获取，则显示错误或加载状态
+  // 注意：这个检查应该在 Auth 加载完成后进行，以避免在 Auth 确定前就判定参数无效
   useEffect(() => {
-    if (!isAuthLoading && notebookId === undefined) {
+    if (!isAuthLoading && (folderName === undefined || notebookName === undefined)) {
         // 可以在这里设置一个错误状态或者直接渲染错误信息
         // 为简单起见，我们依赖后续的 isAuthenticated 和 currentNotebook 检查
-        // 如果需要更早地处理 notebookId undefined 的情况，可以调整此逻辑
-        console.warn('[NotebookDetailPage] notebookId is undefined after auth check.');
+        console.warn('[NotebookDetailPage] folderName or notebookName is undefined after auth check.');
     }
 
-    if (notebookId && isAuthenticated && !isAuthLoading) {
-      console.log(`[NotebookDetailPage] Setting current notebook to: ${notebookId}`); // 模板字符串已修正
-      setCurrentNotebookById(notebookId);
+    if (folderName && notebookName && isAuthenticated && !isAuthLoading) {
+      console.log(`[NotebookDetailPage] Setting current notebook to: ${folderName}/${notebookName}`);
+      setCurrentNotebookByFolderAndName(folderName, notebookName);
     }
-  }, [notebookId, isAuthenticated, isAuthLoading, setCurrentNotebookById]);
+  }, [folderName, notebookName, isAuthenticated, isAuthLoading, setCurrentNotebookByFolderAndName]);
 
   // 将 notebookId undefined 的情况移到 auth 和 loading 检查之后
   // 这样可以确保在用户未登录或数据仍在加载时，不会因为 notebookId 暂时 undefined 而提前显示错误
@@ -61,19 +65,19 @@ const NotebookDetailPage = () => {
     );
   }
 
-  // 现在检查 notebookId 是否有效以及 currentNotebook
-  if (notebookId === undefined) { // 在所有加载和认证检查之后，如果 notebookId 仍未定义
+  // 现在检查 folderName 和 notebookName 是否有效以及 currentNotebook
+  if (folderName === undefined || notebookName === undefined) {
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
-        <p>无法确定笔记本ID。</p>
+        <p>无法确定文件夹或笔记本名称。</p>
         <Link href="/">返回首页</Link>
       </div>
     );
   }
 
-  if (!currentNotebook || currentNotebook.id !== notebookId) {
-    // 确保 currentNotebook 已加载且 ID 匹配
-    // isLoadingNotebooks 应该处理了初始加载情况，这里更多是 ID 不匹配或未找到
+  if (!currentNotebook || currentNotebook.title !== notebookName) {
+    // 确保 currentNotebook 已加载且名称匹配
+    // isLoadingNotebooks 应该处理了初始加载情况，这里更多是名称不匹配或未找到
     return (
       <div style={{ padding: '20px', textAlign: 'center' }}>
         <p>笔记本未找到或正在加载...</p>

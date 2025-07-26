@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException, InternalServerErrorException, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Document, Prisma } from '@prisma/client';
-// Try require syntax for pdf-parse
-const pdfParse: (buffer: Buffer) => Promise<{ text: string; [key: string]: any; }> = require('pdf-parse');
+// Try require syntax for pdf-parse (DISABLED for PDF.js dependency issues)
+// const pdfParse: (buffer: Buffer) => Promise<{ text: string; [key: string]: any; }> = require('pdf-parse');
 // Import mammoth and officeparser
 import * as mammoth from 'mammoth';
-// 修改导入方式，使用require并添加类型断言
-const officeparser = require('officeparser') as any;
+// 修改导入方式，使用require并添加类型断言 (DISABLED for pdfjs dependency)
+// const officeparser = require('officeparser') as any;
 // 添加xlsx导入
 import * as XLSX from 'xlsx';
 // 注意：暂时不导入 DTO，因为 notebookId 会从请求的其他部分获取
@@ -23,10 +23,10 @@ const textractPromise = util.promisify(textract.fromBufferWithName);
 // --- OCR Imports (New) ---
 // Remove native tesseract import
 // import * as tesseract from 'node-tesseract-ocr';
-// Import Tesseract.js
-import * as Tesseract from 'tesseract.js';
-// Re-import pdf-img-convert
-import * as pdf2img from 'pdf-img-convert';
+// Import Tesseract.js (DISABLED for DOM dependency issues)
+// import * as Tesseract from 'tesseract.js';
+// Re-import pdf-img-convert (DISABLED for canvas dependency issues)
+// import * as pdf2img from 'pdf-img-convert';
 // Remove or comment out node-poppler import
 // const { Poppler } = require('node-poppler');
 // Remove pdf-img-convert import
@@ -47,9 +47,19 @@ export class DocumentsService {
     // @InjectQueue(DOCUMENT_PROCESSING_QUEUE) private documentQueue: Queue
     // private documentProcessorService: DocumentProcessorService, // Inject the service
   ) {
-    const uploadsBasePath = this.configService.get<string>('UPLOADS_DIR') || 'uploads';
+    // 使用环境变量确定存储路径
+    const storageType = this.configService.get<string>('STORAGE_TYPE') || 'local';
+    const nasPath = this.configService.get<string>('NAS_PATH') || '/mnt/nas-sata12';
+
+    let uploadsBasePath: string;
+    if (storageType === 'nas') {
+      uploadsBasePath = path.join(nasPath, 'MindOcean', 'user-data', 'uploads');
+    } else {
+      uploadsBasePath = this.configService.get<string>('UPLOADS_DIR') || 'uploads';
+    }
+
     this.uploadsDir = path.resolve(uploadsBasePath);
-    this.logger.log(`Uploads directory resolved to: ${this.uploadsDir}`);
+    this.logger.log(`[DocumentsService] 使用存储路径: ${this.uploadsDir}`);
     fsExtra.ensureDirSync(this.uploadsDir); // Ensure base uploads directory exists
   }
 
@@ -90,32 +100,49 @@ export class DocumentsService {
   }
 
   /**
-   * 根据笔记本ID获取笔记本名称
+   * 根据笔记本ID获取笔记本名称和文件夹名称
    */
-  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+  private async getNotebookAndFolderNames(notebookId: string): Promise<{ notebookName: string; folderName: string }> {
     try {
       const notebook = await this.prisma.notebook.findUnique({
         where: { id: notebookId },
-        select: { title: true }
+        select: {
+          title: true,
+          folderId: true,
+          folder: {
+            select: { name: true }
+          }
+        }
       });
 
       if (!notebook || !notebook.title) {
-        console.log(`[DocumentsService] 未找到笔记本ID ${notebookId} 对应的名称，使用笔记本ID`);
-        return notebookId;
+        console.log(`[DocumentsService] 未找到笔记本ID ${notebookId} 对应的信息，使用笔记本ID`);
+        return { notebookName: notebookId, folderName: 'default' };
       }
 
-      // 清理文件名，移除不安全的字符
-      const safeName = notebook.title
-        .replace(/[<>:"/\\|?*]/g, '_')  // 替换Windows不允许的字符
-        .replace(/\s+/g, '_')           // 替换空格为下划线
-        .trim();
+      // 清理笔记本名称
+      const notebookName = this.sanitizeFileName(notebook.title) || notebookId;
 
-      console.log(`[DocumentsService] 笔记本名称映射: ${notebookId} -> ${safeName}`);
-      return safeName || notebookId;
+      // 获取文件夹名称
+      let folderName = 'default';
+      if (notebook.folderId && notebook.folder) {
+        folderName = this.sanitizeFileName(notebook.folder.name) || 'default';
+      }
+
+      console.log(`[DocumentsService] 笔记本和文件夹映射: ${notebookId} -> ${folderName}/${notebookName}`);
+      return { notebookName, folderName };
     } catch (error) {
-      console.error(`[DocumentsService] 获取笔记本名称失败，使用笔记本ID:`, error);
-      return notebookId;
+      console.error(`[DocumentsService] 获取笔记本和文件夹信息失败，使用默认值:`, error);
+      return { notebookName: notebookId, folderName: 'default' };
     }
+  }
+
+  /**
+   * 根据笔记本ID获取笔记本名称（保留向后兼容性）
+   */
+  private async getNotebookNameFromId(notebookId: string): Promise<string> {
+    const { notebookName } = await this.getNotebookAndFolderNames(notebookId);
+    return notebookName;
   }
 
   /**
@@ -219,10 +246,10 @@ export class DocumentsService {
         finalFilePath = '';
         let counter = 0;
         let fileExists = true;
-        // 使用用户名和笔记本名称，文档直接放在笔记本文件夹中
+        // 使用用户名、文件夹名称和笔记本名称，文档直接放在笔记本文件夹中
         const username = await this.getUsernameFromUserId(userId);
-        const notebookName = await this.getNotebookNameFromId(notebookId);
-        const userNotebookUploadPath = path.join(this.uploadsDir, username, notebookName);
+        const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+        const userNotebookUploadPath = path.join(this.uploadsDir, username, folderName, notebookName);
 
         // 文档直接放在笔记本文件夹中，不再创建单独的文档文件夹
         const finalFileDir = userNotebookUploadPath;
@@ -597,19 +624,10 @@ export class DocumentsService {
           textContent = await this.extractWordContent(filePath, document.fileName, userId);
           break;
         case '.pptx':
-           this.logger.log(`[ProcessDoc] Extracting content from PPTX (using officeparser): ${filePath}`);
-           // 直接使用 officeparser，而不是调用返回空的 extractPptContent
-           try {
-            textContent = await officeparser.parseOfficeAsync(filePath);
-            this.logger.log(`[ProcessDoc] officeparser PPTX extraction successful. Text length: ${textContent?.length || 0}`);
-           } catch (error) {
-            this.logger.error(`[ProcessDoc] officeparser failed to extract text from PPTX ${filePath}: ${error.message}`, error.stack);
-            // 即使 officeparser 失败，也设置为空字符串，避免null导致后续问题，但记录错误
-            textContent = ''; 
-            // 考虑是否应该在此处更新文档状态为 FAILED
-            // await this.updateDocumentStatus(documentId, userId, 'FAILED', `PPTX文本提取失败: ${error.message}`);
-            // return; // 如果提取失败则提前返回，避免标记为 COMPLETED
-           }
+           this.logger.log(`[ProcessDoc] PPTX text extraction is temporarily disabled: ${filePath}`);
+           // PPTX 处理暂时禁用
+           textContent = `PPTX文本提取功能暂时禁用。文件: ${document.fileName}`;
+           this.logger.warn(`[ProcessDoc] PPTX extraction disabled. Returning placeholder text.`);
            break;
         case '.txt':
         case '.md':
@@ -678,32 +696,13 @@ export class DocumentsService {
    * 提取PDF文件内容
    */
   private async extractPdfContent(filePath: string, fileName: string, documentId: string, userId: string): Promise<string> {
-    this.logger.log(`User ${userId} starting standard text extraction for: ${filePath}`);
-    let standardText = '';
-    let extractionOk = false;
-    try {
-      const dataBuffer = await fs.promises.readFile(filePath);
-      const pdfData = await pdfParse(dataBuffer);
-      standardText = pdfData.text || '';
-      extractionOk = true; // Mark as successful if pdfParse doesn't throw
-      this.logger.log(`User ${userId} standard extraction successful. Text length: ${standardText.length}`);
-    } catch (error) {
-      this.logger.error(`User ${userId} standard PDF parsing failed for ${filePath}: ${error.message}`);
-      // Explicitly set empty string on error
-      standardText = '';
-      // Do not re-throw, allow returning empty text
-    }
+    this.logger.log(`User ${userId} PDF text extraction is temporarily disabled due to dependency issues: ${filePath}`);
 
-    // Check if standard extraction yielded enough text
-    if (extractionOk && standardText.length < this.MIN_TEXT_LENGTH_FOR_OCR) {
-      // Log a warning if text is short, indicating OCR was skipped (as OCR logic is removed)
-      this.logger.warn(`User ${userId} standard text length (${standardText.length}) is below OCR threshold (${this.MIN_TEXT_LENGTH_FOR_OCR}). OCR step is skipped. Content might be incomplete.`);
-    } else if (!extractionOk) {
-        // Log if the initial parsing failed altogether
-        this.logger.warn(`User ${userId} standard text extraction failed. Returning empty content.`);
-    }
-    // Always return the result from pdf-parse (potentially empty or short)
-    return standardText;
+    // 暂时禁用 PDF 文本提取功能
+    const disabledMessage = `PDF文本提取功能暂时禁用。文件: ${fileName}`;
+    this.logger.warn(`User ${userId} PDF extraction disabled. Returning placeholder text.`);
+
+    return disabledMessage;
   }
   
   /**
@@ -820,16 +819,16 @@ export class DocumentsService {
         throw new InternalServerErrorException(`Document ${documentId} is missing notebook association.`);
     }
 
-    // 使用用户名和笔记本名称构建路径
+    // 使用用户名、文件夹名称和笔记本名称构建路径
     const username = await this.getUsernameFromUserId(userId);
-    const notebookName = await this.getNotebookNameFromId(document.notebookId);
+    const { notebookName, folderName } = await this.getNotebookAndFolderNames(document.notebookId);
 
     // 使用文件名而不是文档ID
     const safeFileName = this.sanitizeFileName(document.fileName || documentId);
     const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
 
     // 向量数据存储在笔记本的vectors目录下，使用文件名命名
-    const notebookVectorsDir = path.join(this.uploadsDir, username, notebookName, 'vectors');
+    const notebookVectorsDir = path.join(this.uploadsDir, username, folderName, notebookName, 'vectors');
     const notebookVectorDataPath = path.join(notebookVectorsDir, `${fileBaseName}_vector_data.json`);
     
     try {
@@ -881,16 +880,16 @@ export class DocumentsService {
          return null; // Treat as not found if path cannot be determined
      }
 
-    // 使用用户名和笔记本名称构建路径
+    // 使用用户名、文件夹名称和笔记本名称构建路径
     const username = await this.getUsernameFromUserId(userId);
-    const notebookName = await this.getNotebookNameFromId(document.notebookId);
+    const { notebookName, folderName } = await this.getNotebookAndFolderNames(document.notebookId);
 
     // 使用文件名而不是文档ID
     const safeFileName = this.sanitizeFileName(document.fileName || documentId);
     const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
 
     // 从笔记本vectors目录获取向量数据
-    const notebookVectorDataPath = path.join(this.uploadsDir, username, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
+    const notebookVectorDataPath = path.join(this.uploadsDir, username, folderName, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
 
     try {
       let vectorData = null;
@@ -939,16 +938,16 @@ export class DocumentsService {
       select: { fileName: true }
     });
 
-    // 使用用户名和笔记本名称构建路径
+    // 使用用户名、文件夹名称和笔记本名称构建路径
     const username = await this.getUsernameFromUserId(userId);
-    const notebookName = await this.getNotebookNameFromId(notebookId);
+    const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
 
     // 使用文件名而不是文档ID
     const safeFileName = this.sanitizeFileName(document?.fileName || documentId);
     const fileBaseName = path.parse(safeFileName).name; // 去掉扩展名
 
     // 删除笔记本vectors目录下的向量数据
-    const notebookVectorDataPath = path.join(this.uploadsDir, username, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
+    const notebookVectorDataPath = path.join(this.uploadsDir, username, folderName, notebookName, 'vectors', `${fileBaseName}_vector_data.json`);
     
     try {
       // 删除笔记本vectors目录下的向量数据

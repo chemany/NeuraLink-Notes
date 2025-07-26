@@ -7,10 +7,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-// 注意：需要确保这些库已安装
-import * as pdfParse from 'pdf-parse';
+// 注意：需要确保这些库已安装 (PDF parsing disabled)
+// import * as pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
-import * as officeparser from 'officeparser';
+// import * as officeparser from 'officeparser'; // DISABLED for pdfjs dependency
 // Keep queue name import if needed elsewhere, otherwise remove
 // import { DOCUMENT_PROCESSING_QUEUE } from '../app.module';
 
@@ -83,11 +83,10 @@ export class DocumentsProcessor {
       });
 
       if (fileExtension === '.pdf') {
-        const dataBuffer = fs.readFileSync(absoluteFilePath);
-        const data = await pdfParse(dataBuffer);
-        textContent = data.text;
+        // PDF 处理暂时禁用
+        textContent = `PDF文本提取功能暂时禁用。文件: ${document.fileName}`;
         this.logger.log(
-          `[ProcessorLogic] 从 PDF 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+          `[ProcessorLogic] PDF 提取暂时禁用，返回占位符文本`,
         );
       } else if (fileExtension === '.docx') {
         const result = await mammoth.extractRawText({ path: absoluteFilePath });
@@ -96,9 +95,10 @@ export class DocumentsProcessor {
           `[ProcessorLogic] 从 DOCX 提取文本完成 (长度: ${textContent?.length ?? 0})`,
         );
       } else if (fileExtension === '.pptx') {
-        textContent = await officeparser.parseOfficeAsync(absoluteFilePath);
+        // PPTX 处理暂时禁用
+        textContent = `PPTX文本提取功能暂时禁用。文件: ${document.fileName}`;
         this.logger.log(
-          `[ProcessorLogic] 从 PPTX 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+          `[ProcessorLogic] PPTX 提取暂时禁用，返回占位符文本`,
         );
       } else if (fileExtension === '.txt') {
         textContent = fs.readFileSync(absoluteFilePath, 'utf8');
