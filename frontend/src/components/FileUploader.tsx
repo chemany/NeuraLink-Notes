@@ -104,6 +104,15 @@ export default function FileUploader({ notebookId, onUploadComplete }: FileUploa
       if (onUploadComplete) {
         onUploadComplete(result);
       }
+
+      // 触发全局事件，确保文档列表刷新
+      window.dispatchEvent(new CustomEvent('document-uploaded', {
+        detail: {
+          document: result,
+          notebookId: result.notebookId
+        }
+      }));
+      console.log('[FileUploader] Dispatched document-uploaded event');
       
     } catch (error: any) {
       console.error('[FileUploader] 文件上传失败:', error);

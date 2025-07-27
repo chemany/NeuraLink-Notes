@@ -55,11 +55,15 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
 
   // 从 API 加载笔记
   const loadNotesFromAPI = useCallback(async () => {
+    if (!notebookId) {
+      console.warn('[MarkdownNotebook] loadNotesFromAPI: notebookId is empty. Skipping fetch.');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await axios.get<MarkdownNote[]>(`/api/notebooks/${notebookId}/notes`);
       // Sort notes by creation date (optional, but good practice)
-      const sortedNotes = response.data.sort((a, b) => 
+      const sortedNotes = response.data.sort((a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
       setNotes(sortedNotes);
@@ -316,8 +320,11 @@ const MarkdownNotebook = forwardRef<MarkdownNotebookRef, MarkdownNotebookProps>(
   
   // 初始加载数据 - 改为从 API 加载
   useEffect(() => {
-    if (notebookId) { // Only load if notebookId is available
+    if (notebookId && notebookId.trim() !== '') { // 确保 notebookId 不为空且不是空字符串
+      console.log(`[MarkdownNotebook] Loading notes for notebookId: ${notebookId}`);
       loadNotesFromAPI();
+    } else {
+      console.warn(`[MarkdownNotebook] Invalid notebookId: ${notebookId}, skipping load`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebookId]); // Run only when notebookId changes

@@ -2,7 +2,9 @@
 const path = require('path');
 
 const nextConfig = {
-  basePath: '/notepads',
+  // 暂时禁用 basePath，通过 Nginx 处理路径映射
+  // basePath: '/notepads',
+  // assetPrefix: '/notepads',
   // trailingSlash: true, // 暂时禁用，可能导致 API 路径问题
   reactStrictMode: true,
   swcMinify: true,

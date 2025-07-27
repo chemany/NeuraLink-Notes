@@ -14,6 +14,14 @@ import { getApiBaseUrl } from './apiClient';
 
 // 获取指定笔记本的所有笔记
 export const getNotesByNotebookId = async (notebookId: string, token: string) => {
+  if (!notebookId) {
+    console.warn('[notePadService] getNotesByNotebookId: notebookId is empty. Returning empty array.');
+    return [];
+  }
+  if (!token) {
+    console.warn('[notePadService] getNotesByNotebookId: token is empty. Returning empty array.');
+    return [];
+  }
   try {
     const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes`, {
       method: 'GET',
@@ -27,7 +35,7 @@ export const getNotesByNotebookId = async (notebookId: string, token: string) =>
       const errorData = await response.json().catch(() => ({}));
       throw new Error(`获取笔记列表失败: ${errorData.message || response.statusText}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('获取笔记列表时出错:', error);
@@ -37,6 +45,12 @@ export const getNotesByNotebookId = async (notebookId: string, token: string) =>
 
 // 在指定笔记本中创建新笔记
 export const createNoteInNotebook = async (notebookId: string, title: string, content: string, token: string) => {
+  if (!notebookId) {
+    throw new Error('笔记本ID不能为空');
+  }
+  if (!token) {
+    throw new Error('认证令牌不能为空');
+  }
   try {
     const response = await fetch(`${getApiBaseUrl()}/api/notebooks/${notebookId}/notes`, {
       method: 'POST',
@@ -51,7 +65,7 @@ export const createNoteInNotebook = async (notebookId: string, title: string, co
       const errorData = await response.json().catch(() => ({}));
       throw new Error(`创建笔记失败: ${errorData.message || response.statusText}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('创建笔记时出错:', error);

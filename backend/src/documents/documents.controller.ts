@@ -43,6 +43,7 @@ export class DocumentsController {
 
   constructor(private readonly documentsService: DocumentsService) {}
 
+  // 将具体路由放在参数路由之前
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   @HttpCode(HttpStatus.CREATED)

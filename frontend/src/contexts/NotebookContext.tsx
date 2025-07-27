@@ -171,51 +171,57 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [isAuthenticated, isAuthLoading, token]); // <--- 依赖于 AuthContext 的状态，token 也加入以确保 apiClient 使用最新的 token
 
   const fetchDocsForNotebook = useCallback(async (notebookId: string | null) => {
-    if (!notebookId || !isAuthenticated) { // <--- 增加 isAuthenticated 检查
+    console.log(`[NotebookContext] fetchDocsForNotebook called with notebookId: ${notebookId}, isAuthenticated: ${isAuthenticated}`);
+    if (!notebookId) {
           setDocuments([]);
           setCurrentDocuments([]);
-          // console.log('[NotebookContext] Cleared documents because notebookId is null or user not authenticated.');
+          console.log('[NotebookContext] Cleared documents because notebookId is null.');
       return;
     }
-      // console.log(`[NotebookContext] Fetching documents for notebook: ${notebookId}...`);
+      console.log(`[NotebookContext] Fetching documents for notebook: ${notebookId}...`);
       setIsLoadingDocuments(true);
       setDocumentError(null);
       try {
-          // console.log(`[NotebookContext] Calling fetchDocumentsByNotebookId(${notebookId})`);
+          console.log(`[NotebookContext] Calling fetchDocumentsByNotebookId(${notebookId})`);
           const fetchedDocs = await fetchDocumentsByNotebookId(notebookId);
-          // console.log(`[NotebookContext] fetchDocumentsByNotebookId returned:`, fetchedDocs);
+          console.log(`[NotebookContext] fetchDocumentsByNotebookId returned:`, fetchedDocs);
           setDocuments(fetchedDocs);
-          // console.log(`[NotebookContext] Successfully fetched and set ${fetchedDocs.length} documents.`);
+          console.log(`[NotebookContext] Successfully fetched and set ${fetchedDocs.length} documents.`);
     } catch (error) {
           console.error(`[NotebookContext] Error fetching documents for notebook ${notebookId}:`, error);
           const message = error instanceof Error ? error.message : 'Failed to load documents';
           setDocumentError(message);
       } finally {
-          // console.log(`[NotebookContext] Setting isLoadingDocuments to false for notebook ${notebookId}.`);
+          console.log(`[NotebookContext] Setting isLoadingDocuments to false for notebook ${notebookId}.`);
           setIsLoadingDocuments(false);
       }
-  }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
+  }, []); // 移除所有依赖项，避免无限循环
 
   useEffect(() => {
-      fetchDocsForNotebook(currentNotebook?.id ?? null);
-  }, [currentNotebook, fetchDocsForNotebook]);
+      if (currentNotebook?.id && currentNotebook.id.trim() !== '') {
+        console.log(`[NotebookContext] useEffect triggering fetchDocsForNotebook for: ${currentNotebook.id}`);
+        fetchDocsForNotebook(currentNotebook.id);
+      } else {
+        console.log(`[NotebookContext] Invalid currentNotebook.id: ${currentNotebook?.id}, skipping fetchDocsForNotebook`);
+      }
+  }, [currentNotebook?.id, fetchDocsForNotebook]); // 保持必要的依赖项
 
 
   const fetchNotesForNotebook = useCallback(async (notebookId: string | null) => {
     console.log(`[NotebookContext] fetchNotesForNotebook called with notebookId: ${notebookId}, isAuthenticated: ${isAuthenticated}`);
-    if (!notebookId || !isAuthenticated) { // <--- 增加 isAuthenticated 检查
+    if (!notebookId) {
       setCurrentNotes([]);
-      console.log('[NotebookContext] Cleared notes because notebookId is null or user not authenticated.');
+      console.log('[NotebookContext] Cleared notes because notebookId is null.');
       return;
     }
-    // console.log(`[NotebookContext] Fetching notes for notebook: ${notebookId}...`);
+    console.log(`[NotebookContext] Fetching notes for notebook: ${notebookId}...`);
     setIsLoadingNotes(true);
     setNotesError(null);
     try {
       const fetchedNotes = await fetchRichNotesByNotebookId(notebookId);
       fetchedNotes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
       setCurrentNotes(fetchedNotes);
-      // console.log(`[NotebookContext] Successfully fetched and set ${fetchedNotes.length} rich notes.`);
+      console.log(`[NotebookContext] Successfully fetched and set ${fetchedNotes.length} rich notes.`);
     } catch (error) {
       console.error(`[NotebookContext] Error fetching rich notes for notebook ${notebookId}:`, error);
       const message = error instanceof Error ? error.message : 'Failed to load rich notes';
@@ -224,11 +230,16 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     } finally {
       setIsLoadingNotes(false);
     }
-  }, [isAuthenticated, token]); // <--- 增加 isAuthenticated, token 依赖
+  }, []); // 移除所有依赖项，避免无限循环
 
   useEffect(() => {
-    fetchNotesForNotebook(currentNotebook?.id ?? null);
-  }, [currentNotebook, fetchNotesForNotebook]);
+    if (currentNotebook?.id && currentNotebook.id.trim() !== '') {
+      console.log(`[NotebookContext] useEffect triggering fetchNotesForNotebook for: ${currentNotebook.id}`);
+      fetchNotesForNotebook(currentNotebook.id);
+    } else {
+      console.log(`[NotebookContext] Invalid currentNotebook.id: ${currentNotebook?.id}, skipping fetchNotesForNotebook`);
+    }
+  }, [currentNotebook?.id, fetchNotesForNotebook]); // 保持必要的依赖项
 
 
   const createNotebook = useCallback(async (title: string, folderId?: string): Promise<Notebook | null> => {
@@ -747,22 +758,36 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
     }, [isAuthenticated, token]);
 
     const getNotePadNotes = useCallback(async (notebookId: string): Promise<NotePadNote[]> => {
-        console.log(`[NotebookContext] Fetching simple notes for notebook ${notebookId}`);
-        if (!isAuthenticated || !token) { // 修复token null的问题
+        console.log(`[NotebookContext] Fetching simple notes for notebook: "${notebookId}"`);
+
+        // 更严格的检查
+        if (!notebookId || notebookId.trim() === '' || notebookId === 'undefined' || notebookId === 'null') {
+            console.warn(`[NotebookContext] getNotePadNotes: Invalid notebookId: "${notebookId}". Skipping fetch.`);
+            return [];
+        }
+
+        if (!isAuthenticated || !token) {
             console.warn('[NotebookContext] getNotePadNotes: User not authenticated. Skipping fetch.');
             toast.error('用户未认证，无法获取便签列表。');
             return [];
         }
+
         try {
-            // getNotePadNotesApi 需要 token 参数
+            // 再次验证 notebookId 在调用 API 之前
+            if (!notebookId || notebookId.trim() === '') {
+                console.error('[NotebookContext] getNotePadNotes: notebookId became empty before API call!');
+                return [];
+            }
+
+            console.log(`[NotebookContext] Calling getNotePadNotesApi with notebookId: "${notebookId}" and token: ${token ? 'present' : 'missing'}`);
             const notes = await getNotePadNotesApi(notebookId, token);
             return notes;
         } catch (error) {
-            console.error(`[NotebookContext] Error fetching simple notes for notebook ${notebookId}:`, error);
+            console.error(`[NotebookContext] Error fetching simple notes for notebook "${notebookId}":`, error);
             toast.error(`获取便签列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
             return [];
         }
-    }, [isAuthenticated, token]); // <--- 添加 isAuthenticated 和 token 作为依赖项
+    }, [isAuthenticated, token]);
 
 
     // --- Placeholder Whiteboard Methods ---

@@ -32,6 +32,7 @@ import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, HomeIcon, PencilIcon } f
 import DocumentPreviewModal from './DocumentPreviewModal'; // Import the new modal
 import RenameNotebookModal from './RenameNotebookModal'; // 导入重命名模态框
 import ConfirmModal from './ConfirmModal'; // 导入通用确认模态框
+import { navigateToHome } from '@/utils/navigation';
 
 // 动态导入 TiptapNotebook，并禁用SSR
 const TiptapNotebook = dynamic(() => import('@/components/TiptapNotebook'), { // 使用正确的相对路径
@@ -133,11 +134,7 @@ export default function NotebookLayout({
   // 添加一个处理首页点击的方法
   const handleHomeClick = useCallback(() => {
     console.log('[NotebookLayout] 导航回首页');
-    try {
-      router.push('/');
-    } catch (error) {
-      console.error('[NotebookLayout] 导航错误:', error);
-    }
+    navigateToHome(router);
   }, [router]);
   
   // Add logging here
@@ -291,10 +288,19 @@ export default function NotebookLayout({
   // 处理文档上传完成事件
   const handleUploadComplete = useCallback((uploadedDoc: Document) => {
     console.log(`文件上传完成: ${uploadedDoc.fileName}`);
-    
+
     try {
       // 刷新文档列表
       refetchDocuments();
+
+      // 触发 document-uploaded 事件，通知其他组件
+      window.dispatchEvent(new CustomEvent('document-uploaded', {
+        detail: {
+          document: uploadedDoc,
+          notebookId: uploadedDoc.notebookId
+        }
+      }));
+      console.log('[NotebookLayout] Dispatched document-uploaded event');
     } catch (error) {
       console.error('处理上传完成事件时出错:', error);
     }
@@ -534,8 +540,8 @@ export default function NotebookLayout({
     // saveNotePadNotes(notebookId, notes); // Not provided by context
   };
   
-  // 获取笔记板数据
-  const notePadNotes = getNotePadNotes(notebookId);
+  // 获取笔记板数据 - 修复：不应该直接调用异步函数
+  // const notePadNotes = getNotePadNotes(notebookId); // 移除这个错误的调用
   
   // 状态管理
   const [multiSelectMode, setMultiSelectMode] = useState(false);

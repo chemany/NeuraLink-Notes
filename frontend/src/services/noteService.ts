@@ -25,6 +25,10 @@ const handleApiError = (error: any, context: string): Error => {
  * @returns 笔记数组 Promise
  */
 export const fetchNotesByNotebookId = async (notebookId: string): Promise<Note[]> => {
+  if (!notebookId) {
+    console.warn('[noteService] fetchNotesByNotebookId: notebookId is empty. Returning empty array.');
+    return [];
+  }
   try {
     const response = await axios.get<Note[]>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/notes`);
     // 假设后端直接返回 Note[] 结构的数据

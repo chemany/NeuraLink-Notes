@@ -2,7 +2,7 @@ import { Controller, Post, Body, Headers, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { ProxyService } from './proxy.service';
 
-@Controller('api/proxy')
+@Controller('proxy')
 export class ProxyController {
   constructor(private readonly proxyService: ProxyService) {}
 

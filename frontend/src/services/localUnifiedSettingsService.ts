@@ -6,16 +6,27 @@
 // 动态API路径配置
 const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
     const currentHost = window.location.host;
     const currentProtocol = window.location.protocol;
-    
-    // 本地开发环境：直接访问灵枢笔记后端
-    if (currentHost === 'localhost:3000' || currentHost === '127.0.0.1:3000') {
+
+    // 检查是否是本地环境（localhost或127.0.0.1）
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+    // 检查是否是局域网IP地址（192.168.x.x, 10.x.x.x, 172.16-31.x.x）
+    const isPrivateIP = /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                       /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+                       /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
+
+    if (isLocalhost) {
+      // 本地开发环境：直接访问灵枢笔记后端
       return 'http://localhost:3001/api';
-    } 
-    // 外网环境：通过nginx代理访问
-    else {
-      return `${currentProtocol}//${currentHost}/notepads/api`;
+    } else if (isPrivateIP) {
+      // 局域网IP访问：使用当前IP访问后端端口
+      return `http://${hostname}:3001/api`;
+    } else {
+      // 外网环境：通过nginx代理访问
+      return `/api`;
     }
   }
   

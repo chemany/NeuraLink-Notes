@@ -14,6 +14,7 @@ export const getApiBaseUrl = (): string => {
   // 检查是否在浏览器环境中
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    const port = window.location.port;
 
     // 添加详细的调试信息
     console.log('[getApiBaseUrl] 当前hostname:', hostname);
@@ -30,19 +31,26 @@ export const getApiBaseUrl = (): string => {
     console.log('[getApiBaseUrl] isLocalhost:', isLocalhost);
     console.log('[getApiBaseUrl] isPrivateIP:', isPrivateIP);
 
-    if (isLocalhost) {
+    // 检查是否通过代理访问（端口8081）
+    const isProxyAccess = port === '8081' || hostname.includes('jason.cheman.top');
+
+    if (isLocalhost && port === '3000') {
       // 本地开发环境：直接连接到后端
-      console.log('[getApiBaseUrl] 检测到本地环境，使用localhost连接');
+      console.log('[getApiBaseUrl] 检测到本地开发环境，使用localhost连接');
       return 'http://localhost:3001';
-    } else if (isPrivateIP) {
-      // 局域网IP访问：使用当前IP访问后端端口
+    } else if (isPrivateIP && port === '3000') {
+      // 局域网IP直接访问前端：使用当前IP访问后端端口
       const backendUrl = `http://${hostname}:3001`;
-      console.log(`[getApiBaseUrl] 检测到局域网环境(${hostname})，使用IP连接:`, backendUrl);
+      console.log(`[getApiBaseUrl] 检测到局域网直接访问(${hostname}:${port})，使用IP连接:`, backendUrl);
       return backendUrl;
+    } else if (isProxyAccess) {
+      // 通过代理访问（8081端口或外网域名）：使用nginx代理
+      console.log('[getApiBaseUrl] 检测到代理访问，使用nginx代理');
+      return '';
     } else {
-      // 外网环境：通过nginx代理访问
+      // 其他情况：使用nginx代理
       console.log('[getApiBaseUrl] 检测到外网环境，使用nginx代理');
-      return '/notepads';
+      return '';
     }
   }
 

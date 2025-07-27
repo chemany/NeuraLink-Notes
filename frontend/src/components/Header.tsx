@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { CloudIcon } from 'lucide-react';
 import Image from 'next/image';
+import { navigateToHome } from '@/utils/navigation';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -96,7 +97,7 @@ export default function Header({
   const confirmDelete = () => {
     if (notebookId) {
       deleteNotebook(notebookId);
-      router.push('/');
+      navigateToHome(router);
     }
     setShowDeleteConfirm(false);
   };
@@ -141,7 +142,7 @@ export default function Header({
   const handleBackToHome = (e: React.MouseEvent) => {
     e.preventDefault();
     console.log('返回主页按钮被点击');
-    router.push('/');
+    navigateToHome(router);
   };
 
   return (

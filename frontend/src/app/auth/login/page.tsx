@@ -31,7 +31,21 @@ const LoginPage = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.replace('/');
+      console.log('[LoginPage] 用户已认证，跳转到 NeuraLink 主页');
+      // 明确跳转到 NeuraLink 主页，而不是根路径
+      if (typeof window !== 'undefined') {
+        const currentHost = window.location.host;
+        const currentProtocol = window.location.protocol;
+        if (currentHost.includes('jason.cheman.top') || currentHost.includes('8081')) {
+          // 外网环境或通过代理访问，跳转到 /notepads/
+          window.location.href = `${currentProtocol}//${currentHost}/notepads/`;
+        } else {
+          // 直接访问前端，跳转到根路径
+          router.replace('/');
+        }
+      } else {
+        router.replace('/');
+      }
     }
   }, [isAuthenticated, router]);
 
@@ -52,8 +66,21 @@ const LoginPage = () => {
       const success = await loginWithUnifiedService(email, password);
       
       if (success) {
-        console.log('[LoginPage] 统一设置服务登录成功，正在跳转');
-        router.replace('/');
+        console.log('[LoginPage] 统一设置服务登录成功，正在跳转到 NeuraLink 主页');
+        // 明确跳转到 NeuraLink 主页，而不是根路径
+        if (typeof window !== 'undefined') {
+          const currentHost = window.location.host;
+          const currentProtocol = window.location.protocol;
+          if (currentHost.includes('jason.cheman.top') || currentHost.includes('8081')) {
+            // 外网环境或通过代理访问，跳转到 /notepads/
+            window.location.href = `${currentProtocol}//${currentHost}/notepads/`;
+          } else {
+            // 直接访问前端，跳转到根路径
+            router.replace('/');
+          }
+        } else {
+          router.replace('/');
+        }
       } else {
         setError('邮箱或密码错误，请重试。如果您还没有账户，请先注册。');
       }
