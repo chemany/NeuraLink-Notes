@@ -807,9 +807,16 @@ export default function DocumentsList({
             previewUrl = doc.url;
             console.log(`[DocumentsList] Using direct URL from doc object: ${previewUrl}`);
         } else {
-            // 传递相对路径，让DocumentPreviewModal根据环境构建完整URL
-            previewUrl = `/api/documents/${doc.id}/raw`; 
-            console.log(`[DocumentsList] Constructed relative path for preview: ${previewUrl}`);
+            // 使用apiClient的baseURL来构建正确的路径
+            const apiBase = getBackendApiBase();
+            if (apiBase.startsWith('http')) {
+                // 本地环境，使用完整URL
+                previewUrl = `${apiBase}/api/documents/${doc.id}/raw`;
+            } else {
+                // 外网环境，使用相对路径但包含正确的前缀
+                previewUrl = `${apiBase}/api/documents/${doc.id}/raw`;
+            }
+            console.log(`[DocumentsList] Constructed preview URL: ${previewUrl}`);
         }
         contentToPreview = previewUrl; // 将 URL 作为内容传递
       }

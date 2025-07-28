@@ -13,6 +13,24 @@ const FileViewer = dynamic(() => import('react-file-viewer'), {
   </div>
 });
 
+// Dynamic import for PptxViewer
+const PptxViewer = dynamic(() => import('./PptxViewer'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full w-full">
+    <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    <span className="ml-3 text-gray-600">正在加载PPTX预览...</span>
+  </div>
+});
+
+// Dynamic import for ExcelViewer
+const ExcelViewer = dynamic(() => import('./ExcelViewer'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full w-full">
+    <div className="animate-spin h-10 w-10 border-4 border-green-500 border-t-transparent rounded-full"></div>
+    <span className="ml-3 text-gray-600">正在加载Excel预览...</span>
+  </div>
+});
+
 interface DocumentPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -100,12 +118,26 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               let fullUrl = content;
               if (typeof window !== 'undefined') {
                 const currentHost = window.location.hostname;
+                const currentPort = window.location.port;
                 console.log('[PreviewModal] Current host:', currentHost);
+                console.log('[PreviewModal] Current port:', currentPort);
                 console.log('[PreviewModal] Original content:', content);
+
+                // 检查是否是局域网IP直接访问
+                const isPrivateIP = /^192\.168\.\d{1,3}\.\d{1,3}$/.test(currentHost) ||
+                                   /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(currentHost) ||
+                                   /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(currentHost);
+
                 if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
-                  // 外网环境，需要构建完整URL
-                  fullUrl = `${window.location.protocol}//${window.location.host}/notepads${content}`;
-                  console.log('[PreviewModal] External environment, constructed URL:', fullUrl);
+                  if (isPrivateIP && currentPort === '3000') {
+                    // 局域网IP直接访问：使用后端端口3001
+                    fullUrl = `${window.location.protocol}//${currentHost}:3001${content}`;
+                    console.log('[PreviewModal] Private IP direct access, constructed URL:', fullUrl);
+                  } else {
+                    // 代理访问：使用nginx代理路径
+                    fullUrl = `${window.location.protocol}//${window.location.host}${content}`;
+                    console.log('[PreviewModal] Proxy access, constructed URL:', fullUrl);
+                  }
                   // 外网环境使用axios直接请求，因为apiClient可能有基础URL冲突
                   const token = localStorage.getItem('calendar_unified_token');
                   const headers: any = {};
@@ -217,12 +249,16 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (objectUrl) {
       const imageSupported = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
       // Define types known to be generally unsupported for direct preview
-      const knownUnsupportedPreview = ['pptx', 'ppt', 'doc']; 
+      const knownUnsupportedPreview = ['ppt', 'doc'];
 
       if (imageSupported.includes(extension)) {
          return <img src={objectUrl} alt={document.fileName} className="max-w-full max-h-full object-contain mx-auto" />;
       } else if (extension === 'pdf') {
          return <iframe src={objectUrl} className="w-full h-full border-0" title={document.fileName} />;
+      } else if (extension === 'pptx') {
+         return <PptxViewer url={objectUrl} className="h-full w-full" />;
+      } else if (['xlsx', 'xls'].includes(extension)) {
+         return <ExcelViewer url={objectUrl} className="h-full w-full" />;
       } else if (knownUnsupportedPreview.includes(extension)) {
           // --- Directly show fallback for known unsupported types ---
           return (

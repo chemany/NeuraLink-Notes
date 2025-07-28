@@ -7,8 +7,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
-// 注意：需要确保这些库已安装 (PDF parsing disabled)
-// import * as pdfParse from 'pdf-parse';
+// PDF parsing library
+import * as pdfParse from 'pdf-parse';
 import * as mammoth from 'mammoth';
 // import * as officeparser from 'officeparser'; // DISABLED for pdfjs dependency
 // Keep queue name import if needed elsewhere, otherwise remove
@@ -83,11 +83,17 @@ export class DocumentsProcessor {
       });
 
       if (fileExtension === '.pdf') {
-        // PDF 处理暂时禁用
-        textContent = `PDF文本提取功能暂时禁用。文件: ${document.fileName}`;
-        this.logger.log(
-          `[ProcessorLogic] PDF 提取暂时禁用，返回占位符文本`,
-        );
+        try {
+          const dataBuffer = fs.readFileSync(absoluteFilePath);
+          const data = await pdfParse(dataBuffer);
+          textContent = data.text || '';
+          this.logger.log(
+            `[ProcessorLogic] 从 PDF 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+          );
+        } catch (error) {
+          this.logger.error(`[ProcessorLogic] PDF 文本提取失败:`, error);
+          textContent = `PDF文本提取失败: ${error instanceof Error ? error.message : '未知错误'}`;
+        }
       } else if (fileExtension === '.docx') {
         const result = await mammoth.extractRawText({ path: absoluteFilePath });
         textContent = result.value;
@@ -95,11 +101,23 @@ export class DocumentsProcessor {
           `[ProcessorLogic] 从 DOCX 提取文本完成 (长度: ${textContent?.length ?? 0})`,
         );
       } else if (fileExtension === '.pptx') {
-        // PPTX 处理暂时禁用
-        textContent = `PPTX文本提取功能暂时禁用。文件: ${document.fileName}`;
-        this.logger.log(
-          `[ProcessorLogic] PPTX 提取暂时禁用，返回占位符文本`,
-        );
+        try {
+          // 使用textract提取PPTX内容
+          const textract = require('textract');
+          const util = require('util');
+          const textractPromise = util.promisify(textract.fromBufferWithName);
+
+          const dataBuffer = fs.readFileSync(absoluteFilePath);
+          const extractedText = await textractPromise(document.fileName, dataBuffer, { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+
+          textContent = extractedText?.trim() || '';
+          this.logger.log(
+            `[ProcessorLogic] 从 PPTX 提取文本完成 (长度: ${textContent?.length ?? 0})`,
+          );
+        } catch (error) {
+          this.logger.error(`[ProcessorLogic] PPTX 文本提取失败:`, error);
+          textContent = `PPTX文本提取失败: ${error instanceof Error ? error.message : '未知错误'}`;
+        }
       } else if (fileExtension === '.txt') {
         textContent = fs.readFileSync(absoluteFilePath, 'utf8');
         this.logger.log(

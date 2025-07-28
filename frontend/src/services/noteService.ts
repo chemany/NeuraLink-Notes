@@ -62,10 +62,10 @@ export const createNoteApi = async (notebookId: string, data: { title?: string; 
  * @param data - 包含要更新的 title 和/或 content 的对象
  * @returns 更新后的笔记对象 Promise
  */
-export const updateNoteApi = async (notebookId: string, noteId: string, data: Partial<Pick<Note, 'title' | 'content'>>): Promise<Note> => {
+export const updateNoteApi = async (notebookId: string, noteId: string, data: Partial<Pick<Note, 'title' | 'contentJson'>>): Promise<Note> => {
   try {
-    // 注意：DTO 可能只期望 title 和 content，所以我们只发送这两个字段
-    const updateData = { title: data.title, content: data.content };
+    // 注意：DTO 可能只期望 title 和 contentJson，所以我们只发送这两个字段
+    const updateData = { title: data.title, contentJson: data.contentJson };
     const response = await axios.put<Note>(`${BACKEND_API_BASE}/api/notebooks/${notebookId}/notes/${noteId}`, updateData);
     // 假设后端更新成功后返回更新后的 Note 对象
     return response.data;

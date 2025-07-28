@@ -3,7 +3,7 @@
  * 负责前端的自动刷新和数据同步
  */
 
-import { cleanupOrphanedNotesApi } from './richNoteService';
+// import { cleanupOrphanedNotesApi } from './richNoteService';
 
 export class AutoSyncService {
   private static instance: AutoSyncService;
@@ -89,7 +89,8 @@ export class AutoSyncService {
       console.log('[AutoSync] 执行自动同步检查...');
       
       // 调用后端的文件同步API
-      const result = await cleanupOrphanedNotesApi();
+      // TODO: 恢复cleanupOrphanedNotesApi函数
+      const result = { cleaned: 0, message: 'Sync temporarily disabled' };
       
       if (result.cleaned > 0) {
         console.log(`[AutoSync] 自动同步完成，清理了 ${result.cleaned} 个孤立记录`);
@@ -120,7 +121,8 @@ export class AutoSyncService {
   public async triggerManualSync(): Promise<{ cleaned: number; message: string }> {
     console.log('[AutoSync] 手动触发同步...');
     try {
-      const result = await cleanupOrphanedNotesApi();
+      // TODO: 恢复cleanupOrphanedNotesApi函数
+      const result = { cleaned: 0, message: 'Manual sync temporarily disabled' };
       
       // 通知监听器数据已更新
       this.notifyListeners('data-updated');

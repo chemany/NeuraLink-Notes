@@ -12,20 +12,28 @@ import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.share
  */
 export const navigateToHome = (router: AppRouterInstance, fallbackPath: string = '/') => {
   console.log('[Navigation] 智能导航到首页');
-  
+
   try {
     // 智能检测当前访问方式，决定跳转到哪里
     if (typeof window !== 'undefined') {
       const port = window.location.port;
       const hostname = window.location.hostname;
-      
+      const pathname = window.location.pathname;
+
       // 检查是否通过代理访问（8081端口或外网域名）
       const isProxyAccess = port === '8081' || hostname.includes('jason.cheman.top');
-      
+
       if (isProxyAccess) {
-        // 通过代理访问，跳转到 /notepads/
-        console.log('[Navigation] 检测到代理访问，跳转到 /notepads/');
-        router.push('/notepads/');
+        // 通过代理访问，检查当前路径
+        if (pathname.startsWith('/notepads')) {
+          // 已经在 /notepads 路径下，跳转到 /notepads（不带尾部斜杠）
+          console.log('[Navigation] 检测到代理访问且在notepads路径下，跳转到 /notepads');
+          router.push('/notepads');
+        } else {
+          // 不在 /notepads 路径下，跳转到 /notepads/
+          console.log('[Navigation] 检测到代理访问，跳转到 /notepads/');
+          router.push('/notepads/');
+        }
       } else {
         // 直接访问前端，跳转到根路径或指定的备用路径
         console.log('[Navigation] 检测到直接访问，跳转到', fallbackPath);
@@ -60,5 +68,12 @@ export const isProxyAccess = (): boolean => {
  * @returns string - 首页路径
  */
 export const getHomePath = (): string => {
-  return isProxyAccess() ? '/notepads/' : '/';
+  if (typeof window !== 'undefined') {
+    const pathname = window.location.pathname;
+    if (isProxyAccess()) {
+      // 如果已经在 /notepads 路径下，返回 /notepads，否则返回 /notepads/
+      return pathname.startsWith('/notepads') ? '/notepads' : '/notepads/';
+    }
+  }
+  return '/';
 };

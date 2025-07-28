@@ -581,10 +581,10 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                         type="password"
                         name="apiKey"
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        value={localLLMSettings.provider === 'builtin' ? '' : localLLMSettings.apiKey}
+                        value={localLLMSettings.provider === ('builtin' as any) ? '' : (localLLMSettings.apiKey || '')}
                         onChange={handleLLMChange}
                         placeholder={localLLMSettings.provider === 'openrouter' ? '请输入您的OpenRouter API Key' : '输入API密钥'}
-                        disabled={localLLMSettings.provider === 'builtin'}
+                        disabled={localLLMSettings.provider === ('builtin' as any)}
                       />
                       {localLLMSettings.provider === 'openrouter' ? (
                         <div className="mt-1 space-y-1">

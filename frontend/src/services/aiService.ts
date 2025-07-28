@@ -488,16 +488,22 @@ export const generateEmbeddings = async (texts: string[], settings: any): Promis
   return texts.map(() => Array.from({ length: 1536 }, () => Math.random()));
 };
 
+// 重排序结果类型
+export interface RerankResult {
+  index: number;
+  score: number;
+}
+
 /**
  * 重排文档块（简化版）
  */
 export const rerankChunks = async (
-  query: string, 
+  query: string,
   documents: string[],
-  settings: any, 
-  rerankModel: string = 'default', 
+  settings: any,
+  rerankModel: string = 'default',
   topN?: number
-): Promise<any[]> => {
+): Promise<RerankResult[]> => {
   console.log('rerankChunks: 暂时返回原序');
   // 简化实现：返回原始顺序的结果
   return documents.map((doc, index) => ({

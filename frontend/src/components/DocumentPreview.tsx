@@ -21,6 +21,24 @@ const PdfViewer = dynamic(() => import('./PdfViewer'), {
   </div>
 });
 
+// 动态导入PPTX查看器组件
+const PptxViewer = dynamic(() => import('./PptxViewer'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full w-full">
+    <div className="animate-spin h-10 w-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+    <span className="ml-3 text-gray-600">正在加载PPTX预览...</span>
+  </div>
+});
+
+// 动态导入Excel查看器组件
+const ExcelViewer = dynamic(() => import('./ExcelViewer'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full w-full">
+    <div className="animate-spin h-10 w-10 border-4 border-green-500 border-t-transparent rounded-full"></div>
+    <span className="ml-3 text-gray-600">正在加载Excel预览...</span>
+  </div>
+});
+
 /**
  * 文档预览组件属性
  * @param document 要预览的文档
@@ -58,8 +76,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   // 判断文件类型并设置适当的错误信息
   useEffect(() => {
     const extension = document.fileName.split('.').pop()?.toLowerCase() || '';
-    const supportedTypes = ['pdf', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'md', 'csv', 'json'];
-    
+    const supportedTypes = ['pdf', 'pptx', 'xlsx', 'xls', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'md', 'csv', 'json'];
+
     if (!supportedTypes.includes(extension)) {
       setPreviewError(`当前预览模式下无法预览 .${extension} 格式的文件，请尝试单击文档以通过AI聊天分析内容`);
     } else {
@@ -209,7 +227,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({
   
   // 判断文件类型是否支持预览
   const isSupportedFileType = (extension: string): boolean => {
-    const supportedTypes = ['txt', 'md', 'csv', 'json'];
+    const supportedTypes = ['pdf', 'pptx', 'xlsx', 'xls', 'txt', 'md', 'csv', 'json'];
     return supportedTypes.includes(extension);
   };
   
@@ -600,7 +618,81 @@ startxref
           </div>
         );
       }
-      
+
+      // PPTX预览 - 使用自定义的PptxViewer组件
+      if (extension === 'pptx') {
+        const isPptxUrl = content.startsWith('http') || content.startsWith('blob:') || content.startsWith('data:');
+
+        if (isPptxUrl) {
+          console.log('[DocumentPreview] 使用PptxViewer渲染PPTX URL:', content);
+
+          return (
+            <div className="h-full w-full overflow-auto bg-gray-100">
+              <PptxViewer url={content} />
+            </div>
+          );
+        } else {
+          // 如果不是URL，显示文本信息
+          return (
+            <div className="h-full w-full overflow-auto p-4 bg-gray-50 text-sm">
+              <div className="max-w-2xl mx-auto">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        无法加载PPTX内容，请尝试下载文件后查看
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+      }
+
+      // Excel预览 - 使用自定义的ExcelViewer组件
+      if (['xlsx', 'xls'].includes(extension)) {
+        const isExcelUrl = content.startsWith('http') || content.startsWith('blob:') || content.startsWith('data:');
+
+        if (isExcelUrl) {
+          console.log('[DocumentPreview] 使用ExcelViewer渲染Excel URL:', content);
+
+          return (
+            <div className="h-full w-full overflow-auto bg-gray-100">
+              <ExcelViewer url={content} />
+            </div>
+          );
+        } else {
+          // 如果不是URL，显示文本信息
+          return (
+            <div className="h-full w-full overflow-auto p-4 bg-gray-50 text-sm">
+              <div className="max-w-2xl mx-auto">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm text-yellow-700">
+                        无法加载Excel内容，请尝试下载文件后查看
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+      }
+
       // 图片预览
       if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
         const isImageUrl = content.startsWith('http') || content.startsWith('blob:') || content.startsWith('data:');

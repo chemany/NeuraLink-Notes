@@ -46,11 +46,11 @@ export const getApiBaseUrl = (): string => {
     } else if (isProxyAccess) {
       // 通过代理访问（8081端口或外网域名）：使用nginx代理
       console.log('[getApiBaseUrl] 检测到代理访问，使用nginx代理');
-      return '';
+      return '/notepads';
     } else {
       // 其他情况：使用nginx代理
       console.log('[getApiBaseUrl] 检测到外网环境，使用nginx代理');
-      return '';
+      return '/notepads';
     }
   }
 

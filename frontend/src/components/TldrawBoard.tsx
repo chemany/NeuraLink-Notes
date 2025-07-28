@@ -113,14 +113,15 @@ const TldrawBoard = forwardRef<TldrawBoardRef, TldrawBoardProps>(({ notebookId, 
             h: Math.min(Math.max(text.length / 2, 100), 320)
           }
         });
-        
+
         // 保存内容到localStorage
-        localStorage.setItem(`tldraw_content_${rectId}`, text);
-        
-        // 使编辑器聚焦到创建的形状
-        if (rectId) {
-          editor.select([rectId]);
-          editor.zoomToSelection();
+        if (rectId && typeof rectId === 'string') {
+          localStorage.setItem(`tldraw_content_${rectId}`, text);
+
+          // 使编辑器聚焦到创建的形状
+          // TODO: 修复tldraw API调用
+          // editor.select([rectId]);
+          // editor.zoomToSelection();
         }
         
         // 在控制台记录添加的内容

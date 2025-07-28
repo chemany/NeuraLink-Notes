@@ -2,7 +2,7 @@
  * 白板服务 - 用于处理白板相关操作
  */
 
-import { apiGet, apiPost, apiPut, apiDelete } from './apiService';
+import apiClient from './apiClient';
 
 interface WhiteboardItem {
   id: string;
@@ -29,7 +29,7 @@ interface WhiteboardCreateDto {
  */
 export const getWhiteboardItems = async (): Promise<WhiteboardItem[]> => {
   try {
-    const response = await apiGet('/whiteboard');
+    const response = await apiClient.get('/whiteboard');
     return response.data;
   } catch (error) {
     console.error('获取白板列表失败:', error);
@@ -59,7 +59,7 @@ export const addToWhiteboard = async (
       position: defaultPosition
     };
 
-    const response = await apiPost('/whiteboard', createDto);
+    const response = await apiClient.post('/whiteboard', createDto);
     return response.data;
   } catch (error) {
     console.error('添加到白板失败:', error);
@@ -78,7 +78,7 @@ export const updateWhiteboardItem = async (
   updates: Partial<WhiteboardItem>
 ): Promise<WhiteboardItem> => {
   try {
-    const response = await apiPut(`/whiteboard/${id}`, updates);
+    const response = await apiClient.put(`/whiteboard/${id}`, updates);
     return response.data;
   } catch (error) {
     console.error('更新白板项目失败:', error);
@@ -92,7 +92,7 @@ export const updateWhiteboardItem = async (
  */
 export const deleteWhiteboardItem = async (id: string): Promise<void> => {
   try {
-    await apiDelete(`/whiteboard/${id}`);
+    await apiClient.delete(`/whiteboard/${id}`);
   } catch (error) {
     console.error('删除白板项目失败:', error);
     throw error;

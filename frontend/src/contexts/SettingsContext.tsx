@@ -826,10 +826,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             const rerankingData = await localUnifiedSettingsService.getRerankingSettingsFromFile();
             if (rerankingData && rerankingData.data) {
               const rerankingSettings = {
-                provider: rerankingData.data.provider || 'builtin-free',
-                model: rerankingData.data.model || defaultRerankingSettings.model,
-                apiKey: rerankingData.data.apiKey || rerankingData.data.api_key || '',
-                customEndpoint: rerankingData.data.customEndpoint || rerankingData.data.custom_endpoint || defaultRerankingSettings.customEndpoint
+                enableReranking: rerankingData.data.enableReranking || false,
+                rerankingProvider: rerankingData.data.rerankingProvider || 'siliconflow',
+                rerankingModel: rerankingData.data.rerankingModel || defaultRerankingSettings.rerankingModel,
+                initialRerankCandidates: rerankingData.data.initialRerankCandidates || defaultRerankingSettings.initialRerankCandidates,
+                finalRerankTopN: rerankingData.data.finalRerankTopN || defaultRerankingSettings.finalRerankTopN,
+                rerankingCustomEndpoint: rerankingData.data.rerankingCustomEndpoint || defaultRerankingSettings.rerankingCustomEndpoint
               };
               setRerankingSettings(rerankingSettings);
               console.log('[SettingsContext] 刷新的reranking设置:', rerankingSettings);

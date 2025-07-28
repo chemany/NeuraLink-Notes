@@ -302,28 +302,24 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       return;
     }
 
-    console.log(`[NotebookContext] 开始删除笔记本: ${notebookToDelete.displayPath || notebookToDelete.title} (ID: ${id})`);
+    console.log(`[NotebookContext] 开始删除笔记本: ${notebookToDelete.title} (ID: ${id})`);
     setIsDeletingNotebook(id); // 设置删除状态
 
     const titleToDelete = notebookToDelete?.title || id;
 
     // 构建更友好的显示路径
     let displayPath = titleToDelete;
-    if (notebookToDelete?.displayPath) {
-      displayPath = notebookToDelete.displayPath;
-    } else {
-      // 如果没有displayPath，手动构建一个友好的路径
-      const ownerName = notebookToDelete?.ownerName || user?.email?.split('@')[0] || '用户';
+    // 手动构建一个友好的路径
+    const ownerName = user?.email?.split('@')[0] || '用户';
 
-      // 尝试获取文件夹名称
-      let folderName = 'default';
-      if (notebookToDelete?.folderId && folders) {
-        const folder = folders.find(f => f.id === notebookToDelete.folderId);
-        folderName = folder?.name || 'default';
-      }
-
-      displayPath = `${ownerName}/${folderName}/${titleToDelete}`;
+    // 尝试获取文件夹名称
+    let folderName = 'default';
+    if (notebookToDelete?.folderId && folders) {
+      const folder = folders.find(f => f.id === notebookToDelete.folderId);
+      folderName = folder?.name || 'default';
     }
+
+    displayPath = `${ownerName}/${folderName}/${titleToDelete}`;
 
     toast.loading(`正在删除笔记本 "${displayPath}"...`, { id: 'delete-notebook-toast' });
 
@@ -339,7 +335,11 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
       });
 
       // 添加到已删除缓存
-      setDeletedNotebooks(prev => new Set([...prev, id]));
+      setDeletedNotebooks(prev => {
+        const newSet = new Set(prev);
+        newSet.add(id);
+        return newSet;
+      });
 
       // 立即重置删除状态，防止重复请求
       setIsDeletingNotebook(null);

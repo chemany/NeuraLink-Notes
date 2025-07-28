@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, InternalServerErrorException, BadRequestException, Logger, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Document, Prisma } from '@prisma/client';
-// Try require syntax for pdf-parse (DISABLED for PDF.js dependency issues)
-// const pdfParse: (buffer: Buffer) => Promise<{ text: string; [key: string]: any; }> = require('pdf-parse');
+// Import pdf-parse for PDF text extraction
+const pdfParse: (buffer: Buffer) => Promise<{ text: string; [key: string]: any; }> = require('pdf-parse');
 // Import mammoth and officeparser
 import * as mammoth from 'mammoth';
 // 修改导入方式，使用require并添加类型断言 (DISABLED for pdfjs dependency)
@@ -624,10 +624,8 @@ export class DocumentsService {
           textContent = await this.extractWordContent(filePath, document.fileName, userId);
           break;
         case '.pptx':
-           this.logger.log(`[ProcessDoc] PPTX text extraction is temporarily disabled: ${filePath}`);
-           // PPTX 处理暂时禁用
-           textContent = `PPTX文本提取功能暂时禁用。文件: ${document.fileName}`;
-           this.logger.warn(`[ProcessDoc] PPTX extraction disabled. Returning placeholder text.`);
+           this.logger.log(`[ProcessDoc] Extracting content from PPTX: ${filePath}`);
+           textContent = await this.extractPptxContent(filePath, document.fileName, userId);
            break;
         case '.txt':
         case '.md':
@@ -696,13 +694,28 @@ export class DocumentsService {
    * 提取PDF文件内容
    */
   private async extractPdfContent(filePath: string, fileName: string, documentId: string, userId: string): Promise<string> {
-    this.logger.log(`User ${userId} PDF text extraction is temporarily disabled due to dependency issues: ${filePath}`);
+    this.logger.log(`User ${userId} extracting PDF content from: ${filePath}`);
 
-    // 暂时禁用 PDF 文本提取功能
-    const disabledMessage = `PDF文本提取功能暂时禁用。文件: ${fileName}`;
-    this.logger.warn(`User ${userId} PDF extraction disabled. Returning placeholder text.`);
+    try {
+      // 读取PDF文件
+      const dataBuffer = fs.readFileSync(filePath);
 
-    return disabledMessage;
+      // 使用pdf-parse提取文本
+      const data = await pdfParse(dataBuffer);
+
+      this.logger.log(`User ${userId} successfully extracted ${data.text.length} characters from PDF: ${fileName}`);
+
+      // 返回提取的文本内容
+      return data.text || '';
+    } catch (error) {
+      this.logger.error(`User ${userId} error extracting PDF content from ${filePath}:`, error);
+
+      // 如果提取失败，返回错误信息而不是抛出异常
+      const errorMessage = `PDF文本提取失败: ${error instanceof Error ? error.message : '未知错误'}`;
+      this.logger.warn(`User ${userId} PDF extraction failed for ${fileName}. Returning error message.`);
+
+      return errorMessage;
+    }
   }
   
   /**
@@ -719,7 +732,95 @@ export class DocumentsService {
       throw new Error(`无法解析 DOCX 文件: ${error.message}`);
     }
   }
-  
+
+  /**
+   * 提取PPTX文档内容
+   */
+  private async extractPptxContent(filePath: string, fileName: string, userId: string): Promise<string> {
+    this.logger.log(`User ${userId} starting PPTX content extraction for: ${filePath}`);
+
+    try {
+      // 方法1: 使用textract库提取PPTX内容
+      const extractedText = await textractPromise(filePath, { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+
+      if (extractedText && extractedText.trim().length > 0) {
+        this.logger.log(`User ${userId} PPTX extraction successful using textract. Text length: ${extractedText.length}`);
+        return extractedText.trim();
+      }
+
+      this.logger.warn(`User ${userId} textract returned empty content for PPTX: ${filePath}`);
+
+      // 方法2: 备用方案 - 使用pptx2json
+      try {
+        const pptx2json = require('pptx2json');
+        const result = await new Promise((resolve, reject) => {
+          pptx2json.toJson(filePath, (err: any, json: any) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(json);
+            }
+          });
+        });
+
+        // 从JSON结果中提取文本
+        const textContent = this.extractTextFromPptxJson(result);
+
+        if (textContent && textContent.trim().length > 0) {
+          this.logger.log(`User ${userId} PPTX extraction successful using pptx2json. Text length: ${textContent.length}`);
+          return textContent.trim();
+        }
+
+        this.logger.warn(`User ${userId} pptx2json returned empty content for PPTX: ${filePath}`);
+
+      } catch (pptxJsonError) {
+        this.logger.warn(`User ${userId} pptx2json failed for ${filePath}: ${pptxJsonError.message}`);
+      }
+
+      // 如果两种方法都失败，返回错误信息
+      const errorMessage = `PPTX文件处理完成，但未能提取到文本内容。文件: ${fileName}`;
+      this.logger.warn(`User ${userId} ${errorMessage}`);
+      return errorMessage;
+
+    } catch (error) {
+      this.logger.error(`User ${userId} failed to extract text from PPTX ${filePath}: ${error.message}`, error.stack);
+      return `PPTX文本提取失败: ${error instanceof Error ? error.message : '未知错误'}`;
+    }
+  }
+
+  /**
+   * 从pptx2json的结果中提取文本内容
+   */
+  private extractTextFromPptxJson(jsonData: any): string {
+    if (!jsonData || !Array.isArray(jsonData)) {
+      return '';
+    }
+
+    const textParts: string[] = [];
+
+    try {
+      jsonData.forEach((slide: any, slideIndex: number) => {
+        if (slide && slide.elements && Array.isArray(slide.elements)) {
+          const slideTexts: string[] = [];
+
+          slide.elements.forEach((element: any) => {
+            if (element && element.type === 'text' && element.content) {
+              slideTexts.push(element.content.trim());
+            }
+          });
+
+          if (slideTexts.length > 0) {
+            textParts.push(`--- 幻灯片 ${slideIndex + 1} ---\n${slideTexts.join('\n')}\n`);
+          }
+        }
+      });
+    } catch (parseError) {
+      this.logger.warn(`Error parsing PPTX JSON data: ${parseError.message}`);
+    }
+
+    return textParts.join('\n');
+  }
+
   /**
    * 提取普通文本文件内容
    */
@@ -736,18 +837,51 @@ export class DocumentsService {
   }
   
   /**
-   * 提取Excel文件内容
+   * 提取Excel文件内容 - 改进版本，处理所有工作表并生成更好的文本格式
    */
   private async extractExcelContent(filePath: string, fileName: string, userId: string): Promise<string> {
     this.logger.log(`User ${userId} starting content extraction for: ${filePath}`);
     try {
       const workbook = XLSX.readFile(filePath);
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json(sheet);
-      const jsonData = JSON.stringify(data, null, 2);
-      this.logger.log(`User ${userId} extraction successful. Text length: ${jsonData.length}`);
-      return jsonData;
+      const textContent: string[] = [];
+
+      this.logger.log(`User ${userId} Excel file contains ${workbook.SheetNames.length} worksheets: ${workbook.SheetNames.join(', ')}`);
+
+      // 处理每个工作表
+      for (const sheetName of workbook.SheetNames) {
+        const sheet = workbook.Sheets[sheetName];
+
+        // 添加工作表标题
+        textContent.push(`=== 工作表: ${sheetName} ===`);
+
+        // 将工作表转换为CSV格式的文本（更适合向量化）
+        const csvText = XLSX.utils.sheet_to_csv(sheet);
+
+        if (csvText.trim()) {
+          // 格式化CSV文本，使其更可读
+          const formattedText = csvText
+            .split('\n')
+            .map(row => row.trim())
+            .filter(row => row.length > 0)
+            .map(row => {
+              // 处理CSV行，替换逗号为制表符以提高可读性
+              return row.split(',').map(cell => cell.replace(/"/g, '')).join('\t');
+            })
+            .join('\n');
+
+          textContent.push(formattedText);
+        } else {
+          textContent.push('(无数据)');
+        }
+
+        textContent.push(''); // 添加空行分隔工作表
+      }
+
+      // 合并所有文本
+      const fullText = textContent.join('\n');
+
+      this.logger.log(`User ${userId} Excel extraction successful. Total text length: ${fullText.length}, worksheets: ${workbook.SheetNames.length}`);
+      return fullText;
     } catch (error) {
       this.logger.error(`User ${userId} failed to extract text from Excel file ${filePath}: ${error.message}`);
       throw new Error(`无法解析Excel文件: ${error.message}`);
