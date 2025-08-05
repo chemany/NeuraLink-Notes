@@ -180,10 +180,56 @@ export default function NotebookLayout({
     // Add isInitialized to dependencies
   }, [notebookId, setCurrentNotebookById, isInitialized]); 
 
+  // 🎯 新增：处理URL查询参数中的noteId，优先级高于localStorage
+  useEffect(() => {
+    if (isClient && currentNotebook && currentNotes && isInitialized) {
+      // 检查URL中是否有noteId查询参数
+      const urlParams = new URLSearchParams(window.location.search);
+      const noteIdFromUrl = urlParams.get('noteId');
+      
+      if (noteIdFromUrl) {
+        const noteExists = currentNotes.some(note => note.id === noteIdFromUrl);
+        if (noteExists) {
+          console.log(`[NotebookLayout] Found noteId in URL: ${noteIdFromUrl}. Setting as active.`);
+          setActiveNote(noteIdFromUrl);
+          setShowStudio(true); // 确保编辑器面板可见
+          
+          // 保存到localStorage作为最后活动的笔记
+          if (lastActiveNoteStorageKey) {
+            localStorage.setItem(lastActiveNoteStorageKey, noteIdFromUrl);
+          }
+          
+          // 清除URL中的noteId参数，避免刷新页面时重复处理
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete('noteId');
+          window.history.replaceState({}, '', newUrl.toString());
+          
+          return; // 找到URL中的noteId后直接返回，不执行后续的localStorage逻辑
+        } else {
+          console.warn(`[NotebookLayout] NoteId ${noteIdFromUrl} from URL not found in current notes. Ignoring.`);
+          // 清除无效的URL参数
+          const newUrl = new URL(window.location.href);
+          newUrl.searchParams.delete('noteId');
+          window.history.replaceState({}, '', newUrl.toString());
+        }
+      }
+    }
+  }, [isClient, currentNotebook, currentNotes, lastActiveNoteStorageKey, isInitialized]);
+
   // Effect to load the last active note ID from localStorage
-  // 这个 useEffect 只负责从 localStorage 恢复上次活动的笔记 ID
+  // 这个 useEffect 只负责从 localStorage 恢复上次活动的笔记 ID（优先级低于URL参数）
   useEffect(() => {
     if (isClient && currentNotebook && currentNotes && lastActiveNoteStorageKey && isInitialized) {
+      // 检查URL是否包含noteId参数，如果有则跳过localStorage逻辑，避免冲突
+      const urlParams = new URLSearchParams(window.location.search);
+      const noteIdFromUrl = urlParams.get('noteId');
+      
+      if (noteIdFromUrl) {
+        // URL中有noteId参数，跳过localStorage逻辑，让URL处理的useEffect优先处理
+        console.log('[NotebookLayout] Skipping localStorage logic due to noteId in URL.');
+        return;
+      }
+      
       const lastActiveNoteId = localStorage.getItem(lastActiveNoteStorageKey);
       if (lastActiveNoteId) {
         const noteExists = currentNotes.some(note => note.id === lastActiveNoteId);
@@ -207,7 +253,7 @@ export default function NotebookLayout({
         // 笔记本已加载，但没有笔记或笔记列表为空。确保 activeNote 为 null
         setActiveNote(null);
     }
-  }, [isClient, currentNotebook, currentNotes, lastActiveNoteStorageKey, isInitialized]);
+  }, [isClient, currentNotebook, currentNotes, lastActiveNoteStorageKey, isInitialized, activeNote]);
 
 
   // Effect to update editor content when activeNote changes or currentNotes updates

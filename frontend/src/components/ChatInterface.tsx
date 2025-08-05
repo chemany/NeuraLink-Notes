@@ -461,31 +461,29 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
 
       if (newNote) {
         toast.success(`笔记 "${newNote.title}" 已成功保存!`);
-        // 导航到新创建或已存在的笔记本，并尝试聚焦到新笔记
-        // NotebookContext 中的 createNote 已经将新笔记添加到了 currentNotes
-        // NotebookLayout 中的 useEffect 会监听 activeNote 和 currentNotes 来更新编辑器
-        // 我们只需要导航到笔记本，并最好能让 NotebookLayout 知道哪个是新笔记。
-        // 最简单的方式是直接导航到笔记本，让用户自己选择笔记，或者依赖 NotebookLayout 默认选择最新/第一个笔记。
-        // 为了更好的用户体验，可以尝试导航并激活笔记。
         
-        // 如果是新创建的笔记本，导航到它
+        // 🎯 修复：保存成功后立即跳转到新创建的笔记
+        // 构建到新笔记的完整路径
+        let navigationPath: string;
+        
         if (newNotebookCreated && targetNotebookName) {
           // 新创建的笔记本默认在根目录，使用 'default' 作为文件夹名
           const encodedFolderName = encodeURIComponent('default');
           const encodedNotebookName = encodeURIComponent(targetNotebookName);
-          router.push(`/${encodedFolderName}/${encodedNotebookName}`);
-          //  当 NotebookLayout 加载时，它会获取 currentNotes。
-          //  可以考虑在 NotebookLayout 中添加逻辑，如果 URL query param 中有 noteId，则自动设为 activeNote。
-          //  或者，在这里调用一个方法（如果 NotebookContext 或 Layout 暴露的话）来设置 activeNote。
-        } else if (currentNotebook?.id === targetNotebookId) {
-          // 如果是保存到当前已打开的笔记本，可以尝试通过某种方式通知 NotebookLayout 更新 activeNote
-          // 但 NotebookContext 的 createNote 已经更新了 currentNotes，
-          // NotebookLayout 的 useEffect 应该会处理 activeNote 的选择（比如选择第一个，或者最新的）
-          // 通常不需要强制导航，除非想确保新笔记被打开。
-          console.log('[ChatInterface] 笔记已保存到当前笔记本。NotebookLayout应处理笔记列表的更新。');
+          navigationPath = `/${encodedFolderName}/${encodedNotebookName}?noteId=${newNote.id}`;
+        } else if (currentNotebook?.folderName && currentNotebook?.title) {
+          // 保存到当前已打开的笔记本，导航到该笔记本并指定笔记ID
+          const encodedFolderName = encodeURIComponent(currentNotebook.folderName);
+          const encodedNotebookName = encodeURIComponent(currentNotebook.title);
+          navigationPath = `/${encodedFolderName}/${encodedNotebookName}?noteId=${newNote.id}`;
+        } else {
+          // 备用方案：如果无法确定路径，至少导航到笔记本列表
+          navigationPath = '/';
+          console.warn('[ChatInterface] 无法确定完整导航路径，使用备用方案导航到首页');
         }
-        // 如果希望总是导航到新笔记（即使在当前笔记本中创建）
-        // router.push(`/notebooks/${targetNotebookId}?note=${newNote.id}`); // 这需要NotebookLayout支持从query读取noteId
+        
+        console.log(`[ChatInterface] 导航到新笔记: ${navigationPath}`);
+        router.push(navigationPath);
         
       } else {
         toast.error('在笔记本中创建笔记失败。');
