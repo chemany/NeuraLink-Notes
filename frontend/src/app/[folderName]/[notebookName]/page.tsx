@@ -30,20 +30,26 @@ const NotebookDetailPage = () => {
     // ... (可以按需添加其他需要的状态或函数)
   } = useNotebook();
 
-  // 如果 folderName 或 notebookName 无法从 params 中获取，则显示错误或加载状态
-  // 注意：这个检查应该在 Auth 加载完成后进行，以避免在 Auth 确定前就判定参数无效
+  // 使用路由参数强制重新设置笔记本，避免缓存问题
   useEffect(() => {
     if (!isAuthLoading && (folderName === undefined || notebookName === undefined)) {
-        // 可以在这里设置一个错误状态或者直接渲染错误信息
-        // 为简单起见，我们依赖后续的 isAuthenticated 和 currentNotebook 检查
         console.warn('[NotebookDetailPage] folderName or notebookName is undefined after auth check.');
+        return;
     }
 
     if (folderName && notebookName && isAuthenticated && !isAuthLoading) {
-      console.log(`[NotebookDetailPage] Setting current notebook to: ${folderName}/${notebookName}`);
+      console.log(`[NotebookDetailPage] Route changed, forcing notebook refresh: ${folderName}/${notebookName}`);
+      console.log(`[NotebookDetailPage] Current notebook before setting:`, currentNotebook?.title);
+      
+      // 每次路由变化都强制重新设置笔记本，避免缓存问题
+      // 创建一个唯一的标识符基于路由参数，确保每次路由变化都触发更新
+      const routeKey = `${folderName}/${notebookName}`;
+      console.log(`[NotebookDetailPage] Force setting notebook with route key: ${routeKey}`);
+      
+      // 直接调用，不做条件检查，让Context层处理重复设置的优化
       setCurrentNotebookByFolderAndName(folderName, notebookName);
     }
-  }, [folderName, notebookName, isAuthenticated, isAuthLoading, setCurrentNotebookByFolderAndName]);
+  }, [folderName, notebookName, isAuthenticated, isAuthLoading, setCurrentNotebookByFolderAndName]); // 包含所有必要依赖
 
   // 将 notebookId undefined 的情况移到 auth 和 loading 检查之后
   // 这样可以确保在用户未登录或数据仍在加载时，不会因为 notebookId 暂时 undefined 而提前显示错误

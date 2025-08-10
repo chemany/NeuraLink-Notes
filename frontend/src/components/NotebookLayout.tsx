@@ -181,40 +181,159 @@ export default function NotebookLayout({
   }, [notebookId, setCurrentNotebookById, isInitialized]); 
 
   // 🎯 新增：处理URL查询参数中的noteId，优先级高于localStorage
-  useEffect(() => {
-    if (isClient && currentNotebook && currentNotes && isInitialized) {
-      // 检查URL中是否有noteId查询参数
-      const urlParams = new URLSearchParams(window.location.search);
-      const noteIdFromUrl = urlParams.get('noteId');
+  // 检查URL参数的函数
+  const checkAndSetNoteFromUrl = useCallback(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const noteIdFromUrl = urlParams.get('noteId');
+    
+    console.log(`[NotebookLayout] Checking URL parameters: noteId=${noteIdFromUrl}, activeNote=${activeNote}, currentURL=${window.location.href}`);
+    
+    if (noteIdFromUrl) {
+      // 移除 noteIdFromUrl !== activeNote 的条件，总是设置
+      console.log(`[NotebookLayout] Found noteId in URL: ${noteIdFromUrl}. Setting as active.`);
+      console.log(`[NotebookLayout] Current state before setting:`, {
+        currentNotebook: currentNotebook?.title,
+        currentNotes: currentNotes?.length,
+        currentNotesIds: currentNotes?.map(n => n.id),
+        isClient,
+        isInitialized,
+        showStudio,
+        currentActiveNote: activeNote
+      });
       
-      if (noteIdFromUrl) {
-        const noteExists = currentNotes.some(note => note.id === noteIdFromUrl);
-        if (noteExists) {
-          console.log(`[NotebookLayout] Found noteId in URL: ${noteIdFromUrl}. Setting as active.`);
-          setActiveNote(noteIdFromUrl);
-          setShowStudio(true); // 确保编辑器面板可见
+      // 检查笔记是否存在于currentNotes中
+      const noteExists = currentNotes?.some(note => note.id === noteIdFromUrl);
+      console.log(`[NotebookLayout] Note ${noteIdFromUrl} exists in currentNotes: ${noteExists}`);
+      
+      setActiveNote(noteIdFromUrl);
+      setShowStudio(true); // 确保编辑器面板可见
+      console.log(`[NotebookLayout] Called setActiveNote(${noteIdFromUrl}) and setShowStudio(true)`);
+      
+      // 保存到localStorage作为最后活动的笔记
+      if (lastActiveNoteStorageKey) {
+        localStorage.setItem(lastActiveNoteStorageKey, noteIdFromUrl);
+      }
+      
+      // 延迟清除URL参数，给组件更新时间
+      setTimeout(() => {
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('noteId');
+        window.history.replaceState({}, '', newUrl.toString());
+        console.log(`[NotebookLayout] Cleared URL parameter, new URL: ${newUrl.toString()}`);
+      }, 500);
+      
+      return true; // 返回true表示找到并处理了URL参数
+    }
+    return false;
+  }, [activeNote, currentNotebook, currentNotes?.length, isClient, isInitialized, showStudio, lastActiveNoteStorageKey]);
+
+  // 监听路由变化和URL参数变化 - 使用事件监听替代定时器，提高性能
+  useEffect(() => {
+    if (!isClient) return;
+
+    let lastProcessedUrl: string = '';
+    let checkTimeoutId: NodeJS.Timeout;
+    
+    // 定义处理URL参数的函数
+    const processUrlParams = () => {
+      const currentUrl = window.location.href;
+      
+      // 只有URL真正改变时才处理
+      if (currentUrl === lastProcessedUrl) {
+        return;
+      }
+      
+      console.log('[NotebookLayout] Processing URL parameters for:', currentUrl);
+      
+      if (currentNotebook && isInitialized && currentNotes && currentNotes.length > 0) {
+        const urlParams = new URLSearchParams(window.location.search);
+        const noteIdFromUrl = urlParams.get('noteId');
+        
+        if (noteIdFromUrl) {
+          console.log(`[NotebookLayout] Found noteId in URL: ${noteIdFromUrl}, current activeNote: ${activeNote}`);
+          const noteExists = currentNotes.some(note => note.id === noteIdFromUrl);
           
-          // 保存到localStorage作为最后活动的笔记
-          if (lastActiveNoteStorageKey) {
-            localStorage.setItem(lastActiveNoteStorageKey, noteIdFromUrl);
+          if (noteExists && noteIdFromUrl !== activeNote) {
+            console.log(`[NotebookLayout] Setting note as active: ${noteIdFromUrl}`);
+            setActiveNote(noteIdFromUrl);
+            setShowStudio(true);
+            
+            // 保存到localStorage
+            if (lastActiveNoteStorageKey) {
+              localStorage.setItem(lastActiveNoteStorageKey, noteIdFromUrl);
+            }
+            
+            // 标记此URL已处理
+            lastProcessedUrl = currentUrl;
+            
+            // 清除URL参数
+            setTimeout(() => {
+              const newUrl = new URL(window.location.href);
+              newUrl.searchParams.delete('noteId');
+              window.history.replaceState({}, '', newUrl.toString());
+              console.log(`[NotebookLayout] Cleared noteId parameter from URL`);
+            }, 800);
+          } else if (!noteExists) {
+            console.log(`[NotebookLayout] Note ${noteIdFromUrl} not found in current notes`);
           }
-          
-          // 清除URL中的noteId参数，避免刷新页面时重复处理
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.delete('noteId');
-          window.history.replaceState({}, '', newUrl.toString());
-          
-          return; // 找到URL中的noteId后直接返回，不执行后续的localStorage逻辑
-        } else {
-          console.warn(`[NotebookLayout] NoteId ${noteIdFromUrl} from URL not found in current notes. Ignoring.`);
-          // 清除无效的URL参数
-          const newUrl = new URL(window.location.href);
-          newUrl.searchParams.delete('noteId');
-          window.history.replaceState({}, '', newUrl.toString());
         }
       }
+    };
+
+    // 使用智能检查策略，而非持续定时器
+    const scheduleUrlCheck = () => {
+      // 清除之前的定时器
+      if (checkTimeoutId) {
+        clearTimeout(checkTimeoutId);
+      }
+      // 延迟检查，避免频繁触发
+      checkTimeoutId = setTimeout(() => {
+        processUrlParams();
+      }, 100);
+    };
+
+    // 监听可能导致URL变化的事件
+    const handleUrlChange = () => {
+      console.log('[NotebookLayout] URL change detected');
+      scheduleUrlCheck();
+    };
+
+    // 监听popstate事件（浏览器前进/后退）
+    window.addEventListener('popstate', handleUrlChange);
+    
+    // 监听自定义的路由变化事件
+    window.addEventListener('routeChangeComplete', handleUrlChange);
+    
+    // 使用MutationObserver监听URL变化，但仅在必要时
+    const observer = new MutationObserver(() => {
+      if (window.location.href !== lastProcessedUrl) {
+        scheduleUrlCheck();
+      }
+    });
+    
+    // 只监听必要的DOM变化
+    observer.observe(document.querySelector('head') || document.body, { 
+      childList: true, 
+      subtree: false,
+      attributes: false 
+    });
+
+    // 初始检查
+    if (currentNotebook && isInitialized) {
+      processUrlParams();
     }
-  }, [isClient, currentNotebook, currentNotes, lastActiveNoteStorageKey, isInitialized]);
+
+    return () => {
+      if (checkTimeoutId) {
+        clearTimeout(checkTimeoutId);
+      }
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('routeChangeComplete', handleUrlChange);
+      observer.disconnect();
+    };
+  }, [isClient, currentNotebook, isInitialized, currentNotes, activeNote, lastActiveNoteStorageKey]);
+
+  // 监听currentNotes变化时不再需要额外检查URL参数，因为定时器会自动处理
 
   // Effect to load the last active note ID from localStorage
   // 这个 useEffect 只负责从 localStorage 恢复上次活动的笔记 ID（优先级低于URL参数）

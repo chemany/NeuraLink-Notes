@@ -274,7 +274,7 @@ export default function Header({
                 <a 
                     href={typeof window !== 'undefined' && window.location.hostname === 'localhost' 
                         ? 'http://localhost:11000/calendars/' 
-                        : 'http://jason.cheman.top:8081/calendars/'
+                        : 'https://www.cheman.top/calendars/'
                     }
                     target="_blank"
                     rel="noopener noreferrer"

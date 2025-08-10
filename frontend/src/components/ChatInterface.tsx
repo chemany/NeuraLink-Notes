@@ -54,7 +54,7 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { llmSettings } = useSettings();
-  const { currentNotebook, saveWhiteboardContent, getWhiteboardContent, createNotebook, createNote } = useNotebook();
+  const { currentNotebook, folders, saveWhiteboardContent, getWhiteboardContent, createNotebook, createNote } = useNotebook();
   const router = useRouter();
   
   // 添加文档预览状态
@@ -471,9 +471,12 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
           const encodedFolderName = encodeURIComponent('default');
           const encodedNotebookName = encodeURIComponent(targetNotebookName);
           navigationPath = `/${encodedFolderName}/${encodedNotebookName}?noteId=${newNote.id}`;
-        } else if (currentNotebook?.folderName && currentNotebook?.title) {
-          // 保存到当前已打开的笔记本，导航到该笔记本并指定笔记ID
-          const encodedFolderName = encodeURIComponent(currentNotebook.folderName);
+        } else if (currentNotebook?.title) {
+          // 保存到当前已打开的笔记本，需要从 folders 中找到对应的文件夹名称
+          const currentFolder = folders.find(folder => folder.id === currentNotebook.folderId);
+          const folderName = currentFolder ? currentFolder.name : 'default';
+          
+          const encodedFolderName = encodeURIComponent(folderName);
           const encodedNotebookName = encodeURIComponent(currentNotebook.title);
           navigationPath = `/${encodedFolderName}/${encodedNotebookName}?noteId=${newNote.id}`;
         } else {
@@ -483,6 +486,14 @@ const ChatInterface = forwardRef<ChatInterfaceRef, ChatInterfaceProps>(({
         }
         
         console.log(`[ChatInterface] 导航到新笔记: ${navigationPath}`);
+        console.log(`[ChatInterface] 新笔记信息:`, {
+          id: newNote.id,
+          title: newNote.title,
+          targetNotebookId,
+          targetNotebookName,
+          currentFolderId: currentNotebook?.folderId,
+          folderName: currentNotebook ? folders.find(f => f.id === currentNotebook.folderId)?.name : undefined
+        });
         router.push(navigationPath);
         
       } else {

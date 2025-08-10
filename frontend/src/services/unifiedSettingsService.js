@@ -489,7 +489,7 @@ class UnifiedSettingsService {
             }
             // 如果是通过nginx代理访问（外网环境）
             else {
-                const apiBase = `${currentProtocol}//${currentHost}/unified-settings/api`;
+                const apiBase = `${currentProtocol}//${currentHost}/api`;
                 if (process.env.NODE_ENV !== 'production') {
                     console.log('[UnifiedSettingsService] 检测到外网环境，使用nginx代理:', apiBase);
                 }
@@ -504,33 +504,10 @@ class UnifiedSettingsService {
         return 'http://localhost:3002/api';
     }
 
-    // 获取灵枢笔记后端的统一设置API路径
+    // 获取灵枢笔记后端的统一设置API路径（已废弃，统一使用独立的统一设置服务）
     getNotebookApiBase() {
-        // 如果在浏览器环境中，根据当前访问地址判断
-        if (typeof window !== 'undefined') {
-            const currentHost = window.location.host;
-            const currentProtocol = window.location.protocol;
-
-            // 如果是localhost或127.0.0.1的3000端口（本地开发）
-            if (currentHost === 'localhost:3000' || currentHost === '127.0.0.1:3000') {
-                return 'http://localhost:3001/api/unified-settings';
-            }
-            // 检查是否是局域网IP地址
-            else if (/^192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
-                     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost) ||
-                     /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(currentHost)) {
-                // 局域网IP访问，连接到灵枢笔记后端的3001端口
-                const hostname = currentHost.split(':')[0];
-                return `http://${hostname}:3001/api/unified-settings`;
-            }
-            // 外网环境
-            else {
-                return `${currentProtocol}//${currentHost}/api/unified-settings`;
-            }
-        }
-
-        // 服务端渲染时的默认值
-        return 'http://localhost:3001/api/unified-settings';
+        // 所有请求都应该使用独立的统一设置服务，而不是灵枢笔记后端
+        return this.getApiBase();
     }
 }
 

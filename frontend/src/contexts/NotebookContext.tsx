@@ -390,19 +390,26 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
         setCurrentNotebookState(null);
         router.push('/'); // Navigate home if notebook is deselected
     } else {
-        // Log the IDs currently in the state *before* trying to find
-        console.log(`[NotebookContext] Notebooks currently in state:`, notebooks.map(n => n.id)); 
-        const notebookToSet = notebooks.find(n => n.id === id);
-        if (notebookToSet) {
-            setCurrentNotebookState(notebookToSet);
-            // REMOVED: fetchDocsForNotebook(id); // Let the useEffect handle this
-            // Optionally navigate here too, though often navigation triggers this call
-            // router.push(`/notebooks/${id}`);
-        } else {
-            console.warn(`[NotebookContext] Notebook with ID ${id} not found in state.`);
-            // Optionally navigate away or show an error
-            // router.push('/');
-        }
+        // 强制清除当前状态，避免缓存问题
+        setCurrentNotebookState(null);
+        
+        // 使用setTimeout确保状态清除后再设置新笔记本
+        setTimeout(() => {
+            // Log the IDs currently in the state *before* trying to find
+            console.log(`[NotebookContext] Notebooks currently in state:`, notebooks.map(n => n.id)); 
+            const notebookToSet = notebooks.find(n => n.id === id);
+            if (notebookToSet) {
+                console.log(`[NotebookContext] Setting notebook with ID: ${id}, title: ${notebookToSet.title}`);
+                setCurrentNotebookState(notebookToSet);
+                // REMOVED: fetchDocsForNotebook(id); // Let the useEffect handle this
+                // Optionally navigate here too, though often navigation triggers this call
+                // router.push(`/notebooks/${id}`);
+            } else {
+                console.warn(`[NotebookContext] Notebook with ID ${id} not found in state.`);
+                // Optionally navigate away or show an error
+                // router.push('/');
+            }
+        }, 0);
     }
   }, [notebooks, router]); // Dependencies: notebooks list and router
 
@@ -436,7 +443,8 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [notebooks, router, isAuthenticated]); // Dependencies: notebooks list, router, and authentication
 
   const setCurrentNotebookByFolderAndName = useCallback((folderName: string, notebookName: string) => {
-    console.log(`[NotebookContext] Setting current notebook by folder and name: ${folderName}/${notebookName}, isAuthenticated: ${isAuthenticated}, notebooks.length: ${notebooks.length}`);
+    const routeKey = `${folderName}/${notebookName}`;
+    console.log(`[NotebookContext] ==> FORCE SETTING notebook by route: ${routeKey}, authenticated: ${isAuthenticated}, notebooks: ${notebooks.length}`);
 
     // 如果用户未认证，不要尝试设置笔记本
     if (!isAuthenticated) {
@@ -444,45 +452,63 @@ export const NotebookProvider: React.FC<{ children: ReactNode }> = ({ children }
         return;
     }
 
-    // 根据文件夹名称和笔记本名称查找笔记本
-    // 首先需要找到对应的文件夹ID
-    let targetFolderId: string | null = null;
+    // 立即强制清除当前笔记本状态，无论之前是什么
+    console.log(`[NotebookContext] FORCE CLEARING current notebook state for route: ${routeKey}`);
+    setCurrentNotebookState(null);
 
-    if (folderName === 'default') {
-        // 默认文件夹，folderId 为 null
-        targetFolderId = null;
-    } else {
-        // 查找对应的文件夹
-        const folder = folders.find(f => f.name === folderName);
-        if (folder) {
-            targetFolderId = folder.id;
+    // 使用 setTimeout 确保状态清除操作完成，然后强制设置新笔记本
+    setTimeout(() => {
+        console.log(`[NotebookContext] ==> Processing route change for: ${routeKey}`);
+        
+        // 获取当前最新的notebooks和folders状态
+        console.log(`[NotebookContext] Available notebooks at processing time:`, notebooks.map(n => `${n.title} (${n.id})`));
+        console.log(`[NotebookContext] Available folders at processing time:`, folders.map(f => `${f.name} (${f.id})`));
+        
+        // 根据文件夹名称和笔记本名称查找笔记本
+        let targetFolderId: string | null = null;
+
+        if (folderName === 'default') {
+            // 默认文件夹，folderId 为 null
+            targetFolderId = null;
+            console.log(`[NotebookContext] Target folder: default (null)`);
         } else {
-            console.warn(`[NotebookContext] Folder with name "${folderName}" not found`);
-            return;
+            // 查找对应的文件夹
+            const folder = folders.find(f => f.name === folderName);
+            if (folder) {
+                targetFolderId = folder.id;
+                console.log(`[NotebookContext] Target folder found: ${folderName} (${targetFolderId})`);
+            } else {
+                console.warn(`[NotebookContext] Folder with name "${folderName}" not found for route: ${routeKey}`);
+                return;
+            }
         }
-    }
 
-    // 查找在指定文件夹中的笔记本
-    const notebookToSet = notebooks.find(nb =>
-        nb.title === notebookName &&
-        (nb.folderId === targetFolderId || (targetFolderId === null && !nb.folderId))
-    );
+        // 查找在指定文件夹中的笔记本
+        const notebookToSet = notebooks.find(nb =>
+            nb.title === notebookName &&
+            (nb.folderId === targetFolderId || (targetFolderId === null && !nb.folderId))
+        );
 
-    if (notebookToSet) {
-        console.log(`[NotebookContext] Found notebook by folder and name "${folderName}/${notebookName}":`, notebookToSet);
-        setCurrentNotebookState(notebookToSet);
-    } else {
-        console.warn(`[NotebookContext] Notebook with name "${notebookName}" not found in folder "${folderName}"`);
-        console.log(`[NotebookContext] Available notebooks:`, notebooks.map(n => ({
-            id: n.id,
-            title: n.title,
-            folderId: n.folderId
-        })));
-        console.log(`[NotebookContext] Available folders:`, folders.map(f => ({
-            id: f.id,
-            name: f.name
-        })));
-    }
+        if (notebookToSet) {
+            console.log(`[NotebookContext] ✅ FOUND target notebook for route ${routeKey}:`, {
+                id: notebookToSet.id,
+                title: notebookToSet.title,
+                folderId: notebookToSet.folderId
+            });
+            console.log(`[NotebookContext] ==> FORCE SETTING notebook: ${notebookToSet.title} (${notebookToSet.id})`);
+            setCurrentNotebookState(notebookToSet);
+        } else {
+            console.error(`[NotebookContext] ❌ NOTEBOOK NOT FOUND for route ${routeKey}!`);
+            console.log(`[NotebookContext] Searching criteria: name="${notebookName}", targetFolderId="${targetFolderId}"`);
+            console.log(`[NotebookContext] Available notebooks:`, notebooks.map(n => ({
+                id: n.id,
+                title: n.title,
+                folderId: n.folderId,
+                matches: n.title === notebookName,
+                folderMatches: n.folderId === targetFolderId || (targetFolderId === null && !n.folderId)
+            })));
+        }
+    }, 10); // 稍微增加延迟确保状态清理完成
   }, [notebooks, folders, isAuthenticated]); // Dependencies: notebooks list, folders list, and authentication
 
   // --- Existing API-Integrated Document Functions (Keep as is) ---

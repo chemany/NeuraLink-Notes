@@ -19,19 +19,19 @@ const getApiBaseUrl = (): string => {
                        /^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(hostname);
 
     if (isLocalhost) {
-      // 本地开发环境：直接访问灵枢笔记后端
-      return 'http://localhost:3001/api';
+      // 本地开发环境：直接访问统一设置服务
+      return 'http://localhost:3002/api';
     } else if (isPrivateIP) {
-      // 局域网IP访问：使用当前IP访问后端端口
-      return `http://${hostname}:3001/api`;
+      // 局域网IP访问：使用当前IP访问统一设置服务端口
+      return `http://${hostname}:3002/api`;
     } else {
-      // 外网环境：通过nginx代理访问
-      return `/api`;
+      // 外网环境：通过nginx代理访问统一设置服务
+      return '/api';
     }
   }
   
   // 服务端环境默认值
-  return 'http://localhost:3001/api';
+  return 'http://localhost:3002/api';
 };
 
 class LocalUnifiedSettingsService {
@@ -62,7 +62,7 @@ class LocalUnifiedSettingsService {
   async getDefaultModels(): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/default-models`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/default-models`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -72,7 +72,8 @@ class LocalUnifiedSettingsService {
       }
 
       const result = await response.json();
-      return result.success ? result.data : null;
+      // 后端直接返回数据，不需要检查success字段
+      return result;
     } catch (error) {
       console.error('获取默认模型配置失败:', error);
       return null;
@@ -85,7 +86,7 @@ class LocalUnifiedSettingsService {
   async getLLMSettingsFromFile(): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/llm`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/llm`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -95,7 +96,8 @@ class LocalUnifiedSettingsService {
       }
 
       const result = await response.json();
-      return result.success ? result.data : null;
+      // 后端直接返回设置对象，不需要检查success字段
+      return result;
     } catch (error) {
       console.error('获取LLM设置失败:', error);
       return null;
@@ -108,7 +110,7 @@ class LocalUnifiedSettingsService {
   async saveLLMSettingsToFile(provider: string, settings: any): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/llm`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/llm`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ provider, settings }),
@@ -132,7 +134,7 @@ class LocalUnifiedSettingsService {
   async getEmbeddingSettingsFromFile(): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/embedding`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/embedding`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -142,7 +144,8 @@ class LocalUnifiedSettingsService {
       }
 
       const result = await response.json();
-      return result.success ? { data: result.data } : null;
+      // 后端直接返回设置对象，不需要检查success字段
+      return result;
     } catch (error) {
       console.error('获取Embedding设置失败:', error);
       return null;
@@ -155,7 +158,7 @@ class LocalUnifiedSettingsService {
   async saveEmbeddingSettingsToFile(settings: any): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/embedding`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/embedding`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(settings),
@@ -179,7 +182,7 @@ class LocalUnifiedSettingsService {
   async getRerankingSettingsFromFile(): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/reranking`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/reranking`, {
         method: 'GET',
         headers: this.getAuthHeaders(),
       });
@@ -189,7 +192,8 @@ class LocalUnifiedSettingsService {
       }
 
       const result = await response.json();
-      return result.success ? { data: result.data } : null;
+      // 后端直接返回设置对象，不需要检查success字段
+      return result;
     } catch (error) {
       console.error('获取Reranking设置失败:', error);
       return null;
@@ -202,7 +206,7 @@ class LocalUnifiedSettingsService {
   async saveRerankingSettingsToFile(settings: any): Promise<any> {
     try {
       const apiBaseUrl = getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/unified-settings/reranking`, {
+      const response = await fetch(`${apiBaseUrl}/file-settings/reranking`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(settings),
