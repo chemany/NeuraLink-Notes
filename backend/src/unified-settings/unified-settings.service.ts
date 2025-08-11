@@ -154,7 +154,7 @@ export class UnifiedSettingsService {
   }
 
   /**
-   * 获取LLM设置 - 从统一设置文件中获取
+   * 获取LLM设置 - 从统一设置文件中获取（专门为灵枢笔记）
    */
   getLLMSettings(userId: string): any {
     this.ensureUserDataDirectory();
@@ -188,15 +188,36 @@ export class UnifiedSettingsService {
 
     const settings = this.readJsonFile(settingsPath, defaultSettings);
 
-    // 返回providers配置格式（保持向后兼容）
+    console.log(`[UnifiedSettingsService] 获取LLM设置 - userId: ${userId}`);
+    console.log(`[UnifiedSettingsService] 设置文件路径: ${settingsPath}`);
+    
+    // 优先使用 neuralink_llm 字段（灵枢笔记专用配置）
+    if (settings.neuralink_llm) {
+      console.log(`[UnifiedSettingsService] 找到灵枢笔记专用LLM配置:`, settings.neuralink_llm);
+      
+      // 如果是自定义配置，直接返回（不使用providers格式）
+      if (settings.neuralink_llm.provider === 'custom' && 
+          settings.neuralink_llm.api_key && 
+          settings.neuralink_llm.custom_endpoint) {
+        return {
+          provider: settings.neuralink_llm.provider,
+          model_name: settings.neuralink_llm.model,
+          api_key: settings.neuralink_llm.api_key,
+          custom_endpoint: settings.neuralink_llm.custom_endpoint,
+          updated_at: settings.neuralink_llm.updated_at
+        };
+      }
+    }
+
+    // 回退到传统的providers配置格式
     return {
       providers: {
         builtin: {
           api_key: 'builtin-free-key',
-          model_name: settings.llm?.model || defaultLLMSettings.model,
+          model_name: (settings.neuralink_llm?.model || settings.llm?.model || defaultLLMSettings.model),
           base_url: '',
           description: '内置免费模型',
-          updated_at: settings.llm?.updated_at || defaultLLMSettings.updated_at
+          updated_at: (settings.neuralink_llm?.updated_at || settings.llm?.updated_at || defaultLLMSettings.updated_at)
         }
       },
       updated_at: settings.updated_at

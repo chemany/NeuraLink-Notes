@@ -127,7 +127,22 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
             }));
           } else {
             // 其他provider从保存的配置中加载
-            const providerConfig = llmConfig?.providers?.[value];
+            // 对于custom provider，直接从llmConfig读取，而非providers子对象
+            let providerConfig = null;
+            
+            if (value === 'custom' && llmConfig?.provider === 'custom') {
+              // 对于custom provider，直接使用返回的配置
+              providerConfig = {
+                api_key: llmConfig.api_key || (llmConfig.model ? 'CONFIGURED' : ''), // 优先使用api_key字段，回退到model存在判断
+                base_url: llmConfig.custom_endpoint || '',
+                model_name: llmConfig.model || '',
+                use_custom_model: true // custom provider总是使用自定义模型
+              };
+              console.log(`检测到custom provider配置:`, llmConfig);
+            } else {
+              // 其他provider从providers对象获取
+              providerConfig = llmConfig?.providers?.[value];
+            }
             
             if (providerConfig) {
               // 如果找到了对应provider的配置，使用保存的数据
@@ -149,7 +164,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                 model: modelToDisplay,
                 temperature: prev.temperature, // 温度等参数保持当前值
                 maxTokens: prev.maxTokens,
-                customEndpoint: providerConfig.base_url || '',
+                customEndpoint: providerConfig.base_url || providerConfig.custom_endpoint || '',
                 useCustomModel: useCustom
               }));
               console.log(`已加载${value}的保存配置:`, providerConfig);

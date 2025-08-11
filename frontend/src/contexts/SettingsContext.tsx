@@ -214,64 +214,115 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           
           if (llmConfig) {
             console.log('从本地统一设置服务获取的LLM配置:', llmConfig);
+            console.log('llmConfig.provider:', llmConfig.provider);
+            console.log('llmConfig.model:', llmConfig.model);
+            console.log('llmConfig.model_name:', llmConfig.model_name);
             
-            // 处理多提供商LLM设置
-            const currentProvider = llmConfig.current_provider || 'builtin';
+            // 处理LLM设置 - 支持直接provider配置和多provider配置
+            let currentProvider: string;
             let llmSettings: LLMSettings;
             
-            if (currentProvider === 'builtin') {
-              // 对于内置模型，不在前端存储真实API密钥，使用占位符
-              if (defaultModelsData?.builtin_free) {
-                llmSettings = {
-                  provider: 'builtin',
-                  apiKey: 'BUILTIN_PROXY', // 使用占位符，实际API密钥在后端代理中处理
-                  model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                  temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                  maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                  customEndpoint: 'BUILTIN_PROXY' // 使用占位符，实际端点在后端代理中处理
-                };
-              } else {
-                // 如果没有获取到默认模型配置，使用安全的内置配置
-                llmSettings = {
-                  provider: 'builtin',
-                  apiKey: 'BUILTIN_PROXY', // 使用占位符
-                  model: 'deepseek/deepseek-chat-v3-0324:free',
-                  temperature: 0.7,
-                  maxTokens: 2000,
-                  customEndpoint: 'BUILTIN_PROXY', // 使用占位符
-                  useCustomModel: false
-                };
-              }
-              console.log('使用内置模型配置 (安全模式):', llmSettings);
-            } else if (llmConfig.providers && llmConfig.providers[currentProvider]) {
-              // 使用指定提供商的配置
-              const providerConfig = llmConfig.providers[currentProvider];
-              const useCustom = providerConfig.use_custom_model || false;
+            // 检查是否是直接provider配置（新格式）
+            const hasDirectProvider = llmConfig.provider && (llmConfig.model || llmConfig.model_name);
+            console.log('检查直接provider条件:', hasDirectProvider);
+            
+            if (hasDirectProvider) {
+              console.log('检测到直接provider配置格式:', llmConfig);
+              currentProvider = llmConfig.provider;
               
-              // 根据use_custom_model字段决定显示哪个模型
-              let modelToDisplay = '';
-              if (useCustom) {
-                // 使用自定义模型时，优先使用custom_model，回退到model_name
-                modelToDisplay = providerConfig.custom_model || providerConfig.model_name || defaultLLMSettings.model;
-              } else {
-                // 使用预定义模型时，优先使用predefined_model，回退到model_name
-                modelToDisplay = providerConfig.predefined_model || providerConfig.model_name || defaultLLMSettings.model;
-              }
-              
-              llmSettings = {
-                provider: currentProvider,
-                apiKey: providerConfig.api_key || '',
-                model: modelToDisplay,
-                temperature: defaultLLMSettings.temperature, // 温度等参数使用默认值
-                maxTokens: defaultLLMSettings.maxTokens,
-                customEndpoint: providerConfig.base_url || '',
-                useCustomModel: useCustom
-              };
-            } else {
-              // 回退到默认设置，但如果是builtin，使用正确的默认值
               if (currentProvider === 'builtin') {
+                // 对于内置模型，不在前端存储真实API密钥，使用占位符
+                if (defaultModelsData?.builtin_free) {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY', // 使用占位符，实际API密钥在后端代理中处理
+                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: 'BUILTIN_PROXY' // 使用占位符，实际端点在后端代理中处理
+                  };
+                } else {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY',
+                    model: 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: 0.7,
+                    maxTokens: 2000,
+                    customEndpoint: 'BUILTIN_PROXY',
+                    useCustomModel: false
+                  };
+                }
+                console.log('使用内置模型配置 (安全模式):', llmSettings);
+              } else {
+                // 对于custom/其他provider，直接使用配置
                 llmSettings = {
-                  provider: 'builtin',
+                  provider: currentProvider as LLMSettings['provider'],
+                  apiKey: llmConfig.api_key || (llmConfig.hasApiKey ? 'CONFIGURED' : ''), // 优先使用api_key字段，回退到hasApiKey标记
+                  model: llmConfig.model || llmConfig.model_name || '', // 支持model和model_name字段
+                  temperature: defaultLLMSettings.temperature,
+                  maxTokens: defaultLLMSettings.maxTokens,
+                  customEndpoint: llmConfig.custom_endpoint || '',
+                  useCustomModel: true // custom provider总是使用自定义模型
+                };
+                console.log('使用直接provider配置:', llmSettings);
+              }
+            } else {
+              // 处理传统的多提供商配置结构
+              currentProvider = llmConfig.current_provider || 'builtin';
+              console.log('检测到传统多provider配置格式，当前provider:', currentProvider);
+              
+              if (currentProvider === 'builtin') {
+                // 内置模型逻辑同上
+                if (defaultModelsData?.builtin_free) {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY',
+                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: 'BUILTIN_PROXY'
+                  };
+                } else {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY',
+                    model: 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: 0.7,
+                    maxTokens: 2000,
+                    customEndpoint: 'BUILTIN_PROXY',
+                    useCustomModel: false
+                  };
+                }
+                console.log('使用内置模型配置 (安全模式):', llmSettings);
+              } else if (llmConfig.providers && llmConfig.providers[currentProvider]) {
+                // 使用指定提供商的配置
+                const providerConfig = llmConfig.providers[currentProvider];
+                const useCustom = providerConfig.use_custom_model || false;
+                
+                // 根据use_custom_model字段决定显示哪个模型
+                let modelToDisplay = '';
+                if (useCustom) {
+                  // 使用自定义模型时，优先使用custom_model，回退到model_name
+                  modelToDisplay = providerConfig.custom_model || providerConfig.model_name || defaultLLMSettings.model;
+                } else {
+                  // 使用预定义模型时，优先使用predefined_model，回退到model_name
+                  modelToDisplay = providerConfig.predefined_model || providerConfig.model_name || defaultLLMSettings.model;
+                }
+                
+                llmSettings = {
+                  provider: currentProvider,
+                  apiKey: providerConfig.api_key || '',
+                  model: modelToDisplay,
+                  temperature: defaultLLMSettings.temperature, // 温度等参数使用默认值
+                  maxTokens: defaultLLMSettings.maxTokens,
+                  customEndpoint: providerConfig.base_url || '',
+                  useCustomModel: useCustom
+                };
+              } else {
+                // 回退到默认设置，但如果是builtin，使用正确的默认值
+                if (currentProvider === 'builtin') {
+                  llmSettings = {
+                    provider: 'builtin',
                   apiKey: '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',
                   model: 'deepseek/deepseek-chat-v3-0324:free',
                   temperature: 0.7,
@@ -279,8 +330,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                   customEndpoint: 'https://openrouter.ai/api/v1',
                   useCustomModel: false
                 };
-              } else {
-                llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                } else {
+                  llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                }
               }
             }
             
@@ -767,37 +819,80 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
           if (llmConfig) {
             console.log('[SettingsContext] 刷新获取的LLM配置:', llmConfig);
+            console.log('[SettingsContext] 刷新 - llmConfig.provider:', llmConfig.provider);
+            console.log('[SettingsContext] 刷新 - llmConfig.model_name:', llmConfig.model_name);
 
-            // 处理多提供商LLM设置
-            const currentProvider = llmConfig.current_provider || 'builtin';
+            // 处理LLM设置 - 支持直接provider配置和传统多provider配置
+            let currentProvider: string;
             let llmSettings: LLMSettings;
-
-            if (currentProvider === 'builtin') {
-              if (defaultModelsData?.builtin_free) {
-                llmSettings = {
-                  provider: 'builtin',
-                  apiKey: 'BUILTIN_PROXY',
-                  model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                  temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                  maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                  customEndpoint: 'BUILTIN_PROXY'
-                };
+            
+            // 检查是否是直接provider配置（新格式）
+            const hasDirectProvider = llmConfig.provider && (llmConfig.model || llmConfig.model_name);
+            console.log('[SettingsContext] 刷新 - 检查直接provider条件:', hasDirectProvider);
+            
+            if (hasDirectProvider) {
+              console.log('[SettingsContext] 刷新 - 检测到直接provider配置格式');
+              currentProvider = llmConfig.provider;
+              
+              if (currentProvider === 'builtin') {
+                if (defaultModelsData?.builtin_free) {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY',
+                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: 'BUILTIN_PROXY'
+                  };
+                } else {
+                  llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+                }
+                console.log('[SettingsContext] 刷新 - 使用内置模型配置:', llmSettings);
               } else {
-                llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+                // 对于custom/其他provider，直接使用配置
+                llmSettings = {
+                  provider: currentProvider as LLMSettings['provider'],
+                  apiKey: llmConfig.api_key || (llmConfig.hasApiKey ? 'CONFIGURED' : ''), // 优先使用api_key字段，回退到hasApiKey标记
+                  model: llmConfig.model || llmConfig.model_name || '', // 支持model和model_name字段
+                  temperature: defaultLLMSettings.temperature,
+                  maxTokens: defaultLLMSettings.maxTokens,
+                  customEndpoint: llmConfig.custom_endpoint || '',
+                  useCustomModel: true // custom provider总是使用自定义模型
+                };
+                console.log('[SettingsContext] 刷新 - 使用直接provider配置:', llmSettings);
               }
             } else {
-              const providerConfig = llmConfig.providers?.[currentProvider];
-              if (providerConfig) {
-                llmSettings = {
-                  provider: currentProvider,
-                  apiKey: providerConfig.api_key || '',
-                  model: providerConfig.model_name || defaultLLMSettings.model,
-                  temperature: providerConfig.temperature || defaultLLMSettings.temperature,
-                  maxTokens: providerConfig.max_tokens || defaultLLMSettings.maxTokens,
-                  customEndpoint: providerConfig.base_url || defaultLLMSettings.customEndpoint
-                };
+              // 处理传统的多提供商配置结构
+              console.log('[SettingsContext] 刷新 - 使用传统多provider配置格式');
+              currentProvider = llmConfig.current_provider || 'builtin';
+              
+              if (currentProvider === 'builtin') {
+                if (defaultModelsData?.builtin_free) {
+                  llmSettings = {
+                    provider: 'builtin',
+                    apiKey: 'BUILTIN_PROXY',
+                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
+                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: 'BUILTIN_PROXY'
+                  };
+                } else {
+                  llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+                }
               } else {
-                llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                const providerConfig = llmConfig.providers?.[currentProvider];
+                if (providerConfig) {
+                  llmSettings = {
+                    provider: currentProvider,
+                    apiKey: providerConfig.api_key || '',
+                    model: providerConfig.model_name || defaultLLMSettings.model,
+                    temperature: providerConfig.temperature || defaultLLMSettings.temperature,
+                    maxTokens: providerConfig.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: providerConfig.base_url || defaultLLMSettings.customEndpoint
+                };
+                } else {
+                  llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                }
               }
             }
 

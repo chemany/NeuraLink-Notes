@@ -279,19 +279,19 @@ export class SettingsService {
       // 如果API调用失败，返回默认设置
     }
 
-    // 转换统一设置格式到前端期望的格式
+    // 转换统一设置格式到前端期望的格式，使用灵枢笔记专用的neuralink_llm配置
     const llmSettings: LLMSettingsDto = {
-      provider: unifiedSettings.llm?.provider || defaultLLMSettings.provider,
-      apiKey: unifiedSettings.llm?.api_key || defaultLLMSettings.apiKey,
-      model: unifiedSettings.llm?.model || defaultLLMSettings.model,
-      temperature: unifiedSettings.llm?.temperature || defaultLLMSettings.temperature,
-      maxTokens: unifiedSettings.llm?.max_tokens || unifiedSettings.llm?.maxTokens || defaultLLMSettings.maxTokens,
-      useCustomModel: unifiedSettings.llm?.use_custom_model || unifiedSettings.llm?.useCustomModel || defaultLLMSettings.useCustomModel,
-      customEndpoint: unifiedSettings.llm?.base_url || unifiedSettings.llm?.customEndpoint || defaultLLMSettings.customEndpoint,
+      provider: unifiedSettings.neuralink_llm?.provider || defaultLLMSettings.provider,
+      apiKey: unifiedSettings.neuralink_llm?.api_key || defaultLLMSettings.apiKey,
+      model: unifiedSettings.neuralink_llm?.model_name || unifiedSettings.neuralink_llm?.model || defaultLLMSettings.model,
+      temperature: unifiedSettings.neuralink_llm?.temperature || defaultLLMSettings.temperature,
+      maxTokens: unifiedSettings.neuralink_llm?.max_tokens || unifiedSettings.neuralink_llm?.maxTokens || defaultLLMSettings.maxTokens,
+      useCustomModel: unifiedSettings.neuralink_llm?.use_custom_model || unifiedSettings.neuralink_llm?.useCustomModel || defaultLLMSettings.useCustomModel,
+      customEndpoint: unifiedSettings.neuralink_llm?.custom_endpoint || unifiedSettings.neuralink_llm?.base_url || unifiedSettings.neuralink_llm?.customEndpoint || defaultLLMSettings.customEndpoint,
     };
 
-    console.log('[SettingsService] 转换LLM设置 - 原始:', unifiedSettings.llm);
-    console.log('[SettingsService] 转换LLM设置 - 结果:', llmSettings);
+    console.log('[SettingsService] 转换灵枢笔记LLM设置 - 原始:', unifiedSettings.neuralink_llm);
+    console.log('[SettingsService] 转换灵枢笔记LLM设置 - 结果:', llmSettings);
 
     const embeddingSettings: EmbeddingModelSettingsDto = {
       provider: unifiedSettings.vectorization?.provider || 'openai',

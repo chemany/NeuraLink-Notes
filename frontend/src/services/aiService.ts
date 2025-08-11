@@ -297,7 +297,150 @@ async function callOpenAICompatibleAPI(prompt: string, config: LLMSettings, onPr
         }
     }
 
-    // 确定 API 端点 (非内置模型)
+    // 特别处理custom模型 - 通过后端代理调用
+    if (config.provider === 'custom' || config.provider === 'other') {
+        console.log('使用自定义模型，通过后端代理调用...');
+        
+        // 构建消息数组
+        const messages = [
+            { role: "user", content: prompt }
+        ];
+
+        // 获取用户ID，用于后端获取用户的自定义模型配置
+        const token = localStorage.getItem('token');
+        let userId = null;
+        if (token) {
+            try {
+                // 解码JWT token获取用户ID
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                userId = payload.sub || payload.id || payload.userId;
+            } catch (error) {
+                console.error('解码token失败:', error);
+            }
+        }
+
+        if (!userId) {
+            throw new Error('无法获取用户ID，自定义模型代理需要用户认证');
+        }
+
+        const requestBody = {
+            messages: messages,
+            stream: !!onProgress,
+            userId: userId // 传递用户ID给后端获取自定义配置
+        };
+
+        try {
+            // 调用后端代理接口，使用智能的API基础URL配置
+            const apiBaseUrl = getApiBaseUrl();
+            const response = await fetch(`${apiBaseUrl}/api/proxy/custom-chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                let errorBody = '';
+                try {
+                    errorBody = await response.text();
+                    console.error('自定义模型后端代理API错误响应体:', errorBody);
+                    throw new Error(`自定义模型后端代理请求失败(${response.status}): ${errorBody}`);
+                } catch (e) {
+                    if (e instanceof Error) throw e;
+                    throw new Error(`自定义模型后端代理请求失败(${response.status})`);
+                }
+            }
+
+            if (onProgress) {
+                // 处理流式响应
+                console.log("自定义模型开始处理流式响应。");
+                const reader = response.body?.getReader();
+                if (!reader) {
+                    throw new Error('无法读取自定义模型响应流');
+                }
+
+                let accumulatedResponse = '';
+                const decoder = new TextDecoder();
+                
+                // 用于平滑显示大chunk的辅助函数
+                const smoothDisplay = async (newContent: string) => {
+                    const prevLength = accumulatedResponse.length;
+                    accumulatedResponse += newContent;
+                    
+                    // 如果新内容较长（>10字符），则分步显示以改善用户体验
+                    if (newContent.length > 10) {
+                        let displayLength = prevLength;
+                        const targetLength = accumulatedResponse.length;
+                        const step = Math.max(1, Math.floor(newContent.length / 8)); // 分8步显示
+                        
+                        while (displayLength < targetLength) {
+                            displayLength = Math.min(displayLength + step, targetLength);
+                            onProgress(accumulatedResponse.substring(0, displayLength));
+                            // 短暂延迟以创建平滑效果（仅对长chunk）
+                            if (displayLength < targetLength) {
+                                await new Promise(resolve => setTimeout(resolve, 50));
+                            }
+                        }
+                    } else {
+                        // 短内容直接显示
+                        onProgress(accumulatedResponse);
+                    }
+                };
+                
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        // 处理SSE格式的数据
+                        const lines = chunk.split('\n');
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.slice(6);
+                                if (data === '[DONE]') continue;
+                                
+                                try {
+                                    const parsed = JSON.parse(data);
+                                    const content = parsed.choices?.[0]?.delta?.content || '';
+                                    if (content) {
+                                        await smoothDisplay(content);
+                                    }
+                                } catch (e) {
+                                    // 忽略无法解析的数据
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    reader.releaseLock();
+                }
+                
+                console.log("自定义模型流式调用完成。");
+                return accumulatedResponse;
+            } else {
+                // 处理非流式响应
+                const result = await response.json();
+                const content = result.choices?.[0]?.message?.content || '';
+                
+                if (!content) {
+                    console.warn('自定义模型API返回的响应没有有效内容。');
+                    return '抱歉，自定义模型没有返回有效内容。';
+                }
+                
+                console.log("自定义模型非流式调用完成。");
+                return content;
+            }
+        } catch (error) {
+            console.error('调用自定义模型时出错:', error);
+            throw error instanceof Error ? error : new Error('调用自定义模型时发生未知错误');
+        }
+    }
+
+    // 确定 API 端点 (非内置和自定义模型)
     let apiEndpoint = 
         config.provider === 'deepseek' ? 'https://api.deepseek.com/v1/chat/completions' 
         : config.provider === 'openai' ? 'https://api.openai.com/v1/chat/completions'
