@@ -10,14 +10,30 @@ import dynamic from 'next/dynamic';
 import { CloudIcon } from 'lucide-react';
 import FolderItem from '@/components/FolderItem';
 import RootFolderItem from '@/components/RootFolderItem';
-import ConfirmModal from '@/components/ConfirmModal';
-import SettingsDialog from '@/components/SettingsDialog';
-import RenameNotebookModal from '@/components/RenameNotebookModal';
+// ℹ️ 移除静态导入，改为动态导入以优化性能
+// import ConfirmModal from '@/components/ConfirmModal';
+// import SettingsDialog from '@/components/SettingsDialog';
+// import RenameNotebookModal from '@/components/RenameNotebookModal';
 import Header from '@/components/Header';
 
-// 动态导入SyncSettings组件
+// 🚀 动态导入组件优化 - 减少初始包大小
 const SyncSettings = dynamic(() => import('@/components/settings/SyncSettings'), {
-  loading: () => <p>加载中...</p>,
+  loading: () => <div className="animate-pulse h-8 bg-gray-200 rounded">loading...</div>,
+  ssr: false,
+});
+
+const SettingsDialog = dynamic(() => import('@/components/SettingsDialog'), {
+  loading: () => <div className="animate-pulse h-32 bg-gray-200 rounded">loading...</div>,
+  ssr: false,
+});
+
+const RenameNotebookModal = dynamic(() => import('@/components/RenameNotebookModal'), {
+  loading: () => <div className="animate-pulse h-24 bg-gray-200 rounded">loading...</div>,
+  ssr: false,
+});
+
+const ConfirmModal = dynamic(() => import('@/components/ConfirmModal'), {
+  loading: () => <div className="animate-pulse h-20 bg-gray-200 rounded">loading...</div>,
   ssr: false,
 });
 

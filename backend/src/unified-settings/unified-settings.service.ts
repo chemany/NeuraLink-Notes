@@ -131,26 +131,55 @@ export class UnifiedSettingsService {
   }
 
   /**
+   * Provider 映射关系：用户配置 -> 默认模型配置
+   */
+  private getProviderMapping(): Record<string, string> {
+    return {
+      'builtin-neuralink': 'builtin_free_neuralink',
+      'builtin-tidelog': 'builtin_free_tidelog', 
+      'builtin-general': 'builtin_free_general',
+      'builtin': 'builtin_free_general'  // 向后兼容
+    };
+  }
+
+  /**
+   * 根据用户配置的 provider 获取对应的默认模型配置
+   */
+  private resolveBuiltinConfig(userProvider: string): any {
+    const mapping = this.getProviderMapping();
+    const configKey = mapping[userProvider];
+    
+    if (!configKey) {
+      console.warn(`[UnifiedSettingsService] 未知的 provider: ${userProvider}`);
+      return null;
+    }
+    
+    const defaultModels = this.readJsonFile(this.defaultModelsPath, {});
+    return defaultModels[configKey] || null;
+  }
+
+  /**
    * 获取默认模型配置 - 过滤敏感信息
    */
   getDefaultModels(): any {
     const config = this.readJsonFile(this.defaultModelsPath, {});
     
     // 为了安全，移除内置模型的真实API密钥，使用占位符
-    if (config.builtin_free) {
-      const sanitizedConfig = {
-        ...config,
-        builtin_free: {
-          ...config.builtin_free,
+    const sanitizedConfig = { ...config };
+    
+    // 处理所有内置模型配置
+    ['builtin_free_neuralink', 'builtin_free_tidelog', 'builtin_free_general', 'builtin_free'].forEach(key => {
+      if (config[key]) {
+        sanitizedConfig[key] = {
+          ...config[key],
           api_key: 'BUILTIN_PROXY', // 使用占位符替代真实API密钥
           base_url: 'BUILTIN_PROXY' // 使用占位符替代真实端点
-        }
-      };
-      console.log('[UnifiedSettingsService] 返回安全的默认模型配置');
-      return sanitizedConfig;
-    }
+        };
+      }
+    });
     
-    return config;
+    console.log('[UnifiedSettingsService] 返回安全的默认模型配置');
+    return sanitizedConfig;
   }
 
   /**
@@ -206,6 +235,23 @@ export class UnifiedSettingsService {
           custom_endpoint: settings.neuralink_llm.custom_endpoint,
           updated_at: settings.neuralink_llm.updated_at
         };
+      }
+      
+      // 如果是内置配置，使用映射逻辑
+      if (settings.neuralink_llm.provider && settings.neuralink_llm.provider.startsWith('builtin')) {
+        const builtinConfig = this.resolveBuiltinConfig(settings.neuralink_llm.provider);
+        if (builtinConfig) {
+          console.log(`[UnifiedSettingsService] 映射到内置配置: ${settings.neuralink_llm.provider} -> ${builtinConfig.name}`);
+          return {
+            provider: settings.neuralink_llm.provider,
+            model_name: builtinConfig.model_name,
+            api_key: builtinConfig.api_key,
+            base_url: builtinConfig.base_url,
+            temperature: builtinConfig.temperature,
+            max_tokens: builtinConfig.max_tokens,
+            updated_at: settings.neuralink_llm.updated_at
+          };
+        }
       }
     }
 

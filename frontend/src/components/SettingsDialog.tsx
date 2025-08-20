@@ -90,6 +90,11 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
     }
   }, [llmSettings, embeddingSettings, rerankingSettings, uiSettings, isMounted]);
 
+  // 辅助函数：判断是否为内置模型
+  const isBuiltinProvider = (provider: string) => {
+    return provider === 'builtin' || provider === 'builtin-neuralink';
+  };
+
   // 服务器端渲染时不显示任何内容，避免hydration错误
   if (!isMounted) {
     return null;
@@ -114,11 +119,11 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
           const llmConfig = await localUnifiedSettingsService.getLLMSettingsFromFile();
           console.log('获取到的完整LLM配置:', llmConfig);
           
-          if (value === 'builtin') {
+          if (isBuiltinProvider(value)) {
             // 内置模型使用占位符
             setLocalLLMSettings(prev => ({
               ...prev,
-              provider: 'builtin',
+              provider: value as LLMSettings['provider'],
               apiKey: 'BUILTIN_PROXY',
               model: 'deepseek/deepseek-chat-v3-0324:free',
               temperature: 0.7,
@@ -575,7 +580,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                             } as React.ChangeEvent<HTMLSelectElement>);
                           }}
                         >
-                          <option value="builtin">🚀 内置模型 (免费可用)</option>
+                          <option value="builtin-neuralink">🚀 内置免费模型</option>
                           <option value="openai">OpenAI</option>
                           <option value="deepseek">DeepSeek</option>
                           <option value="anthropic">Anthropic</option>
@@ -587,7 +592,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                       </div>
                     </div>
                     
-                    {localLLMSettings.provider !== 'builtin' && (
+                    {!isBuiltinProvider(localLLMSettings.provider) && (
                     <div className="form-group">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         API密钥
@@ -596,10 +601,10 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                         type="password"
                         name="apiKey"
                         className="w-full p-2 border border-gray-300 rounded-md"
-                        value={localLLMSettings.provider === ('builtin' as any) ? '' : (localLLMSettings.apiKey || '')}
+                        value={isBuiltinProvider(localLLMSettings.provider) ? '' : (localLLMSettings.apiKey || '')}
                         onChange={handleLLMChange}
                         placeholder={localLLMSettings.provider === 'openrouter' ? '请输入您的OpenRouter API Key' : '输入API密钥'}
-                        disabled={localLLMSettings.provider === ('builtin' as any)}
+                        disabled={isBuiltinProvider(localLLMSettings.provider)}
                       />
                       {localLLMSettings.provider === 'openrouter' ? (
                         <div className="mt-1 space-y-1">
@@ -628,29 +633,38 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                     </div>
                     )}
                     
-                    {localLLMSettings.provider === 'builtin' && (
+                    {isBuiltinProvider(localLLMSettings.provider) && (
                       <div className="form-group">
                         <div className="p-3 bg-green-50 border border-green-200 rounded-md">
                           <div className="flex items-center mb-2">
                             <span className="text-lg">🚀</span>
-                            <h4 className="ml-2 font-medium text-green-800">内置模型</h4>
+                            <h4 className="ml-2 font-medium text-green-800">内置免费模型</h4>
                           </div>
                           <p className="text-sm text-green-700 mb-2">
-                            已为您预配置好稳定可用的AI模型，无需任何设置即可使用。
+                            {localLLMSettings.provider === 'builtin-neuralink' 
+                              ? '专为灵枢笔记优化的大规模AI模型，支持复杂文档分析、代码理解、知识问答等任务。' 
+                              : '已为您预配置好稳定可用的AI模型，无需任何设置即可使用。'}
                           </p>
                           <div className="text-xs text-green-600">
-                            <p><strong>✨ 特点：</strong></p>
+                            <p><strong>✨ 优势：</strong></p>
                             <ul className="list-disc list-inside mt-1 space-y-0.5">
                               <li>无需申请API Key</li>
-                              <li>经过验证的稳定模型</li>
+                              <li>专业优化的模型</li>
                               <li>开箱即用</li>
+                              <li>稳定可靠</li>
+                              {localLLMSettings.provider === 'builtin-neuralink' && (
+                                <>
+                                  <li>支持复杂推理</li>
+                                  <li>多轮对话能力强</li>
+                                </>
+                              )}
                             </ul>
                           </div>
                         </div>
                       </div>
                     )}
                     
-                    {localLLMSettings.provider !== 'builtin' && (
+                    {!isBuiltinProvider(localLLMSettings.provider) && (
                     <div className="form-group">
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-sm font-medium text-gray-700">
@@ -709,7 +723,7 @@ export default function SettingsDialog({ isOpen, onClose }: SettingsDialogProps)
                     </div>
                     )}
                     
-                    {localLLMSettings.provider !== 'builtin' && (
+                    {!isBuiltinProvider(localLLMSettings.provider) && (
                       <div className="form-group">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           API地址

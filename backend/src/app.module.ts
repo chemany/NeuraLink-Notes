@@ -13,6 +13,7 @@ import { SyncModule } from './sync/sync.module';
 import { NotesModule } from './notes/notes.module';
 import { UploadModule } from './upload/upload.module';
 import { UnifiedAuthModule } from './unified-auth/unified-auth.module';
+import { AuthModule } from './auth/auth.module';
 import { SettingsModule } from './settings/settings.module';
 import { UnifiedSettingsModule } from './unified-settings/unified-settings.module';
 import { ProxyModule } from './proxy/proxy.module';
@@ -31,6 +32,7 @@ import { ProxyModule } from './proxy/proxy.module';
     NotesModule,
     UploadModule,
     UnifiedAuthModule,
+    AuthModule,
     SettingsModule,
     UnifiedSettingsModule,
     ProxyModule,

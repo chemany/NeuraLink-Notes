@@ -8,6 +8,9 @@ import FolderItem from './FolderItem';
 import RootFolderItem from './RootFolderItem';
 import ConfirmModal from './ConfirmModal';
 import { toast } from 'react-hot-toast';
+import FileGridView from './FileGridView';
+import FileListView from './FileListView';
+import { Squares2X2Icon, ListBulletIcon } from '@heroicons/react/24/outline';
 
 // ... (NOTEBOOK_STYLES can remain if used by NotebookCard, otherwise remove)
 
@@ -28,7 +31,7 @@ export default function NotebookList() {
   const [newFolderName, setNewFolderName] = useState('');
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'cards'>('cards');
   const [isRepairing, setIsRepairing] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -177,6 +180,25 @@ export default function NotebookList() {
       deleteNotebook(id);
   }, [deleteNotebook]);
 
+  const handleNotebookClick = useCallback((notebook: Notebook) => {
+    // 获取文件夹名称来构建正确的URL
+    let folderName = 'default'; // 默认文件夹名称
+
+    if (notebook.folderId) {
+      // 查找对应的文件夹名称
+      const folder = folders.find(f => f.id === notebook.folderId);
+      if (folder) {
+        folderName = folder.name;
+      } else {
+        console.warn(`[NotebookList] Folder with ID ${notebook.folderId} not found, using default`);
+      }
+    }
+
+    const encodedFolderName = encodeURIComponent(folderName);
+    const encodedNotebookName = encodeURIComponent(notebook.title);
+    router.push(`/${encodedFolderName}/${encodedNotebookName}`);
+  }, [folders, router]);
+
 
   const handleRefresh = useCallback(() => {
      console.log('Triggering basic refresh by routing...');
@@ -187,20 +209,45 @@ export default function NotebookList() {
       if (!notebookList || notebookList.length === 0) {
           return <p className="text-sm text-gray-500 px-2 py-1">（空）</p>;
       }
-      return (
-          <div className="pl-6 mt-1 space-y-1">
-              {(notebookList || []).map(notebook => (
-                  notebook && notebook.id ? (
-                      <NotebookCard
-                          key={notebook.id}
-                          notebookId={notebook.id}
-                          onDelete={handleDeleteNotebookLocal}
-                      />
-                  ) : null
-              ))}
+
+      // 根据视图模式渲染不同的组件
+      if (viewMode === 'grid') {
+        return (
+          <div className="pl-6 mt-1">
+            <FileGridView
+              notebooks={notebookList}
+              onNotebookClick={handleNotebookClick}
+              onDelete={handleDeleteNotebookLocal}
+            />
           </div>
-      );
-  }, [handleDeleteNotebookLocal]);
+        );
+      } else if (viewMode === 'list') {
+        return (
+          <div className="pl-6 mt-1">
+            <FileListView
+              notebooks={notebookList}
+              onNotebookClick={handleNotebookClick}
+              onDelete={handleDeleteNotebookLocal}
+            />
+          </div>
+        );
+      } else {
+        // 原有的卡片视图
+        return (
+            <div className="pl-6 mt-1 space-y-1">
+                {(notebookList || []).map(notebook => (
+                    notebook && notebook.id ? (
+                        <NotebookCard
+                            key={notebook.id}
+                            notebookId={notebook.id}
+                            onDelete={handleDeleteNotebookLocal}
+                        />
+                    ) : null
+                ))}
+            </div>
+        );
+      }
+  }, [handleDeleteNotebookLocal, handleNotebookClick, viewMode]);
 
   if (!isClient) {
       return <div className="p-4">加载列表中...</div>;
@@ -212,14 +259,43 @@ export default function NotebookList() {
     <div className="p-4 flex flex-col h-full">
       <div className="mb-4 flex justify-between items-center">
         <h1 className="text-2xl font-bold">我的笔记本</h1>
-        <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-            title="刷新列表"
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m-15.357-2a8.001 8.001 0 0015.357 2m0 0H15" /></svg>
-        </button>
+        <div className="flex items-center space-x-2">
+          {/* 视图切换按钮 */}
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'cards' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              title="卡片视图"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              title="网格视图"
+            >
+              <Squares2X2Icon className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              title="列表视图"
+            >
+              <ListBulletIcon className="h-4 w-4" />
+            </button>
+          </div>
+          
+          <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="p-2 text-gray-500 hover:text-gray-700 disabled:opacity-50"
+              title="刷新列表"
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m-15.357-2a8.001 8.001 0 0015.357 2m0 0H15" /></svg>
+          </button>
+        </div>
       </div>
 
        <div className="mb-4 p-2 border rounded flex items-center">

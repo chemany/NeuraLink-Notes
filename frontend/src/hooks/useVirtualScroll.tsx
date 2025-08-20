@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface UseVirtualScrollOptions {
   itemHeight: number;
@@ -66,7 +66,6 @@ export function useVirtualScroll<T>(
 }
 
 // 虚拟列表组件
-import React from 'react';
 
 interface VirtualListProps<T> {
   items: T[];

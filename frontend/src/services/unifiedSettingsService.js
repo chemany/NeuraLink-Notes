@@ -272,7 +272,7 @@ class UnifiedSettingsService {
     // 直接读取LLM设置文件（多提供商格式）- 使用统一设置服务
     async getLLMSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/llm', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/llm', {
                 headers: this.getAuthHeaders()
             });
 
@@ -286,7 +286,7 @@ class UnifiedSettingsService {
     // 保存LLM设置到文件（多提供商格式）- 使用统一设置服务
     async saveLLMSettingsToFile(provider, settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/llm', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/llm', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify({ provider, settings })
@@ -302,7 +302,7 @@ class UnifiedSettingsService {
     // 获取默认模型配置
     async getDefaultModels() {
         try {
-            const response = await fetch(this.getApiBase() + '/settings/default-models', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/default-models', {
                 headers: this.getAuthHeaders()
             });
             
@@ -316,7 +316,7 @@ class UnifiedSettingsService {
     // 获取embedding设置
     async getEmbeddingSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/embedding', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/embedding', {
                 headers: this.getAuthHeaders()
             });
 
@@ -330,7 +330,7 @@ class UnifiedSettingsService {
     // 保存embedding设置
     async saveEmbeddingSettingsToFile(settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/embedding', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/embedding', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify(settings)
@@ -346,7 +346,7 @@ class UnifiedSettingsService {
     // 获取reranking设置
     async getRerankingSettingsFromFile() {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/reranking', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/reranking', {
                 headers: this.getAuthHeaders()
             });
 
@@ -360,7 +360,7 @@ class UnifiedSettingsService {
     // 保存reranking设置
     async saveRerankingSettingsToFile(settings) {
         try {
-            const response = await fetch(this.getApiBase() + '/file-settings/reranking', {
+            const response = await fetch(this.getApiBase() + '/unified-settings/reranking', {
                 method: 'POST',
                 headers: this.getAuthHeaders(),
                 body: JSON.stringify(settings)
@@ -489,9 +489,9 @@ class UnifiedSettingsService {
             }
             // 如果是通过nginx代理访问（外网环境）
             else {
-                const apiBase = `${currentProtocol}//${currentHost}/api`;
+                const apiBase = `${currentProtocol}//${currentHost}/unified-settings/api`;
                 if (process.env.NODE_ENV !== 'production') {
-                    console.log('[UnifiedSettingsService] 检测到外网环境，使用nginx代理:', apiBase);
+                    console.log('[UnifiedSettingsService] 检测到外网环境，使用统一设置服务端口代理:', apiBase);
                 }
                 return apiBase;
             }

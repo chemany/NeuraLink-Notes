@@ -9,6 +9,7 @@ import Subscript from '@tiptap/extension-subscript';   // 导入下标扩展
 import Underline from '@tiptap/extension-underline'; // 导入下划线扩展
 import Image from '@tiptap/extension-image'; // 导入图片扩展
 // 导入 Tiptap 编辑器的核心类型，如果需要直接引用
+// @ts-ignore
 import type { Editor } from '@tiptap/core';
 import {
   ListBulletIcon,
@@ -96,13 +97,13 @@ const TiptapNotebook = forwardRef<TiptapNotebookApi, TiptapNotebookProps>((
     content: '', // 初始内容设置为空，通过 useEffect 更新
     immediatelyRender: false,
     // 当编辑器内容改变时触发
-    onUpdate: ({ editor: currentEditor }) => {
+    onUpdate: ({ editor: currentEditor }: { editor: any }) => {
       // 可以在这里获取内容并更新父组件状态或触发自动保存
       // const html = currentEditor.getHTML();
       // console.log(html);
     },
     // 当编辑器失去焦点时，可以触发保存
-    onBlur: ({ editor }) => {
+    onBlur: ({ editor }: { editor: any }) => {
       console.log('[Tiptap onBlur] Editor lost focus. Saving...');
       const html = editor.getHTML();
       onSave(html, currentTitle); // 传递当前标题

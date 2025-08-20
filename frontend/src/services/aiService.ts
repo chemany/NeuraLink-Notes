@@ -17,7 +17,7 @@ interface LLMSettings {
 const fetchFullSettingsFromBackend = async (): Promise<LLMSettings | null> => {
   try {
     console.log('[fetchFullSettingsFromBackend] 从后端获取完整设置...');
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('calendar_unified_token');
     if (!token) {
       console.log('[fetchFullSettingsFromBackend] 无认证token，无法获取后端设置');
       return null;
@@ -204,7 +204,7 @@ ${constructedContext || "没有提供额外的文档上下文。"}
  */
 async function callOpenAICompatibleAPI(prompt: string, config: LLMSettings, onProgress?: (chunk: string) => void): Promise<string> {
     // 特别处理内置模型 - 通过后端代理调用
-    if (config.provider === 'builtin') {
+    if (config.provider === 'builtin' || config.provider === 'builtin-neuralink' || config.provider === 'builtin-tidelog' || config.provider === 'builtin-free') {
         console.log('使用内置模型，通过后端代理调用...');
         
         // 构建消息数组
@@ -307,7 +307,7 @@ async function callOpenAICompatibleAPI(prompt: string, config: LLMSettings, onPr
         ];
 
         // 获取用户ID，用于后端获取用户的自定义模型配置
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('calendar_unified_token');
         let userId = null;
         if (token) {
             try {

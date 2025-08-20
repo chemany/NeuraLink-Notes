@@ -27,6 +27,12 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className="h-full">
       <head>
+        {/* 🚀 性能优化：预加载关键资源 */}
+        <link rel="preload" href="/notepads/_next/static/css/app/layout.css" as="style" />
+        <link rel="dns-prefetch" href="//www.cheman.top" />
+        <link rel="preconnect" href="https://www.cheman.top" crossOrigin="" />
+        
+        {/* 图标和manifest */}
         <link rel="icon" href="/notepads/favicon.svg" type="image/svg+xml" />
         <link rel="shortcut icon" href="/notepads/favicon.svg" />
       </head>

@@ -8,7 +8,7 @@ import localUnifiedSettingsService from '@/services/localUnifiedSettingsService'
 
 // 大语言模型设置接口
 export interface LLMSettings {
-  provider: 'openai' | 'anthropic' | 'google' | 'deepseek' | 'openrouter' | 'ollama' | 'custom' | 'builtin';
+  provider: 'openai' | 'anthropic' | 'google' | 'deepseek' | 'openrouter' | 'ollama' | 'custom' | 'builtin' | 'builtin-neuralink';
   apiKey: string;
   model: string;
   temperature: number;
@@ -204,7 +204,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         // 首先尝试本地统一设置服务
         const isLoggedIn = localUnifiedSettingsService.isLoggedIn();
         console.log('[SettingsContext] 检查本地统一设置服务登录状态:', isLoggedIn);
-        console.log('[SettingsContext] localStorage中的token:', localStorage.getItem('token'));
+        console.log('[SettingsContext] localStorage中的token:', localStorage.getItem('calendar_unified_token'));
 
         if (isLoggedIn) {
           console.log('从本地统一设置服务获取LLM配置...');
@@ -230,29 +230,33 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               console.log('检测到直接provider配置格式:', llmConfig);
               currentProvider = llmConfig.provider;
               
-              if (currentProvider === 'builtin') {
-                // 对于内置模型，不在前端存储真实API密钥，使用占位符
-                if (defaultModelsData?.builtin_free) {
+              if (currentProvider === 'builtin' || currentProvider === 'builtin-neuralink') {
+                // 对于内置模型，显示从default-models.json读取的配置信息
+                const modelConfigKey = currentProvider === 'builtin-neuralink' ? 'builtin_free_neuralink' : 'builtin_free';
+                const modelConfig = defaultModelsData?.[modelConfigKey] || defaultModelsData?.builtin_free;
+                
+                if (modelConfig) {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY', // 使用占位符，实际API密钥在后端代理中处理
-                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                    customEndpoint: 'BUILTIN_PROXY' // 使用占位符，实际端点在后端代理中处理
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型', // 显示友好的文本而不是占位符
+                    model: modelConfig.name || modelConfig.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: modelConfig.temperature || defaultLLMSettings.temperature,
+                    maxTokens: modelConfig.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: modelConfig.description || '通过内置代理服务访问',
+                    useCustomModel: false
                   };
                 } else {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY',
-                    model: 'deepseek/deepseek-chat-v3-0324:free',
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: '灵枢笔记专用 - 大规模模型',
                     temperature: 0.7,
-                    maxTokens: 2000,
-                    customEndpoint: 'BUILTIN_PROXY',
+                    maxTokens: 4000,
+                    customEndpoint: '通过内置代理服务访问',
                     useCustomModel: false
                   };
                 }
-                console.log('使用内置模型配置 (安全模式):', llmSettings);
+                console.log('使用内置模型配置 (显示模式):', llmSettings);
               } else {
                 // 对于custom/其他provider，直接使用配置
                 llmSettings = {
@@ -271,29 +275,33 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               currentProvider = llmConfig.current_provider || 'builtin';
               console.log('检测到传统多provider配置格式，当前provider:', currentProvider);
               
-              if (currentProvider === 'builtin') {
+              if (currentProvider === 'builtin' || currentProvider === 'builtin-neuralink') {
                 // 内置模型逻辑同上
-                if (defaultModelsData?.builtin_free) {
+                const modelConfigKey = currentProvider === 'builtin-neuralink' ? 'builtin_free_neuralink' : 'builtin_free';
+                const modelConfig = defaultModelsData?.[modelConfigKey] || defaultModelsData?.builtin_free;
+                
+                if (modelConfig) {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY',
-                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                    customEndpoint: 'BUILTIN_PROXY'
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: modelConfig.name || modelConfig.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: modelConfig.temperature || defaultLLMSettings.temperature,
+                    maxTokens: modelConfig.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: modelConfig.description || '通过内置代理服务访问',
+                    useCustomModel: false
                   };
                 } else {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY',
-                    model: 'deepseek/deepseek-chat-v3-0324:free',
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: '灵枢笔记专用 - 大规模模型',
                     temperature: 0.7,
-                    maxTokens: 2000,
-                    customEndpoint: 'BUILTIN_PROXY',
+                    maxTokens: 4000,
+                    customEndpoint: '通过内置代理服务访问',
                     useCustomModel: false
                   };
                 }
-                console.log('使用内置模型配置 (安全模式):', llmSettings);
+                console.log('使用内置模型配置 (显示模式):', llmSettings);
               } else if (llmConfig.providers && llmConfig.providers[currentProvider]) {
                 // 使用指定提供商的配置
                 const providerConfig = llmConfig.providers[currentProvider];
@@ -310,7 +318,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 }
                 
                 llmSettings = {
-                  provider: currentProvider,
+                  provider: currentProvider as any,
                   apiKey: providerConfig.api_key || '',
                   model: modelToDisplay,
                   temperature: defaultLLMSettings.temperature, // 温度等参数使用默认值
@@ -320,18 +328,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                 };
               } else {
                 // 回退到默认设置，但如果是builtin，使用正确的默认值
-                if (currentProvider === 'builtin') {
+                if (currentProvider === 'builtin' || currentProvider === 'builtin-neuralink') {
                   llmSettings = {
-                    provider: 'builtin',
-                  apiKey: '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',
-                  model: 'deepseek/deepseek-chat-v3-0324:free',
-                  temperature: 0.7,
-                  maxTokens: 2000,
-                  customEndpoint: 'https://openrouter.ai/api/v1',
-                  useCustomModel: false
-                };
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: '灵枢笔记专用 - 大规模模型',
+                    temperature: 0.7,
+                    maxTokens: 4000,
+                    customEndpoint: '通过内置代理服务访问',
+                    useCustomModel: false
+                  };
                 } else {
-                  llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                  llmSettings = { ...defaultLLMSettings, provider: currentProvider as any };
                 }
               }
             }
@@ -451,7 +459,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             
             let providerSettings;
             
-            if (updatedSettings.provider === 'builtin') {
+            if (updatedSettings.provider === 'builtin' || updatedSettings.provider === 'builtin-neuralink') {
               // 对于内置模型，使用特殊标记让后端从default-models.json读取配置
               providerSettings = {
                 api_key: 'USE_DEFAULT_CONFIG',
@@ -590,7 +598,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (settingsToSave.llmSettings) {
       let providerSettings;
       
-      if (settingsToSave.llmSettings.provider === 'builtin') {
+      if (settingsToSave.llmSettings.provider === 'builtin' || settingsToSave.llmSettings.provider === 'builtin-neuralink') {
         // 对于内置模型，使用特殊标记让后端从default-models.json读取配置
         providerSettings = {
           api_key: 'USE_DEFAULT_CONFIG',
@@ -834,18 +842,30 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               console.log('[SettingsContext] 刷新 - 检测到直接provider配置格式');
               currentProvider = llmConfig.provider;
               
-              if (currentProvider === 'builtin') {
-                if (defaultModelsData?.builtin_free) {
+              if (currentProvider === 'builtin' || currentProvider === 'builtin-neuralink') {
+                const modelConfigKey = currentProvider === 'builtin-neuralink' ? 'builtin_free_neuralink' : 'builtin_free';
+                const modelConfig = defaultModelsData?.[modelConfigKey] || defaultModelsData?.builtin_free;
+                
+                if (modelConfig) {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY',
-                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                    customEndpoint: 'BUILTIN_PROXY'
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: modelConfig.name || modelConfig.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: modelConfig.temperature || defaultLLMSettings.temperature,
+                    maxTokens: modelConfig.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: modelConfig.description || '通过内置代理服务访问',
+                    useCustomModel: false
                   };
                 } else {
-                  llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+                  llmSettings = {
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: '灵枢笔记专用 - 大规模模型',
+                    temperature: 0.7,
+                    maxTokens: 4000,
+                    customEndpoint: '通过内置代理服务访问',
+                    useCustomModel: false
+                  };
                 }
                 console.log('[SettingsContext] 刷新 - 使用内置模型配置:', llmSettings);
               } else {
@@ -866,24 +886,36 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               console.log('[SettingsContext] 刷新 - 使用传统多provider配置格式');
               currentProvider = llmConfig.current_provider || 'builtin';
               
-              if (currentProvider === 'builtin') {
-                if (defaultModelsData?.builtin_free) {
+              if (currentProvider === 'builtin' || currentProvider === 'builtin-neuralink') {
+                const modelConfigKey = currentProvider === 'builtin-neuralink' ? 'builtin_free_neuralink' : 'builtin_free';
+                const modelConfig = defaultModelsData?.[modelConfigKey] || defaultModelsData?.builtin_free;
+                
+                if (modelConfig) {
                   llmSettings = {
-                    provider: 'builtin',
-                    apiKey: 'BUILTIN_PROXY',
-                    model: defaultModelsData.builtin_free.model_name || 'deepseek/deepseek-chat-v3-0324:free',
-                    temperature: defaultModelsData.builtin_free.temperature || defaultLLMSettings.temperature,
-                    maxTokens: defaultModelsData.builtin_free.max_tokens || defaultLLMSettings.maxTokens,
-                    customEndpoint: 'BUILTIN_PROXY'
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: modelConfig.name || modelConfig.model_name || 'deepseek/deepseek-chat-v3-0324:free',
+                    temperature: modelConfig.temperature || defaultLLMSettings.temperature,
+                    maxTokens: modelConfig.max_tokens || defaultLLMSettings.maxTokens,
+                    customEndpoint: modelConfig.description || '通过内置代理服务访问',
+                    useCustomModel: false
                   };
                 } else {
-                  llmSettings = { ...defaultLLMSettings, provider: 'builtin', apiKey: 'BUILTIN_PROXY', customEndpoint: 'BUILTIN_PROXY' };
+                  llmSettings = {
+                    provider: currentProvider as LLMSettings['provider'],
+                    apiKey: '内置免费模型',
+                    model: '灵枢笔记专用 - 大规模模型',
+                    temperature: 0.7,
+                    maxTokens: 4000,
+                    customEndpoint: '通过内置代理服务访问',
+                    useCustomModel: false
+                  };
                 }
               } else {
                 const providerConfig = llmConfig.providers?.[currentProvider];
                 if (providerConfig) {
                   llmSettings = {
-                    provider: currentProvider,
+                    provider: currentProvider as any,
                     apiKey: providerConfig.api_key || '',
                     model: providerConfig.model_name || defaultLLMSettings.model,
                     temperature: providerConfig.temperature || defaultLLMSettings.temperature,
@@ -891,7 +923,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
                     customEndpoint: providerConfig.base_url || defaultLLMSettings.customEndpoint
                 };
                 } else {
-                  llmSettings = { ...defaultLLMSettings, provider: currentProvider };
+                  llmSettings = { ...defaultLLMSettings, provider: currentProvider as any };
                 }
               }
             }

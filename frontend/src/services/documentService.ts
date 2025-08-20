@@ -213,7 +213,12 @@ export const uploadDocumentToApi = async (file: File, notebookId: string, origin
   console.log(`Uploading to: ${apiClient.defaults.baseURL}${url}`);
 
   try {
-    const response = await apiClient.post<Document>(url, formData);
+    const response = await apiClient.post<Document>(url, formData, {
+      timeout: 300000, // 5分钟超时，支持大文件上传
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     console.log('文档上传成功:', response.data);
     return response.data;
   } catch (error) {

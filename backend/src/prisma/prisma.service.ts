@@ -21,6 +21,10 @@ export class PrismaService
           url: process.env.DATABASE_URL,
         },
       },
+      // 增加事务超时时间，解决PDF上传时的事务超时问题
+      transactionOptions: {
+        timeout: 120000, // 2分钟超时，支持大PDF文件
+      },
     });
   }
 

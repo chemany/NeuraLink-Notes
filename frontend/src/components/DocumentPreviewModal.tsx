@@ -40,6 +40,10 @@ interface DocumentPreviewModalProps {
   position?: { top: number; left: number; width: number; height: number };
 }
 
+// PDF预览缓存 - 避免重复下载同一文件
+const PDF_CACHE = new Map<string, string>();
+const MAX_CACHE_SIZE = 10; // 最多缓存10个PDF预览URL
+
 // Function to get file extension
 const getFileExtension = (fileName: string): string => {
   return fileName.split('.').pop()?.toLowerCase() || '';
@@ -101,6 +105,15 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       try {
         let finalUrl = null;
 
+        // 🚀 优化1: 检查缓存，避免重复下载相同PDF
+        const cacheKey = `${document.fileName}_${document.id}`;
+        if (PDF_CACHE.has(cacheKey)) {
+          console.log(`[PreviewModal] Using cached PDF URL for ${document.fileName}`);
+          finalUrl = PDF_CACHE.get(cacheKey)!;
+          setObjectUrl(finalUrl);
+          return;
+        }
+
         if (typeof content === 'string') {
           if (['txt', 'md', 'csv', 'json'].includes(extension)) {
             // 对于文本文件，content应该已经是文本内容，直接使用
@@ -144,20 +157,73 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   if (token) {
                     headers['Authorization'] = `Bearer ${token}`;
                   }
+                  // 🚀 优化2: 使用流式响应和进度提示
+                  console.log(`[PreviewModal] Starting PDF download for ${document.fileName}`);
                   const response = await axios.get(fullUrl, { 
                     responseType: 'blob',
-                    headers 
+                    headers,
+                    timeout: 15000, // 增加超时时间
+                    onDownloadProgress: (progressEvent) => {
+                      if (progressEvent.total) {
+                        const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                        console.log(`[PreviewModal] Download progress: ${percent}% (${(progressEvent.loaded/1024/1024).toFixed(2)}MB/${(progressEvent.total/1024/1024).toFixed(2)}MB)`);
+                      }
+                    }
                   });
+                  
+                  // 🚀 优化3: 异步处理Blob转换，避免阻塞UI
                   const blob = response.data as Blob;
-                  finalUrl = URL.createObjectURL(blob);
+                  finalUrl = await new Promise<string>((resolve) => {
+                    requestAnimationFrame(() => {
+                      const objectUrl = URL.createObjectURL(blob);
+                      resolve(objectUrl);
+                    });
+                  });
+                  
                   currentObjectUrl = finalUrl;
+                  
+                  // 🚀 优化4: 缓存预览URL，避免重复处理
+                  if (PDF_CACHE.size >= MAX_CACHE_SIZE) {
+                    // 清理最旧的缓存项
+                    const firstKey = PDF_CACHE.keys().next().value;
+                    if (firstKey) {
+                      const oldUrl = PDF_CACHE.get(firstKey);
+                      if (oldUrl) URL.revokeObjectURL(oldUrl);
+                      PDF_CACHE.delete(firstKey);
+                    }
+                  }
+                  PDF_CACHE.set(cacheKey, finalUrl);
+                  console.log(`[PreviewModal] PDF cached for future use: ${document.fileName}`);
                 } else {
                   console.log('[PreviewModal] Local environment, using apiClient');
-                  // 本地环境使用apiClient
-                  const response = await apiClient.get(content, { responseType: 'blob' });
+                  // 本地环境使用apiClient - 同样应用优化
+                  console.log(`[PreviewModal] Starting local PDF download for ${document.fileName}`);
+                  const response = await apiClient.get(content, { 
+                    responseType: 'blob',
+                    timeout: 15000
+                  });
+                  
                   const blob = response.data as Blob;
-                  finalUrl = URL.createObjectURL(blob);
+                  // 异步处理Blob转换
+                  finalUrl = await new Promise<string>((resolve) => {
+                    requestAnimationFrame(() => {
+                      const objectUrl = URL.createObjectURL(blob);
+                      resolve(objectUrl);
+                    });
+                  });
+                  
                   currentObjectUrl = finalUrl;
+                  
+                  // 缓存本地预览URL
+                  if (PDF_CACHE.size >= MAX_CACHE_SIZE) {
+                    const firstKey = PDF_CACHE.keys().next().value;
+                    if (firstKey) {
+                      const oldUrl = PDF_CACHE.get(firstKey);
+                      if (oldUrl) URL.revokeObjectURL(oldUrl);
+                      PDF_CACHE.delete(firstKey);
+                    }
+                  }
+                  PDF_CACHE.set(cacheKey, finalUrl);
                 }
               } else {
                 // 服务端渲染环境
@@ -174,8 +240,27 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         } else if (content instanceof ArrayBuffer) {
            const mimeType = getMimeType(extension);
            const blob = new Blob([content], { type: mimeType });
-           finalUrl = URL.createObjectURL(blob);
-           currentObjectUrl = finalUrl; 
+           
+           // 异步处理ArrayBuffer转换
+           finalUrl = await new Promise<string>((resolve) => {
+             requestAnimationFrame(() => {
+               const objectUrl = URL.createObjectURL(blob);
+               resolve(objectUrl);
+             });
+           });
+           
+           currentObjectUrl = finalUrl;
+           
+           // 缓存ArrayBuffer预览URL
+           if (PDF_CACHE.size >= MAX_CACHE_SIZE) {
+             const firstKey = PDF_CACHE.keys().next().value;
+             if (firstKey) {
+               const oldUrl = PDF_CACHE.get(firstKey);
+               if (oldUrl) URL.revokeObjectURL(oldUrl);
+               PDF_CACHE.delete(firstKey);
+             }
+           }
+           PDF_CACHE.set(cacheKey, finalUrl); 
         } else {
            throw new Error('不支持的预览内容类型');
         }
@@ -201,9 +286,12 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     return () => {
       if (currentObjectUrl) {
         console.log(`[PreviewModal] Revoking Object URL: ${currentObjectUrl}`);
-        URL.revokeObjectURL(currentObjectUrl);
+        // 🚀 优化5: 延迟清理URL，避免重复文档快速打开时的闪烁
+        setTimeout(() => {
+          URL.revokeObjectURL(currentObjectUrl!);
+        }, 1000);
       }
-      setObjectUrl(null); // Clear state on cleanup
+      setObjectUrl(null);
       setPreviewError(null);
       setIsLoadingPreview(false);
     };

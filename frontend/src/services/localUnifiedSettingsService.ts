@@ -26,7 +26,7 @@ const getApiBaseUrl = (): string => {
       return `http://${hostname}:3002/api`;
     } else {
       // 外网环境：通过nginx代理访问统一设置服务
-      return '/api';
+      return '/unified-settings/api';
     }
   }
   
@@ -39,8 +39,8 @@ class LocalUnifiedSettingsService {
    * 获取Authorization头
    */
   private getAuthHeaders(): HeadersInit {
-    // 使用NeuraLink-Notes的token键名
-    const token = localStorage.getItem('token');
+    // 使用统一的token键名
+    const token = localStorage.getItem('calendar_unified_token');
     return {
       'Content-Type': 'application/json',
       'Authorization': token ? `Bearer ${token}` : '',
@@ -51,8 +51,8 @@ class LocalUnifiedSettingsService {
    * 检查是否已登录
    */
   isLoggedIn(): boolean {
-    // 使用NeuraLink-Notes的token键名
-    const token = localStorage.getItem('token');
+    // 使用统一的token键名
+    const token = localStorage.getItem('calendar_unified_token');
     return !!token;
   }
 

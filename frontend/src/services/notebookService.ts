@@ -15,8 +15,8 @@ import { Notebook } from '@/types';
 // 获取所有笔记本
 export const getAllNotebooks = async (): Promise<Notebook[]> => {
   try {
-    // 添加调试信息
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    // 添加调试信息 - 使用统一的token键名
+    const token = typeof window !== 'undefined' ? localStorage.getItem('calendar_unified_token') : null;
     console.log('[getAllNotebooks] Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'null');
     
     const response = await fetch(`${getApiBaseUrl()}/api/notebooks`, {

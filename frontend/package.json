@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3000",
     "lint": "next lint"
   },
   "dependencies": {
@@ -33,7 +33,7 @@
     "lucide-react": "^0.487.0",
     "mammoth": "^1.9.0",
     "marked": "^9.0.0",
-    "next": "^14.0.4",
+    "next": "^14.2.31",
     "pdfjs-dist": "^3.4.120",
     "postcss": "^8.4.31",
     "react": "^18.2.0",
@@ -57,6 +57,12 @@
     "eslint": "^8.50.0",
     "eslint-config-next": "^14.0.4",
     "typescript": "^5.2.2"
+  },
+  "overrides": {
+    "react-file-viewer": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   },
   "description": "��#\u0000 \u0000G\u0000o\u0000o\u0000g\u0000l\u0000e\u0000 \u0000N\u0000o\u0000t\u0000e\u0000b\u0000o\u0000o\u0000k\u0000 \u0000L\u0000M\u0000 \u0000KQ��y��v\r\u0000 \u0000",
   "main": "next.config.js",

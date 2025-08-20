@@ -28,11 +28,12 @@ import SimpleBoard, { SimpleBoardRef } from './SimpleBoard';
 import dynamic from 'next/dynamic'; // 导入 dynamic
 import type { TiptapNotebookApi } from './TiptapNotebook'; // 确保这里是 TiptapNotebookApi
 // Import icons for collapse button
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, HomeIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, HomeIcon, PencilIcon, Squares2X2Icon, ListBulletIcon } from '@heroicons/react/24/outline';
 import DocumentPreviewModal from './DocumentPreviewModal'; // Import the new modal
 import RenameNotebookModal from './RenameNotebookModal'; // 导入重命名模态框
 import ConfirmModal from './ConfirmModal'; // 导入通用确认模态框
 import { navigateToHome } from '@/utils/navigation';
+import PreviewPerformanceMonitor from './PreviewPerformanceMonitor'; // PDF预览性能监控
 
 // 动态导入 TiptapNotebook，并禁用SSR
 const TiptapNotebook = dynamic(() => import('@/components/TiptapNotebook'), { // 使用正确的相对路径
@@ -62,6 +63,9 @@ export default function NotebookLayout({
   const [activeNote, setActiveNote] = useState<string | null>(null);
   const [showStudio, setShowStudio] = useState(true);
   const [audioOverview, setAudioOverview] = useState<{url: string, title: string, duration: string} | null>(null);
+  
+  // 文档视图模式状态 - 默认为网格视图
+  const [documentViewMode, setDocumentViewMode] = useState<'compact' | 'grid' | 'list'>('grid');
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [selectedChatDocuments, setSelectedChatDocuments] = useState<Document[]>([]);
   const [useAllDocuments, setUseAllDocuments] = useState(true);
@@ -111,9 +115,9 @@ export default function NotebookLayout({
     setIsClient(true);
   }, []);
   
-  // 调整大小相关状态 - 设置三栏均匀布局，每栏占1/3
-  const [sourcesWidth, setSourcesWidth] = useState(33.33); // 左侧占比，百分比，设为1/3
-  const [chatWidth, setChatWidth] = useState(33.33); // 右侧占比，百分比，设为1/3
+  // 调整大小相关状态 - 优化布局：左右各22%，中间56%
+  const [sourcesWidth, setSourcesWidth] = useState(22); // 左侧文档列表，适合4列显示
+  const [chatWidth, setChatWidth] = useState(22); // 右侧AI解析，与左侧保持一致
   const [isResizingSources, setIsResizingSources] = useState(false);
   const [isResizingChat, setIsResizingChat] = useState(false);
   const [startX, setStartX] = useState(0);
@@ -1118,22 +1122,63 @@ export default function NotebookLayout({
         >
           <div className={`flex justify-between items-center p-1 ${isSourcesMinimized ? 'flex-col' : ''} bg-[#e8c29e]`}> {/* 更高饱和度的米橙色 */} 
             {!isSourcesMinimized && (
-              <div className="flex items-center space-x-1 truncate pr-2">
-                <button 
-                  onClick={handleHomeClick}
-                  className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
-                  title="返回首页"
-                >
-                  <HomeIcon className="h-4 w-4" />
-                </button>
-                <h2 className="font-medium text-lg truncate" title={currentNotebook?.title || notebookTitle}>{currentNotebook?.title || notebookTitle}</h2>
-                <button
-                  onClick={handleRenameClick}
-                  className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                  title="重命名笔记本"
-                >
-                  <PencilIcon className="h-3 w-3" />
-                </button>
+              <div className="flex items-center justify-between flex-grow">
+                <div className="flex items-center space-x-1">
+                  <button 
+                    onClick={handleHomeClick}
+                    className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                    title="返回首页"
+                  >
+                    <HomeIcon className="h-4 w-4" />
+                  </button>
+                  <h2 className="font-medium text-lg truncate" title={currentNotebook?.title || notebookTitle}>{currentNotebook?.title || notebookTitle}</h2>
+                  <button
+                    onClick={handleRenameClick}
+                    className="p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                    title="重命名笔记本"
+                  >
+                    <PencilIcon className="h-3 w-3" />
+                  </button>
+                </div>
+                
+                {/* 文档视图切换按钮 */}
+                <div className="flex bg-white/50 rounded-md p-0.5 ml-2">
+                  <button
+                    onClick={() => setDocumentViewMode('compact')}
+                    className={`p-1 rounded transition-colors ${
+                      documentViewMode === 'compact' 
+                        ? 'bg-white shadow-sm text-amber-700' 
+                        : 'text-amber-600 hover:text-amber-700 hover:bg-white/30'
+                    }`}
+                    title="紧凑视图"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setDocumentViewMode('grid')}
+                    className={`p-1 rounded transition-colors ${
+                      documentViewMode === 'grid' 
+                        ? 'bg-white shadow-sm text-amber-700' 
+                        : 'text-amber-600 hover:text-amber-700 hover:bg-white/30'
+                    }`}
+                    title="网格视图"
+                  >
+                    <Squares2X2Icon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDocumentViewMode('list')}
+                    className={`p-1 rounded transition-colors ${
+                      documentViewMode === 'list' 
+                        ? 'bg-white shadow-sm text-amber-700' 
+                        : 'text-amber-600 hover:text-amber-700 hover:bg-white/30'
+                    }`}
+                    title="列表视图"
+                  >
+                    <ListBulletIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             )}
             <button
@@ -1157,6 +1202,7 @@ export default function NotebookLayout({
                   onPreviewDocument={handlePreviewDocument}
                   selectedChatDocIds={selectedChatDocIds}
                   onToggleChatSelection={handleToggleChatSelection}
+                  viewMode={documentViewMode}
                 />
               </div>
               <div className="border-t p-2">
@@ -1407,6 +1453,9 @@ export default function NotebookLayout({
           title="删除笔记"
           message={`确定要删除笔记 "${noteToDelete?.title}" 吗？`}
         />
+        
+        {/* PDF预览性能监控 - 开发环境显示 */}
+        {process.env.NODE_ENV === 'development' && <PreviewPerformanceMonitor />}
       </div>
     </>
   );

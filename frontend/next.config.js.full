@@ -1,0 +1,163 @@
+/** @type {import('next').NextConfig} */
+const path = require('path');
+
+const nextConfig = {
+  // 启用 basePath 用于代理环境
+  basePath: '/notepads',
+  assetPrefix: '/notepads',
+  trailingSlash: true,
+  reactStrictMode: true,
+  swcMinify: true,
+  
+  // 性能优化配置
+  experimental: {
+    optimizePackageImports: ['react', 'react-dom', 'lucide-react'], // 优化包导入
+    optimizeCss: false, // 暂时禁用CSS优化避免构建问题
+  },
+  
+  // 🚀 生产环境性能优化
+  poweredByHeader: false, // 移除X-Powered-By header
+  compress: true, // 启用压缩
+  
+  // 图片优化配置
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 60,
+  },
+  
+  // 编译优化
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn'],
+    } : false,
+    // 生产环境启用SWC压缩
+    styledComponents: process.env.NODE_ENV === 'production',
+  },
+  
+  // 🎯 输出优化
+  output: 'standalone', // 优化Docker部署
+  webpack: (config, { isServer, dev }) => {
+    // 处理PDF.js的canvas依赖问题
+    if (isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        canvas: path.resolve(__dirname, 'src/mocks/canvasMock.js'),
+      };
+    }
+    
+    // 允许加载外部 worker 脚本
+    config.resolve.alias.canvas = false;
+    
+    // 🚀 生产环境性能优化
+    if (!dev && !isServer) {
+      // 代码分割优化
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          // 第三方库单独打包
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: 10,
+            chunks: 'all',
+            enforce: true,
+          },
+          // 公共组件单独打包
+          common: {
+            minChunks: 2,
+            chunks: 'all',
+            enforce: true,
+            priority: 5,
+            name: 'common',
+          },
+          // React相关单独打包
+          react: {
+            test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
+            name: 'react',
+            priority: 20,
+            chunks: 'all',
+            enforce: true,
+          },
+        },
+      };
+      
+      // 压缩配置
+      config.optimization.minimize = true;
+    }
+    
+    return config;
+  },
+  // 配置安全策略以允许加载 PDF worker
+  // 暂时禁用CORS头，避免在HTTP环境下的警告
+  // async headers() {
+  //   return [
+  //     {
+  //       source: '/:path*',
+  //       headers: [
+  //         {
+  //           key: 'Cross-Origin-Opener-Policy',
+  //           value: 'same-origin',
+  //         },
+  //         {
+  //           key: 'Cross-Origin-Embedder-Policy',
+  //           value: 'require-corp',
+  //         },
+  //       ],
+  //     },
+  //   ];
+  // },
+
+  // Re-enable rewrites for local development proxying
+  async rewrites() {
+    const rewrites = [];
+    
+    // API重写规则 - 生产环境也需要，因为应用可能直接访问而不通过nginx代理
+    // 支持basePath下的API请求
+    rewrites.push({
+      source: '/api/:path*',
+      destination: `${process.env.BACKEND_API_URL || 'http://localhost:3001/api'}/:path*`,
+    });
+
+    // 支持basePath环境下的API重写（如 /notepads/api/* -> localhost:3001/api/*）
+    rewrites.push({
+      source: '/notepads/api/:path*',
+      destination: `${process.env.BACKEND_API_URL || 'http://localhost:3001/api'}/:path*`,
+    });
+    
+    // 添加开发工具相关的重写规则，避免404错误
+    rewrites.push(
+      // 静默处理Chrome开发工具请求
+      {
+        source: '/.well-known/:path*',
+        destination: '/api/dev-tools-silence', // 返回空响应
+      },
+      // 处理source map请求
+      {
+        source: '/:path*\\.map',
+        destination: '/api/dev-tools-silence',
+      },
+      // 处理favicon请求 - 重定向到存在的图标
+      {
+        source: '/notepads/favicon.svg',
+        destination: '/favicon-alt.svg', // 重定向到我们创建的SVG图标
+      },
+      // 处理manifest请求
+      {
+        source: '/notepads/manifest.json',
+        destination: '/manifest.json',
+      }
+    );
+    
+    return rewrites;
+  },
+  
+  // 🎯 性能监控和优化
+  onDemandEntries: {
+    // 页面在内存中保持的时间
+    maxInactiveAge: 25 * 1000,
+    // 同时保持在内存中的页面数
+    pagesBufferLength: 2,
+  },
+}
+
+module.exports = nextConfig; 

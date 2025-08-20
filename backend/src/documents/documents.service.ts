@@ -194,6 +194,44 @@ export class DocumentsService {
         throw new ForbiddenException('Notebook not found or you do not have permission to add documents to it.');
       }
 
+      // 1. 先进行文件名和路径处理，减少事务内的操作
+      const originalNameParamValue = originalNameParam;
+      const originalNameFromFile = file.originalname;
+      const originalName = originalNameParamValue || originalNameFromFile;
+      console.log(`[CONSOLE_FILENAME_DEBUG] Service received originalName: "${originalName}", fromParam: "${originalNameParamValue}", fromFile: "${originalNameFromFile}"`);
+      
+      let fileExt = '';
+      let baseName = '';
+      try {
+          fileExt = path.extname(originalName);
+          console.log(`[CONSOLE_FILENAME_DEBUG] path.extname("${originalName}") -> "${fileExt}"`);
+          baseName = path.basename(originalName, fileExt);
+          console.log(`[CONSOLE_FILENAME_DEBUG] path.basename("${originalName}", "${fileExt}") -> "${baseName}"`);
+      } catch (pathError) {
+           this.logger.error(`[Sanitize Debug] Error during path operations: ${pathError.message}`);
+           fileExt = '.unknown';
+           baseName = originalName.substring(0, originalName.length - fileExt.length) || 'document';
+      }
+      
+      let sanitizedBaseName = baseName.replace(/[^\p{L}\p{N}_\-\.\s]/gu, '_');
+      console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after pLpN: "${sanitizedBaseName}"`);
+      sanitizedBaseName = sanitizedBaseName.replace(/\s+/g, '_');
+      console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after space replace: "${sanitizedBaseName}"`);
+      sanitizedBaseName = sanitizedBaseName.replace(/__+/g, '_');
+      console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after underscore merge: "${sanitizedBaseName}"`);
+      sanitizedBaseName = sanitizedBaseName.replace(/^[\s_]+|[\s_]+$/g, '') || 'document';
+      console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after trim: "${sanitizedBaseName}"`);
+      
+      // 2. 准备目录结构（事务外）
+      const username = await this.getUsernameFromUserId(userId);
+      const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
+      const userNotebookUploadPath = path.join(this.uploadsDir, username, folderName, notebookName);
+      const finalFileDir = userNotebookUploadPath;
+      
+      await fsExtra.ensureDir(finalFileDir);
+      this.logger.verbose(`Ensured directory exists: ${finalFileDir} for User ${userId}`);
+
+      // 3. 事务内只处理数据库操作，减少IO操作
       createdDocument = await this.prisma.$transaction(async (tx) => {
         const initialDocData = {
             fileName: `__temp__${uuidv4()}`,
@@ -210,52 +248,14 @@ export class DocumentsService {
         const documentRecord = await (tx as any).document.create({ data: initialDocData });
         docId = documentRecord.id;
         if (!docId) {
-             throw new Error('[Transaction] Failed to get document ID after creation.');
+             throw new Error('Failed to get document ID after creation.');
         }
-        this.logger.verbose(`[Transaction] Document record created (TEMP): ID=${docId} for User ${userId}`);
+        this.logger.verbose(`Document record created (TEMP): ID=${docId} for User ${userId}`);
 
-        // 2. Determine the final, non-conflicting filename and path
-        const originalNameParamValue = originalNameParam; // Store param value for logging
-        const originalNameFromFile = file.originalname; // Store file value for logging
-        const originalName = originalNameParamValue || originalNameFromFile;
-        console.log(`[CONSOLE_FILENAME_DEBUG] Service received originalName: "${originalName}", fromParam: "${originalNameParamValue}", fromFile: "${originalNameFromFile}"`);
-        
-        let fileExt = '';
-        let baseName = '';
-        try {
-            fileExt = path.extname(originalName);
-            console.log(`[CONSOLE_FILENAME_DEBUG] path.extname("${originalName}") -> "${fileExt}"`);
-            baseName = path.basename(originalName, fileExt);
-            console.log(`[CONSOLE_FILENAME_DEBUG] path.basename("${originalName}", "${fileExt}") -> "${baseName}"`);
-        } catch (pathError) {
-             this.logger.error(`[Sanitize Debug] Error during path operations: ${pathError.message}`); // Keep logger for errors
-             fileExt = '.unknown';
-             baseName = originalName.substring(0, originalName.length - fileExt.length) || 'document';
-        }
-        
-        let sanitizedBaseName = baseName.replace(/[^\p{L}\p{N}_\-\.\s]/gu, '_');
-        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after pLpN: "${sanitizedBaseName}"`);
-        sanitizedBaseName = sanitizedBaseName.replace(/\s+/g, '_');
-        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after space replace: "${sanitizedBaseName}"`);
-        sanitizedBaseName = sanitizedBaseName.replace(/__+/g, '_');
-        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after underscore merge: "${sanitizedBaseName}"`);
-        sanitizedBaseName = sanitizedBaseName.replace(/^[\s_]+|[\s_]+$/g, '') || 'document';
-        console.log(`[CONSOLE_SANITIZE_DEBUG] Sanitized baseName after trim: "${sanitizedBaseName}"`);
-        
+        // 查找不冲突的文件名
         let fileNameToSave = '';
-        finalFilePath = '';
         let counter = 0;
         let fileExists = true;
-        // 使用用户名、文件夹名称和笔记本名称，文档直接放在笔记本文件夹中
-        const username = await this.getUsernameFromUserId(userId);
-        const { notebookName, folderName } = await this.getNotebookAndFolderNames(notebookId);
-        const userNotebookUploadPath = path.join(this.uploadsDir, username, folderName, notebookName);
-
-        // 文档直接放在笔记本文件夹中，不再创建单独的文档文件夹
-        const finalFileDir = userNotebookUploadPath;
-        
-        await fsExtra.ensureDir(finalFileDir);
-        this.logger.verbose(`[Transaction] Ensured directory exists: ${finalFileDir} for User ${userId}`);
 
         while (fileExists) {
             if (counter === 0) {
@@ -264,39 +264,33 @@ export class DocumentsService {
                 fileNameToSave = `${sanitizedBaseName}(${counter})${fileExt}`;
             }
             
-            // --- MODIFICATION START: Check DB for filename conflict --- 
-            this.logger.verbose(`[Transaction] Checking DB for filename conflict: notebookId=${notebookId}, fileName=${fileNameToSave}`);
+            this.logger.verbose(`Checking DB for filename conflict: notebookId=${notebookId}, fileName=${fileNameToSave}`);
             const existingDoc = await (tx as any).document.findFirst({
                 where: {
                     notebookId: notebookId,
                     userId: userId,
                     fileName: fileNameToSave,
-                    NOT: { id: docId } // Exclude the document currently being created
+                    NOT: { id: docId }
                 },
-                select: { id: true } // Only need to check existence
+                select: { id: true }
             });
-            fileExists = !!existingDoc; // Set to true if a conflict is found
-            // --- MODIFICATION END ---
+            fileExists = !!existingDoc;
             
             if (!fileExists) {
-                this.logger.log(`[Transaction] Found non-conflicting DB filename: ${fileNameToSave}`);
+                this.logger.log(`Found non-conflicting DB filename: ${fileNameToSave}`);
                 break;
             }
             
-            this.logger.verbose(`[Transaction] Filename conflict found in DB for ${fileNameToSave}. Incrementing counter.`);
+            this.logger.verbose(`Filename conflict found in DB for ${fileNameToSave}. Incrementing counter.`);
             counter++;
-            if(counter > 100) { // Keep the safety break
-                 this.logger.error(`[Transaction] Could not find a non-conflicting DB filename for ${originalName} after 100 attempts.`);
+            if(counter > 100) {
+                 this.logger.error(`Could not find a non-conflicting DB filename for ${originalName} after 100 attempts.`);
                  throw new Error('Failed to determine a unique database filename.');
             }
         }
 
-        // Now that we have a unique DB filename, determine the final file path
         finalFilePath = path.join(finalFileDir, fileNameToSave);
-        this.logger.log(`[Transaction] User ${userId} determined final file path: ${finalFilePath}`);
-
-        await fs.promises.writeFile(finalFilePath, file.buffer);
-        this.logger.log(`[Transaction] User ${userId} successfully saved uploaded file to: ${finalFilePath}`);
+        this.logger.log(`User ${userId} determined final file path: ${finalFilePath}`);
 
         const updatedDocument = await (tx as any).document.update({
             where: { id: docId },
@@ -304,13 +298,43 @@ export class DocumentsService {
                 fileName: fileNameToSave,
                 filePath: finalFilePath,
                 status: initialStatus,
-                statusMessage: initialStatusMessage ?? 'File saved successfully',
+                statusMessage: initialStatusMessage ?? 'Ready for file writing',
             },
         });
-        this.logger.verbose(`[Transaction] Updated document record ${docId} with final details for User ${userId}`);
+        this.logger.verbose(`Updated document record ${docId} with final details for User ${userId}`);
         
         return updatedDocument;
+      }, {
+        timeout: 60000 // 60秒超时，支持大PDF文件的数据库操作
       });
+      
+      // 4. 事务完成后写入文件（异步，但在返回前完成）
+      if (createdDocument && finalFilePath) {
+        try {
+          await fs.promises.writeFile(finalFilePath, file.buffer);
+          this.logger.log(`User ${userId} successfully saved uploaded file to: ${finalFilePath}`);
+          
+          // 更新状态为成功
+          await this.prisma.document.update({
+            where: { id: createdDocument.id },
+            data: {
+              status: initialStatus,
+              statusMessage: initialStatusMessage ?? 'File saved successfully',
+            },
+          });
+        } catch (fileError) {
+          this.logger.error(`Failed to write file ${finalFilePath}: ${fileError.message}`);
+          // 文件写入失败，回滚数据库记录
+          await this.prisma.document.update({
+            where: { id: createdDocument.id },
+            data: {
+              status: 'FAILED',
+              statusMessage: `File writing failed: ${fileError.message}`,
+            },
+          });
+          throw new InternalServerErrorException(`Failed to save file: ${fileError.message}`);
+        }
+      }
       
       this.logger.log(`User ${userId} document created and file saved successfully: ID=${createdDocument?.id}`);
 

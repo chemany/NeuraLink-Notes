@@ -21,6 +21,8 @@ import { processDocumentForRAG, storeDocumentChunks, getDocumentChunks } from '@
 import localUnifiedSettingsService from '@/services/localUnifiedSettingsService'; // 添加统一设置服务
 import { EmbeddingModelSettings } from '@/contexts/SettingsContext'; // 导入类型定义
 import { getApiBaseUrl } from '@/services/apiClient';
+import DocumentGridView from './DocumentGridView';
+import DocumentListView from './DocumentListView';
 
 // 在文件顶部添加类型声明
 declare module 'react-file-viewer';
@@ -87,6 +89,7 @@ interface DocumentsListProps {
   onPreviewDocument?: (document: Document, content: string | ArrayBuffer, inChat: boolean) => void;
   selectedChatDocIds?: Set<string>;
   onToggleChatSelection?: (document: Document) => void;
+  viewMode?: 'compact' | 'grid' | 'list';
 }
 
 // 修改向量化状态和队列初始化，确保每个笔记本只处理一批文档
@@ -114,7 +117,8 @@ export default function DocumentsList({
   onSelectDocument, 
   onPreviewDocument,
   selectedChatDocIds = new Set<string>(),
-  onToggleChatSelection
+  onToggleChatSelection,
+  viewMode = 'compact'
 }: DocumentsListProps) {
   const { 
     documents,
@@ -223,6 +227,8 @@ export default function DocumentsList({
   
   // 全局向量化状态保存，确保即使组件重新渲染也不会重启处理
   const [globalProcessingStarted, setGlobalProcessingStarted] = useState(false);
+  
+  // 视图模式现在从 props 传入，不再在组件内部管理
   
   // *** 新增：控制并发处理数量 ***
   const MAX_CONCURRENT_VECTORIZATIONS = 1; // *** 关键修改：确保同一时间只有一个文档在处理，避免本地资源耗尽 ***
@@ -777,13 +783,20 @@ export default function DocumentsList({
    * @param doc 文档对象
    */
   const handleDocumentOpen = async (doc: Document) => {
+    // 🚀 优化1: 更精确的加载提示，区分文件类型
+    const isLargeFile = doc.fileSize > 5 * 1024 * 1024; // 5MB以上的文件
+    const loadingMessage = isLargeFile 
+      ? `加载大文件 ${doc.fileName} (${(doc.fileSize/1024/1024).toFixed(1)}MB)...` 
+      : `加载 ${doc.fileName}...`;
+    const loadingToastId = toast.loading(loadingMessage);
+    
     try {
       // 允许COMPLETED状态或向量化失败但有文本内容的文档进行预览
       const canPreview = doc.status === DocumentStatus.COMPLETED || 
                         (doc.status === DocumentStatus.VECTORIZATION_FAILED && doc.textContent && doc.textContent.trim().length > 0);
       
       if (!canPreview) {
-        toast.error('文档尚未处理完成或无内容，无法预览');
+        toast.error('文档尚未处理完成或无内容，无法预览', { id: loadingToastId });
         return;
       }
       
@@ -797,47 +810,104 @@ export default function DocumentsList({
         console.log(`[DocumentsList] Fetching text content for .${extension} file: ${doc.fileName}`);
         contentToPreview = await getDocumentContent(doc.id);
         if (contentToPreview === null) {
-            toast.error("无法获取文本文件内容进行预览");
+            toast.error("无法获取文本文件内容进行预览", { id: loadingToastId });
             return;
         }
       } else {
-        // 对于其他类型，构建相对路径，让DocumentPreviewModal处理环境差异
+        // 🚀 优化2: 对于PDF等二进制文件，直接使用URL预览，由DocumentPreviewModal处理优化加载
         let previewUrl: string | null = null;
+        
+        // 🔍 检查文件大小，给出性能预期
+        if (doc.fileSize > 10 * 1024 * 1024) { // 10MB以上
+          console.warn(`[DocumentsList] Large file detected: ${doc.fileName} (${(doc.fileSize/1024/1024).toFixed(1)}MB). Preview may take longer.`);
+        }
+        
         if ('url' in doc && typeof doc.url === 'string' && doc.url.startsWith('http')) {
             previewUrl = doc.url;
             console.log(`[DocumentsList] Using direct URL from doc object: ${previewUrl}`);
         } else {
-            // 使用apiClient的baseURL来构建正确的路径
+            // 使用优化的API路径构建
             const apiBase = getBackendApiBase();
             if (apiBase.startsWith('http')) {
-                // 本地环境，使用完整URL
+                // 本地环境
                 previewUrl = `${apiBase}/api/documents/${doc.id}/raw`;
             } else {
-                // 外网环境，使用相对路径但包含正确的前缀
+                // 外网环境
                 previewUrl = `${apiBase}/api/documents/${doc.id}/raw`;
             }
             console.log(`[DocumentsList] Constructed preview URL: ${previewUrl}`);
         }
-        contentToPreview = previewUrl; // 将 URL 作为内容传递
+        
+        contentToPreview = previewUrl;
+        
+        // 🚀 优化3: 传递文件大小信息，由DocumentPreviewModal进行更精确的加载控制
+        toast.dismiss(loadingToastId);
+        
+        // 对大文件给出预先提示
+        if (doc.fileSize > 5 * 1024 * 1024) {
+          toast.loading(`正在加载大文件 ${doc.fileName}...，请耐心等待`, { 
+            duration: 3000, 
+            id: 'large-file-warning' 
+          });
+        }
       }
 
-      // Call the prop with the Document and the appropriate content/URL
+      // 🚀 优化4: 优化预览调用和错误处理
       if (onPreviewDocument) {
         if (contentToPreview !== null) {
           console.log(`[DocumentsList] Calling onPreviewDocument for: ${doc.fileName} with content type: ${typeof contentToPreview}`);
-          onPreviewDocument(doc, contentToPreview, false); 
+          
+          // 传递文件大小信息给DocumentPreviewModal（如果支持）
+          const enhancedDoc = {
+            ...doc,
+            _performanceHint: {
+              isLargeFile: doc.fileSize > 5 * 1024 * 1024,
+              estimatedLoadTime: doc.fileSize > 10 * 1024 * 1024 ? '5-10秒' : '小于3秒'
+            }
+          };
+          
+          onPreviewDocument(enhancedDoc, contentToPreview, false);
+          
+          // 📊 性能监控: 记录预览开始时间
+          const startTime = performance.now();
+          (window as any).__lastPreviewStart = {
+            docId: doc.id,
+            fileName: doc.fileName,
+            fileSize: doc.fileSize,
+            startTime
+          };
+          
+          // 对于文本内容，立即显示成功
+          if (typeof contentToPreview === 'string' && !contentToPreview.startsWith('http') && !contentToPreview.startsWith('/')) {
+            toast.success(`${doc.fileName} 加载完成`, { id: loadingToastId });
+          }
         } else {
-          // This case should ideally be caught by earlier checks that return
-          toast.error("无法准备预览内容 (contentToPreview is null)"); 
+          toast.error("无法准备预览内容", { id: loadingToastId }); 
         }
-      } else if (!onPreviewDocument) { // This condition is redundant due to the outer if, but kept for structural similarity for now
+      } else {
         console.warn("[DocumentsList] onPreviewDocument prop not provided.");
+        toast.error("预览功能不可用", { id: loadingToastId });
       } 
-      // The original else for (onPreviewDocument && contentToPreview === null) is now handled by the inner else.
 
     } catch (error) {
       console.error(`[DocumentsList] 打开文档预览失败: ${doc.id}`, error);
-      toast.error('打开文档预览失败，请重试');
+      
+      // 🚀 优化5: 更详细的错误信息
+      let errorMessage = '打开文档预览失败';
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorMessage = `文件加载超时（${doc.fileName}），请检查网络连接`;
+        } else if (error.message.includes('Network')) {
+          errorMessage = '网络连接失败，请稍后重试';
+        } else {
+          errorMessage = `预览失败: ${error.message}`;
+        }
+      }
+      
+      toast.error(errorMessage, { 
+        id: loadingToastId,
+        duration: 5000 // 延长错误显示时间 
+      });
     }
   };
   
@@ -921,13 +991,15 @@ export default function DocumentsList({
     return typeMap[extension] || 'application/octet-stream';
   };
   
-  // 自定义双击处理函数
+  // 🚀 优化6: 优化双击处理，减少延迟
   const handleDoubleClick = (doc: Document) => {
     console.log(`[DEBUG] 双击事件被触发: ${doc.id}, ${doc.fileName}`);
-    // No toast here
-    setTimeout(() => { 
-      handleDocumentOpen(doc);
-    }, 50); // Reduced timeout
+    
+    // 直接调用，去掉不必要的延迟
+    handleDocumentOpen(doc);
+    
+    // 记录双击时间用于性能分析
+    (window as any).__lastDoubleClickTime = performance.now();
   };
   
   // 处理文档重新处理请求
@@ -1062,96 +1134,128 @@ export default function DocumentsList({
         </div>
       </div>
       
-      <div className="divide-y divide-gray-200">
-        {documents.map((doc) => {
-          // Log the status and filename for each document being rendered
-          console.log(`[DocumentsList Item] ID: ${doc.id}, FileName: ${doc.fileName}, Status: ${doc.status}`);
-          
-          // 获取文档状态图标和标签
-          const statusInfo = getStatusIcon(doc.status);
-          const isVectorized = vectorizedDocIds.has(doc.id);
-          const hasFailedVectorization = failedVectorizationIds.has(doc.id);
+      {/* 根据视图模式渲染不同的组件 */}
+      {viewMode === 'grid' ? (
+        <DocumentGridView
+          documents={documents}
+          selectedChatDocIds={selectedChatDocIds}
+          vectorizedDocIds={vectorizedDocIds}
+          failedVectorizationIds={failedVectorizationIds}
+          processingQueue={processingQueue}
+          isProcessing={isProcessing}
+          onDocumentClick={handleDocumentClick}
+          onDocumentOpen={handleDoubleClick}
+          onDeleteDocument={handleDeleteDocument}
+          onToggleChatSelection={onToggleChatSelection}
+          onDragStart={handleDragStart}
+        />
+      ) : viewMode === 'list' ? (
+        <DocumentListView
+          documents={documents}
+          selectedChatDocIds={selectedChatDocIds}
+          vectorizedDocIds={vectorizedDocIds}
+          failedVectorizationIds={failedVectorizationIds}
+          processingQueue={processingQueue}
+          isProcessing={isProcessing}
+          onDocumentClick={handleDocumentClick}
+          onDocumentOpen={handleDoubleClick}
+          onDeleteDocument={handleDeleteDocument}
+          onToggleChatSelection={onToggleChatSelection}
+          onDragStart={handleDragStart}
+        />
+      ) : (
+        /* 原有的紧凑视图 */
+        <div className="divide-y divide-gray-200">
+          {documents.map((doc) => {
+            // Log the status and filename for each document being rendered
+            console.log(`[DocumentsList Item] ID: ${doc.id}, FileName: ${doc.fileName}, Status: ${doc.status}`);
+            
+            // 获取文档状态图标和标签
+            const statusInfo = getStatusIcon(doc.status);
+            const isVectorized = vectorizedDocIds.has(doc.id);
+            const hasFailedVectorization = failedVectorizationIds.has(doc.id);
 
-          let displayStatusInfo = statusInfo;
-          let displayLabel = statusInfo.label;
+            let displayStatusInfo = statusInfo;
+            let displayLabel = statusInfo.label;
 
-          if (isVectorized) {
-            displayStatusInfo = { icon: <DatabaseIcon />, label: '已处理', color: 'text-green-500' };
-            displayLabel = '已就绪';
-          } else if (processingQueue.includes(doc.id) || (isProcessing && processingQueueRef.current.includes(doc.id))) {
-            displayStatusInfo = { icon: <div className="animate-spin h-3 w-3 border-2 border-blue-400 border-t-transparent rounded-full"></div>, label: '队列中', color: 'text-blue-500' };
-            displayLabel = '队列中';
-          }
-          
-          return (
-            <div
-              key={doc.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, doc)}
-              onClick={() => handleDocumentClick(doc)}
-              onDoubleClick={() => handleDoubleClick(doc)}
-              className={`
-                group px-2.5 py-1 mb-0.5 rounded-lg cursor-pointer transition-all duration-150 ease-in-out
-                border 
-                ${selectedChatDocIds.has(doc.id) ? 'bg-blue-100 dark:bg-blue-800 border-blue-400 dark:border-blue-600 shadow-md' : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700'}
-                ${selectedChatDocIds.has(doc.id) ? 'ring-2 ring-offset-1 ring-offset-gray-100 dark:ring-offset-gray-800 ring-purple-500 dark:ring-purple-400' : ''}
-              `}
-              title={`名称: ${doc.fileName}
+            if (isVectorized) {
+              displayStatusInfo = { icon: <DatabaseIcon />, label: '已处理', color: 'text-green-500' };
+              displayLabel = '已就绪';
+            } else if (processingQueue.includes(doc.id) || (isProcessing && processingQueueRef.current.includes(doc.id))) {
+              displayStatusInfo = { icon: <div className="animate-spin h-3 w-3 border-2 border-blue-400 border-t-transparent rounded-full"></div>, label: '队列中', color: 'text-blue-500' };
+              displayLabel = '队列中';
+            }
+            
+            return (
+              <div
+                key={doc.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, doc)}
+                onClick={() => handleDocumentClick(doc)}
+                onDoubleClick={() => handleDoubleClick(doc)}
+                className={`
+                  group px-2.5 py-1 mb-0.5 rounded-lg cursor-pointer transition-all duration-150 ease-in-out
+                  border 
+                  ${selectedChatDocIds.has(doc.id) ? 'bg-blue-100 dark:bg-blue-800 border-blue-400 dark:border-blue-600 shadow-md' : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700'}
+                  ${selectedChatDocIds.has(doc.id) ? 'ring-2 ring-offset-1 ring-offset-gray-100 dark:ring-offset-gray-800 ring-purple-500 dark:ring-purple-400' : ''}
+                `}
+                title={`名称: ${doc.fileName}
 类型: ${doc.fileType}
 大小: ${formatFileSize(doc.fileSize)}
 上传于: ${formatDate(doc.createdAt)}
 状态: ${displayLabel}`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center overflow-hidden mr-2">
-                  <span className="mr-2 text-gray-500 dark:text-gray-400">
-                    <FileIcon />
-                  </span>
-                  <span className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate group-hover:underline" style={{ maxWidth: 'calc(100% - 20px)' }}>
-                    {doc.fileName}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-1.5">
-                  <span className={`text-xs flex items-center ${displayStatusInfo.color}`}>
-                    {displayStatusInfo.icon}
-                    <span className="ml-1 hidden sm:inline whitespace-nowrap">{displayLabel}</span>
-                  </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDocumentOpen(doc); }}
-                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-400"
-                    title="预览文档"
-                  >
-                    <EyeIcon />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteDocument(e, doc.id); }}
-                    className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 dark:text-red-400"
-                    title="删除文档"
-                  >
-                    <TrashIcon />
-                  </button>
-                  {onToggleChatSelection && (
-                     <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleChatSelection(doc);
-                        }}
-                        className={`p-1 rounded transition-colors
-                          ${selectedChatDocIds.has(doc.id) 
-                            ? 'bg-purple-500 text-white hover:bg-purple-600' 
-                            : 'hover:bg-gray-200 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 text-gray-500 dark:text-gray-400'
-                          }`}
-                        title={selectedChatDocIds.has(doc.id) ? "取消选择用于聊天" : "选择用于聊天"}
-                      >
-                       {selectedChatDocIds.has(doc.id) ? <MinusCircleIcon /> : <PlusCircleIcon />}
-                      </button>
-                  )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center overflow-hidden mr-2">
+                    <span className="mr-2 text-gray-500 dark:text-gray-400">
+                      <FileIcon />
+                    </span>
+                    <span className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate group-hover:underline" style={{ maxWidth: 'calc(100% - 20px)' }}>
+                      {doc.fileName}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-1.5">
+                    <span className={`text-xs flex items-center ${displayStatusInfo.color}`}>
+                      {displayStatusInfo.icon}
+                      <span className="ml-1 hidden sm:inline whitespace-nowrap">{displayLabel}</span>
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDocumentOpen(doc); }}
+                      className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 dark:text-gray-400"
+                      title="预览文档"
+                    >
+                      <EyeIcon />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDocument(e, doc.id); }}
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 dark:text-red-400"
+                      title="删除文档"
+                    >
+                      <TrashIcon />
+                    </button>
+                    {onToggleChatSelection && (
+                       <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleChatSelection(doc);
+                          }}
+                          className={`p-1 rounded transition-colors
+                            ${selectedChatDocIds.has(doc.id) 
+                              ? 'bg-purple-500 text-white hover:bg-purple-600' 
+                              : 'hover:bg-gray-200 dark:hover:bg-gray-600 opacity-0 group-hover:opacity-100 text-gray-500 dark:text-gray-400'
+                            }`}
+                          title={selectedChatDocIds.has(doc.id) ? "取消选择用于聊天" : "选择用于聊天"}
+                        >
+                         {selectedChatDocIds.has(doc.id) ? <MinusCircleIcon /> : <PlusCircleIcon />}
+                        </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

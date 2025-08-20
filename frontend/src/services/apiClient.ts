@@ -31,25 +31,25 @@ export const getApiBaseUrl = (): string => {
     console.log('[getApiBaseUrl] isLocalhost:', isLocalhost);
     console.log('[getApiBaseUrl] isPrivateIP:', isPrivateIP);
 
-    // 检查是否通过代理访问（端口8081）
-    const isProxyAccess = port === '8081' || hostname.includes('jason.cheman.top');
+    // 检查是否通过代理访问（端口8081或外网域名）
+    const isProxyAccess = port === '8081' || hostname.includes('jason.cheman.top') || hostname.includes('cheman.top');
 
     if (isLocalhost && port === '3000') {
-      // 本地开发环境：直接连接到后端
+      // 本地开发环境：直接连接到后端API
       console.log('[getApiBaseUrl] 检测到本地开发环境，使用localhost连接');
       return 'http://localhost:3001';
     } else if (isPrivateIP && port === '3000') {
-      // 局域网IP直接访问前端：使用当前IP访问后端端口
+      // 局域网IP直接访问前端：使用当前IP访问后端
       const backendUrl = `http://${hostname}:3001`;
       console.log(`[getApiBaseUrl] 检测到局域网直接访问(${hostname}:${port})，使用IP连接:`, backendUrl);
       return backendUrl;
     } else if (isProxyAccess) {
-      // 通过代理访问（8081端口或外网域名）：使用nginx代理
+      // 通过代理访问：使用nginx代理到后端
       console.log('[getApiBaseUrl] 检测到代理访问，使用nginx代理');
       return '/notepads';
     } else {
-      // 其他情况：使用nginx代理
-      console.log('[getApiBaseUrl] 检测到外网环境，使用nginx代理');
+      // 其他情况：通过Cloudflare Tunnel访问
+      console.log('[getApiBaseUrl] 检测到外网环境，使用Cloudflare路由');
       return '/notepads';
     }
   }
@@ -59,6 +59,7 @@ export const getApiBaseUrl = (): string => {
   return 'http://localhost:3001';
 };
 
+// 统一在这里添加 /api 路径，所有环境保持一致
 const apiClient = axios.create({
   baseURL: getApiBaseUrl() + '/api',
 });

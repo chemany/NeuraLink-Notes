@@ -41,11 +41,13 @@ export class AppController {
       try {
         const configData = fs.readFileSync(configPath, 'utf8');
         const config = JSON.parse(configData);
-        builtinConfig = config.builtin_free;
-        console.log('[AppController] 已加载内置模型配置');
+        // 优先使用灵枢笔记专用模型，如果不存在则使用通用模型
+        builtinConfig = config.builtin_free_neuralink || config.builtin_free_general || config.builtin_free;
+        console.log('[AppController] 已加载内置模型配置:', builtinConfig?.name);
       } catch (error) {
         console.error('[AppController] 加载配置失败，使用硬编码配置:', error);
         builtinConfig = {
+          name: '回退内置模型',
           api_key: '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',
           base_url: 'https://openrouter.ai/api/v1',
           model_name: 'deepseek/deepseek-chat-v3-0324:free'

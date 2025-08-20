@@ -20,16 +20,27 @@ export class ProxyService {
       const configPath = path.join(__dirname, '../../../../unified-settings-service/config/default-models.json');
       const configData = fs.readFileSync(configPath, 'utf8');
       const config = JSON.parse(configData);
-      this.builtinConfig = config.builtin_free;
-      console.log('[ProxyService] 已加载内置模型配置');
+      
+      // 优先使用灵枢笔记专用模型，如果不存在则使用通用模型
+      this.builtinConfig = config.builtin_free_neuralink || config.builtin_free_general || config.builtin_free;
+      
+      if (this.builtinConfig) {
+        console.log('[ProxyService] 已加载内置模型配置:', this.builtinConfig.name);
+      } else {
+        throw new Error('未找到合适的内置模型配置');
+      }
     } catch (error) {
       console.error('[ProxyService] 加载内置模型配置失败:', error);
       // 回退到硬编码配置
       this.builtinConfig = {
+        name: '回退内置模型',
         api_key: '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',
         base_url: 'https://openrouter.ai/api/v1',
         model_name: 'deepseek/deepseek-chat-v3-0324:free',
+        max_tokens: 4000,
+        temperature: 0.7
       };
+      console.log('[ProxyService] 使用回退配置');
     }
   }
 
