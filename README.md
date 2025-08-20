@@ -74,8 +74,8 @@
 
 1. **克隆项目**
    ```bash
-   git clone https://github.com/你的用户名/notebook-lm-clone.git
-   cd notebook-lm-clone
+   git clone https://github.com/chemany/NeuraLink-Notes.git
+   cd NeuraLink-Notes
    ```
 
 2. **安装依赖**
@@ -216,8 +216,8 @@ notebook-lm-clone/
 
 ## 📞 联系方式
 
-- 项目地址: https://github.com/你的用户名/notebook-lm-clone
-- 问题反馈: https://github.com/你的用户名/notebook-lm-clone/issues
+- 项目地址: https://github.com/chemany/NeuraLink-Notes
+- 问题反馈: https://github.com/chemany/NeuraLink-Notes/issues
 
 ---
 
