@@ -109,3 +109,8 @@
 
 - [统一设置服务](https://github.com/chemany/unified-settings-service) - 用户认证和配置管理中心
 - [潮汐志](https://github.com/chemany/tidelog) - 智能日历系统
+
+## 📞 联系方式
+
+- 项目地址: https://github.com/chemany/NeuraLink-Notes
+- 问题反馈: https://github.com/chemany/NeuraLink-Notes/issues
