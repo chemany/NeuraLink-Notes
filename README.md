@@ -1,6 +1,7 @@
 # 🧠 灵枢笔记 (NeuraLink-Notes)
 
 基于AI的智能笔记管理系统，支持多种编辑器、文档解析和智能对话。集成统一设置服务，提供无缝的用户体验。
+网页体验：https://www.cheman.top/notepads/
 
 ## ✨ 功能特性
 
