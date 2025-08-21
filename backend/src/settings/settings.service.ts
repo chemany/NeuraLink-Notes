@@ -282,7 +282,7 @@ export class SettingsService {
     // 转换统一设置格式到前端期望的格式，使用灵枢笔记专用的neuralink_llm配置
     const llmSettings: LLMSettingsDto = {
       provider: unifiedSettings.neuralink_llm?.provider || defaultLLMSettings.provider,
-      apiKey: unifiedSettings.neuralink_llm?.api_key || defaultLLMSettings.apiKey,
+      apiKey: unifiedSettings.neuralink_llm?.api_key ? '***HIDDEN***' : defaultLLMSettings.apiKey,
       model: unifiedSettings.neuralink_llm?.model_name || unifiedSettings.neuralink_llm?.model || defaultLLMSettings.model,
       temperature: unifiedSettings.neuralink_llm?.temperature || defaultLLMSettings.temperature,
       maxTokens: unifiedSettings.neuralink_llm?.max_tokens || unifiedSettings.neuralink_llm?.maxTokens || defaultLLMSettings.maxTokens,
@@ -294,23 +294,23 @@ export class SettingsService {
     console.log('[SettingsService] 转换灵枢笔记LLM设置 - 结果:', llmSettings);
 
     const embeddingSettings: EmbeddingModelSettingsDto = {
-      provider: unifiedSettings.vectorization?.provider || 'openai',
-      apiKey: unifiedSettings.vectorization?.api_key || '',
-      model: unifiedSettings.vectorization?.model || 'text-embedding-3-small',
-      customEndpoint: unifiedSettings.vectorization?.custom_endpoint || unifiedSettings.vectorization?.base_url || unifiedSettings.vectorization?.customEndpoint || '',
-      encodingFormat: 'float',
+      provider: unifiedSettings.neuralink_vectorization?.provider || 'openai',
+      apiKey: unifiedSettings.neuralink_vectorization?.api_key ? '***HIDDEN***' : '',
+      model: unifiedSettings.neuralink_vectorization?.model || 'text-embedding-3-small',
+      customEndpoint: unifiedSettings.neuralink_vectorization?.custom_endpoint || unifiedSettings.neuralink_vectorization?.base_url || unifiedSettings.neuralink_vectorization?.customEndpoint || '',
+      encodingFormat: unifiedSettings.neuralink_vectorization?.encoding_format || 'float',
     };
 
-    console.log('[SettingsService] 转换向量化设置 - 原始:', unifiedSettings.vectorization);
+    console.log('[SettingsService] 转换向量化设置 - 原始:', unifiedSettings.neuralink_vectorization);
     console.log('[SettingsService] 转换向量化设置 - 结果:', embeddingSettings);
 
     const rerankingSettings: RerankingSettingsDto = {
-      enableReranking: unifiedSettings.reranking?.enable_reranking || false,
-      rerankingProvider: unifiedSettings.reranking?.provider || 'cohere',
-      rerankingModel: unifiedSettings.reranking?.model || 'rerank-multilingual-v2.0',
-      rerankingCustomEndpoint: unifiedSettings.reranking?.base_url || '',
-      initialRerankCandidates: 100,
-      finalRerankTopN: 10,
+      enableReranking: unifiedSettings.neuralink_reranking?.enable_reranking || false,
+      rerankingProvider: unifiedSettings.neuralink_reranking?.provider || 'cohere',
+      rerankingModel: unifiedSettings.neuralink_reranking?.model || 'rerank-multilingual-v2.0',
+      rerankingCustomEndpoint: unifiedSettings.neuralink_reranking?.base_url || unifiedSettings.neuralink_reranking?.custom_endpoint || '',
+      initialRerankCandidates: unifiedSettings.neuralink_reranking?.initial_rerank_candidates || 100,
+      finalRerankTopN: unifiedSettings.neuralink_reranking?.final_rerank_top_n || 10,
     };
 
     const uiSettings: UISettingsDto = {
