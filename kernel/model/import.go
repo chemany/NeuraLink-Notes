@@ -47,7 +47,6 @@ import (
 	"github.com/siyuan-note/dataparser"
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/logging"
-	"github.com/siyuan-note/riff"
 	"github.com/siyuan-note/siyuan/kernel/av"
 	"github.com/siyuan-note/siyuan/kernel/filesys"
 	"github.com/siyuan-note/siyuan/kernel/sql"
@@ -354,31 +353,32 @@ func ImportSY(zipPath, boxID, toPath string) (err error) {
 	// 将关联的闪卡数据合并到默认卡包 data/storage/riff/20230218211946-2kw8jgx 中
 	storageRiffDir := filepath.Join(storage, "riff")
 	if gulu.File.IsExist(storageRiffDir) {
-		deckToImport, loadErr := riff.LoadDeck(storageRiffDir, builtinDeckID, Conf.Flashcard.RequestRetention, Conf.Flashcard.MaximumInterval, Conf.Flashcard.Weights)
-		if nil != loadErr {
-			logging.LogErrorf("load deck [%s] failed: %s", name, loadErr)
-		} else {
-			deck := Decks[builtinDeckID]
-			if nil == deck {
-				var createErr error
-				deck, createErr = createDeck0("Built-in Deck", builtinDeckID)
-				if nil == createErr {
-					Decks[deck.ID] = deck
-				}
-			}
-
-			bIDs := deckToImport.GetBlockIDs()
-			cards := deckToImport.GetCardsByBlockIDs(bIDs)
-			for _, card := range cards {
-				deck.AddCard(ast.NewNodeID(), blockIDs[card.BlockID()])
-			}
-
-			if 0 < len(cards) {
-				if saveErr := deck.Save(); nil != saveErr {
-					logging.LogErrorf("save deck [%s] failed: %s", name, saveErr)
-				}
-			}
-		}
+		// 闪卡功能已移除，跳过导入
+		// deckToImport, loadErr := riff.LoadDeck(storageRiffDir, builtinDeckID, Conf.Flashcard.RequestRetention, Conf.Flashcard.MaximumInterval, Conf.Flashcard.Weights)
+		// if nil != loadErr {
+		// 	logging.LogErrorf("load deck [%s] failed: %s", name, loadErr)
+		// } else {
+		// 	deck := Decks[builtinDeckID]
+		// 	if nil == deck {
+		// 		var createErr error
+		// 		deck, createErr = createDeck0("Built-in Deck", builtinDeckID)
+		// 		if nil == createErr {
+		// 			Decks[deck.ID] = deck
+		// 		}
+		// 	}
+		//
+		// 	bIDs := deckToImport.GetBlockIDs()
+		// 	cards := deckToImport.GetCardsByBlockIDs(bIDs)
+		// 	for _, card := range cards {
+		// 		deck.AddCard(ast.NewNodeID(), blockIDs[card.BlockID()])
+		// 	}
+		//
+		// 	if 0 < len(cards) {
+		// 		if saveErr := deck.Save(); nil != saveErr {
+		// 			logging.LogErrorf("save deck [%s] failed: %s", name, saveErr)
+		// 		}
+		// 	}
+		// }
 	}
 
 	// storage 文件夹已在上方处理，所以这里删除源 storage 文件夹，避免后面被拷贝到导入目录下 targetDir

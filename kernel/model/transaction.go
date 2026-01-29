@@ -209,10 +209,11 @@ func performTx(tx *Transaction) (ret *TxErr) {
 				ret = tx.doSetAttrs(op)
 			case "doUpdateUpdated":
 				ret = tx.doUpdateUpdated(op)
-			case "addFlashcards":
-				ret = tx.doAddFlashcards(op)
-			case "removeFlashcards":
-				ret = tx.doRemoveFlashcards(op)
+			// 闪卡功能已移除
+			// case "addFlashcards":
+			// 	ret = tx.doAddFlashcards(op)
+			// case "removeFlashcards":
+			// 	ret = tx.doRemoveFlashcards(op)
 			case "setAttrViewName":
 				ret = tx.doSetAttrViewName(op)
 			case "setAttrViewFilters":
