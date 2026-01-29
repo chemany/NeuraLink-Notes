@@ -550,9 +550,8 @@ func getConf(c *gin.Context) {
 		return
 	}
 
-	if !maskedConf.Sync.Enabled || (0 == maskedConf.Sync.Provider && !model.IsSubscriber()) {
-		maskedConf.Sync.Stat = model.Conf.Language(53)
-	}
+	// 云同步功能已移除
+	maskedConf.Sync.Stat = model.Conf.Language(53)
 
 	// REF: https://github.com/siyuan-note/siyuan/issues/11364
 	role := model.GetGinContextRole(c)

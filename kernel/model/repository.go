@@ -24,7 +24,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"math"
 	mathRand "math/rand"
 	"mime"
 	"net/http"
@@ -1577,13 +1576,7 @@ func processSyncMergeResult(exit, byHand bool, mergeResult *dejavu.MergeResult, 
 		if 10 < syncSameCount.Load() {
 			syncSameCount.Store(5)
 		}
-		if !byHand {
-			delay := time.Minute * time.Duration(int(math.Pow(2, float64(syncSameCount.Load()))))
-			if fixSyncInterval.Minutes() > delay.Minutes() {
-				delay = time.Minute * 8
-			}
-			planSyncAfter(delay)
-		}
+		// 云同步功能已移除，跳过延迟同步
 		return
 	}
 

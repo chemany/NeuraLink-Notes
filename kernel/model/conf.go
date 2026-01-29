@@ -353,39 +353,9 @@ func InitConf() {
 		Conf.Account = conf.NewAccount()
 	}
 
+	// Sync功能已移除，保留最小化配置
 	if nil == Conf.Sync {
 		Conf.Sync = conf.NewSync()
-	}
-	if 0 == Conf.Sync.Mode {
-		Conf.Sync.Mode = 1
-	}
-	if 30 > Conf.Sync.Interval {
-		Conf.Sync.Interval = 30
-	}
-	if 60*60*12 < Conf.Sync.Interval {
-		Conf.Sync.Interval = 60 * 60 * 12
-	}
-	if nil == Conf.Sync.S3 {
-		Conf.Sync.S3 = &conf.S3{PathStyle: true, SkipTlsVerify: true}
-	}
-	Conf.Sync.S3.Endpoint = util.NormalizeEndpoint(Conf.Sync.S3.Endpoint)
-	Conf.Sync.S3.Timeout = util.NormalizeTimeout(Conf.Sync.S3.Timeout)
-	Conf.Sync.S3.ConcurrentReqs = util.NormalizeConcurrentReqs(Conf.Sync.S3.ConcurrentReqs, conf.ProviderS3)
-	if nil == Conf.Sync.WebDAV {
-		Conf.Sync.WebDAV = &conf.WebDAV{SkipTlsVerify: true}
-	}
-	Conf.Sync.WebDAV.Endpoint = util.NormalizeEndpoint(Conf.Sync.WebDAV.Endpoint)
-	Conf.Sync.WebDAV.Timeout = util.NormalizeTimeout(Conf.Sync.WebDAV.Timeout)
-	Conf.Sync.WebDAV.ConcurrentReqs = util.NormalizeConcurrentReqs(Conf.Sync.WebDAV.ConcurrentReqs, conf.ProviderWebDAV)
-	if nil == Conf.Sync.Local {
-		Conf.Sync.Local = &conf.Local{}
-	}
-	Conf.Sync.Local.Endpoint = util.NormalizeLocalPath(Conf.Sync.Local.Endpoint)
-	Conf.Sync.Local.Timeout = util.NormalizeTimeout(Conf.Sync.Local.Timeout)
-	Conf.Sync.Local.ConcurrentReqs = util.NormalizeConcurrentReqs(Conf.Sync.Local.ConcurrentReqs, conf.ProviderLocal)
-
-	if util.ContainerDocker == util.Container {
-		Conf.Sync.Perception = false
 	}
 
 	if nil == Conf.Api {
@@ -658,16 +628,7 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int) {
 	util.PushMsg(Conf.Language(95), 10000*60)
 	FlushTxQueue()
 
-	if !force {
-		if Conf.Sync.Enabled && 3 != Conf.Sync.Mode &&
-			((IsSubscriber() && conf.ProviderSiYuan == Conf.Sync.Provider) || conf.ProviderSiYuan != Conf.Sync.Provider) {
-			syncData(true, false)
-			if 0 != ExitSyncSucc {
-				exitCode = 1
-				return
-			}
-		}
-	}
+	// 云同步功能已移除，跳过同步操作
 
 	// Close the user guide when exiting https://github.com/siyuan-note/siyuan/issues/10322
 	closeUserGuide()
@@ -721,7 +682,7 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int) {
 			time.Sleep(30 * time.Second)
 		}
 	}
-	closeSyncWebSocket()
+	// 云同步功能已移除，跳过关闭同步WebSocket
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		logging.LogInfof("exited kernel")
