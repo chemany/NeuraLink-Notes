@@ -98,20 +98,62 @@ func (block *Block) IsContainerBlock() bool {
 }
 
 func queryBlockChildrenIDs(id string) (ret []string) {
-	ret = append(ret, id)
-	childIDs := queryBlockIDByParentID(id)
-	for _, childID := range childIDs {
-		ret = append(ret, queryBlockChildrenIDs(childID)...)
+	// 使用CTE递归查询一次性获取所有子节点，避免N+1查询问题
+	sqlStmt := `
+		WITH RECURSIVE children(id) AS (
+			SELECT ? AS id
+			UNION ALL
+			SELECT blocks.id
+			FROM blocks
+			INNER JOIN children ON blocks.parent_id = children.id
+		)
+		SELECT id FROM children
+	`
+	rows, err := query(sqlStmt, id)
+	if err != nil {
+		logging.LogErrorf("sql query [%s] failed: %s", sqlStmt, err)
+		return []string{id}
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var childID string
+		if err = rows.Scan(&childID); err != nil {
+			logging.LogErrorf("scan failed: %s", err)
+			continue
+		}
+		ret = append(ret, childID)
 	}
 	return
 }
 
 // queryBlockChildrenIDsWithContext 使用 WorkspaceContext 查询子块ID
 func queryBlockChildrenIDsWithContext(ctx WorkspaceContext, id string) (ret []string) {
-	ret = append(ret, id)
-	childIDs := queryBlockIDByParentIDWithContext(ctx, id)
-	for _, childID := range childIDs {
-		ret = append(ret, queryBlockChildrenIDsWithContext(ctx, childID)...)
+	// 使用CTE递归查询一次性获取所有子节点，避免N+1查询问题
+	sqlStmt := `
+		WITH RECURSIVE children(id) AS (
+			SELECT ? AS id
+			UNION ALL
+			SELECT blocks.id
+			FROM blocks
+			INNER JOIN children ON blocks.parent_id = children.id
+		)
+		SELECT id FROM children
+	`
+	rows, err := queryWithContext(ctx, sqlStmt, id)
+	if err != nil {
+		logging.LogErrorf("sql query [%s] failed: %s", sqlStmt, err)
+		return []string{id}
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var childID string
+		if err = rows.Scan(&childID); err != nil {
+			logging.LogErrorf("scan failed: %s", err)
+			continue
+		}
+		ret = append(ret, childID)
 	}
 	return
 }

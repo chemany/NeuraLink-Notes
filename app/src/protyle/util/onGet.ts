@@ -20,6 +20,7 @@ import {hideTooltip} from "../../dialog/tooltip";
 import {stickyRow} from "../render/av/row";
 import {getContenteditableElement} from "../wysiwyg/getBlock";
 import {activeBlur} from "../../mobile/util/keyboardToolbar";
+import {addProtyleTimer, removeProtyleTimer} from "./destroy";
 
 export const onGet = (options: {
     data: IWebSocketData,
@@ -509,10 +510,11 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     });
     protyle.observerLoad.observe(protyle.wysiwyg.element);
     protyle.observer.unobserve(protyle.wysiwyg.element);
-    setTimeout(() => {
-        protyle.observerLoad.disconnect();
-        protyle.observer.observe(protyle.wysiwyg.element);
+    const timerId = window.setTimeout(() => {
+        protyle.observerLoad?.disconnect();
+        protyle.observer?.observe(protyle.wysiwyg.element);
     }, 1000 * 3);
+    addProtyleTimer(protyle, timerId);
 
     if (focusElement === protyle.wysiwyg.element.firstElementChild && !hasScrollTop) {
         protyle.observerLoad.disconnect();

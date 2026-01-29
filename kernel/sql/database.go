@@ -31,7 +31,6 @@ import (
 	"strings"
 	"sync"
 	"text/template"
-	"time"
 	"unicode/utf8"
 
 	"github.com/88250/gulu"
@@ -265,9 +264,11 @@ func initDBConnection() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create database failed: %s", err)
 	}
-	db.SetMaxIdleConns(20)
-	db.SetMaxOpenConns(20)
-	db.SetConnMaxLifetime(365 * 24 * time.Hour)
+	// SQLite是单线程数据库，使用单连接更高效
+	// 多连接会导致锁竞争和性能下降
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0) // 0表示连接永不过期
 }
 
 var initHistoryDatabaseLock = sync.Mutex{}
@@ -313,9 +314,10 @@ func initHistoryDBConnection() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create history database failed: %s", err)
 	}
-	historyDB.SetMaxIdleConns(3)
-	historyDB.SetMaxOpenConns(3)
-	historyDB.SetConnMaxLifetime(365 * 24 * time.Hour)
+	// SQLite是单线程数据库，使用单连接更高效
+	historyDB.SetMaxOpenConns(1)
+	historyDB.SetMaxIdleConns(1)
+	historyDB.SetConnMaxLifetime(0)
 }
 
 func initHistoryDBTables() {
@@ -404,9 +406,10 @@ func InitAssetContentDatabaseWithContext(ctx WorkspaceContextInterface, forceReb
 	}
 	defer db.Close()
 
-	db.SetMaxIdleConns(3)
-	db.SetMaxOpenConns(3)
-	db.SetConnMaxLifetime(365 * 24 * time.Hour)
+	// SQLite是单线程数据库，使用单连接更高效
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	// 创建表结构
 	_, err = db.Exec("CREATE VIRTUAL TABLE IF NOT EXISTS asset_contents_fts_case_insensitive USING fts5(id UNINDEXED, name, ext, path, size UNINDEXED, updated UNINDEXED, content, tokenize=\"siyuan case_insensitive\")")
@@ -440,9 +443,10 @@ func initAssetContentDBConnection() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create assets database failed: %s", err)
 	}
-	assetContentDB.SetMaxIdleConns(3)
-	assetContentDB.SetMaxOpenConns(3)
-	assetContentDB.SetConnMaxLifetime(365 * 24 * time.Hour)
+	// SQLite是单线程数据库，使用单连接更高效
+	assetContentDB.SetMaxOpenConns(1)
+	assetContentDB.SetMaxIdleConns(1)
+	assetContentDB.SetConnMaxLifetime(0)
 }
 
 func initAssetContentDBTables() {
@@ -485,9 +489,10 @@ func SetAssetContentDBForContext(ctx WorkspaceContextInterface) error {
 		return err
 	}
 
-	assetContentDB.SetMaxIdleConns(3)
-	assetContentDB.SetMaxOpenConns(3)
-	assetContentDB.SetConnMaxLifetime(365 * 24 * time.Hour)
+	// SQLite是单线程数据库，使用单连接更高效
+	assetContentDB.SetMaxOpenConns(1)
+	assetContentDB.SetMaxIdleConns(1)
+	assetContentDB.SetConnMaxLifetime(0)
 
 	logging.LogInfof("[用户: %s] 附件内容数据库连接已切换", ctx.GetWorkspaceDir())
 	return nil

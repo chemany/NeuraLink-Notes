@@ -22,9 +22,6 @@ require (
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/disintegration/imaging v1.6.2
 	github.com/djherbis/times v1.6.0
-	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608
-	github.com/emersion/go-vcard v0.0.0-20241024213814-c9703dde27ff
-	github.com/emersion/go-webdav v0.7.0
 	github.com/emirpasic/gods v1.18.1
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/flopp/go-findfont v0.1.0
@@ -174,7 +171,6 @@ require (
 	github.com/richardlehane/msoleps v1.0.4 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
-	github.com/teambition/rrule-go v1.8.2 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect

@@ -373,18 +373,47 @@ func single(msg []byte, appId, sid string) {
 
 func Broadcast(msg []byte) {
 	sessionCount := 0
+	var wg sync.WaitGroup
+	var mu sync.Mutex // 保护sessionCount
+
 	sessions.Range(func(key, value interface{}) bool {
 		appSessions := value.(*sync.Map)
 		appSessions.Range(func(key, value interface{}) bool {
 			session := value.(*melody.Session)
 			sessionType, _ := session.Get("type")
-			logging.LogInfof("Broadcasting to session type [%v], app [%v]", sessionType, key)
-			session.Write(msg)
+
+			// 使用goroutine并行发送消息
+			wg.Add(1)
+			go func(s *melody.Session, sType interface{}, appKey interface{}) {
+				defer wg.Done()
+				defer func() {
+					// 捕获panic，防止单个session错误影响其他session
+					if r := recover(); r != nil {
+						logging.LogErrorf("Broadcast panic: %v", r)
+					}
+				}()
+
+				// 检查session是否仍然有效
+				if s == nil {
+					return
+				}
+
+				logging.LogInfof("Broadcasting to session type [%v], app [%v]", sType, appKey)
+				if err := s.Write(msg); err != nil {
+					logging.LogWarnf("Failed to write to session: %v", err)
+				}
+			}(session, sessionType, key)
+
+			mu.Lock()
 			sessionCount++
+			mu.Unlock()
 			return true
 		})
 		return true
 	})
+
+	// 等待所有消息发送完成
+	wg.Wait()
 	logging.LogInfof("Broadcast sent to %d sessions", sessionCount)
 }
 

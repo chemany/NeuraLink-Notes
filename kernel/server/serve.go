@@ -32,8 +32,6 @@ import (
 	"time"
 
 	"github.com/88250/gulu"
-	"github.com/emersion/go-webdav/caldav"
-	"github.com/emersion/go-webdav/carddav"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -90,42 +88,6 @@ var (
 		MethodPropFind,
 		MethodPropPatch,
 	}
-	CalDavMethods = []string{
-		http.MethodOptions,
-		http.MethodHead,
-		http.MethodGet,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodDelete,
-
-		MethodMkCol,
-		MethodCopy,
-		MethodMove,
-		// MethodLock,
-		// MethodUnlock,
-		MethodPropFind,
-		MethodPropPatch,
-
-		MethodReport,
-	}
-	CardDavMethods = []string{
-		http.MethodOptions,
-		http.MethodHead,
-		http.MethodGet,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodDelete,
-
-		MethodMkCol,
-		MethodCopy,
-		MethodMove,
-		// MethodLock,
-		// MethodUnlock,
-		MethodPropFind,
-		MethodPropPatch,
-
-		MethodReport,
-	}
 )
 
 func Serve(fastMode bool) {
@@ -155,8 +117,6 @@ func Serve(fastMode bool) {
 	serveAppearance(ginServer)
 	serveWebSocket(ginServer)
 	serveWebDAV(ginServer)
-	serveCalDAV(ginServer)
-	serveCardDAV(ginServer)
 	serveExport(ginServer)
 	serveWidgets(ginServer)
 	servePlugins(ginServer)
@@ -304,6 +264,30 @@ func serveSnippets(ginServer *gin.Engine) {
 }
 
 func serveAppearance(ginServer *gin.Engine) {
+	// 字体文件不需要认证，直接在根路由组下提供
+	ginServer.GET("/appearance/fonts/*filepath", func(c *gin.Context) {
+		logging.LogInfof("[Font] Serving font file: %s", c.Request.URL.Path)
+
+		var appearancePath string
+		if "dev" == util.Mode {
+			appearancePath = filepath.Join(util.WorkingDir, "appearance")
+		} else {
+			appearancePath = util.AppearancePath
+		}
+
+		filePath := filepath.Join(appearancePath, strings.TrimPrefix(c.Request.URL.Path, "/appearance/"))
+		logging.LogInfof("[Font] Resolved file path: %s", filePath)
+
+		if !gulu.File.IsExist(filePath) {
+			logging.LogWarnf("[Font] File not found: %s", filePath)
+			c.Status(404)
+			return
+		}
+
+		logging.LogInfof("[Font] Serving file: %s", filePath)
+		c.File(filePath)
+	})
+
 	siyuan := ginServer.Group("", model.CheckWebAuth) // 使用Web认证中间件
 
 	siyuan.Handle("GET", "/", func(c *gin.Context) {
@@ -974,75 +958,6 @@ func serveWebDAV(ginServer *gin.Engine) {
 	})
 }
 
-func serveCalDAV(ginServer *gin.Engine) {
-	// REF: https://github.com/emersion/hydroxide/blob/master/carddav/carddav.go
-	handler := caldav.Handler{
-		Backend: &model.CalDavBackend{},
-		Prefix:  model.CalDavPrincipalsPath,
-	}
-
-	ginServer.Match(CalDavMethods, "/.well-known/caldav", func(c *gin.Context) {
-		// logging.LogDebugf("CalDAV -> [%s] %s", c.Request.Method, c.Request.URL.String())
-		handler.ServeHTTP(c.Writer, c.Request)
-	})
-
-	ginGroup := ginServer.Group(model.CalDavPrefixPath, model.CheckAuth, model.CheckAdminRole)
-	ginGroup.Match(CalDavMethods, "/*path", func(c *gin.Context) {
-		// logging.LogDebugf("CalDAV -> [%s] %s", c.Request.Method, c.Request.URL.String())
-		if util.ReadOnly {
-			switch c.Request.Method {
-			case http.MethodPost,
-				http.MethodPut,
-				http.MethodDelete,
-				MethodMkCol,
-				MethodCopy,
-				MethodMove,
-				MethodLock,
-				MethodUnlock,
-				MethodPropPatch:
-				c.AbortWithError(http.StatusForbidden, fmt.Errorf(model.Conf.Language(34)))
-				return
-			}
-		}
-		handler.ServeHTTP(c.Writer, c.Request)
-		// logging.LogDebugf("CalDAV <- [%s] %v", c.Request.Method, c.Writer.Status())
-	})
-}
-
-func serveCardDAV(ginServer *gin.Engine) {
-	// REF: https://github.com/emersion/hydroxide/blob/master/carddav/carddav.go
-	handler := carddav.Handler{
-		Backend: &model.CardDavBackend{},
-		Prefix:  model.CardDavPrincipalsPath,
-	}
-
-	ginServer.Match(CardDavMethods, "/.well-known/carddav", func(c *gin.Context) {
-		// logging.LogDebugf("CardDAV [/.well-known/carddav]")
-		handler.ServeHTTP(c.Writer, c.Request)
-	})
-
-	ginGroup := ginServer.Group(model.CardDavPrefixPath, model.CheckAuth, model.CheckAdminRole)
-	ginGroup.Match(CardDavMethods, "/*path", func(c *gin.Context) {
-		if util.ReadOnly {
-			switch c.Request.Method {
-			case http.MethodPost,
-				http.MethodPut,
-				http.MethodDelete,
-				MethodMkCol,
-				MethodCopy,
-				MethodMove,
-				MethodLock,
-				MethodUnlock,
-				MethodPropPatch:
-				c.AbortWithError(http.StatusForbidden, fmt.Errorf(model.Conf.Language(34)))
-				return
-			}
-		}
-		// TODO: Can't handle Thunderbird's PROPFIND request with prop <current-user-privilege-set/>
-		handler.ServeHTTP(c.Writer, c.Request)
-		// logging.LogDebugf("CardDAV <- [%s] %v", c.Request.Method, c.Writer.Status())
-	})
-}
 
 func shortReqMsg(msg []byte) []byte {
 	s := gulu.Str.FromBytes(msg)
@@ -1062,8 +977,6 @@ func shortReqMsg(msg []byte) []byte {
 func corsMiddleware() gin.HandlerFunc {
 	allowMethods := strings.Join(HttpMethods, ", ")
 	allowWebDavMethods := strings.Join(WebDavMethods, ", ")
-	allowCalDavMethods := strings.Join(CalDavMethods, ", ")
-	allowCardDavMethods := strings.Join(CardDavMethods, ", ")
 
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
@@ -1073,18 +986,6 @@ func corsMiddleware() gin.HandlerFunc {
 
 		if strings.HasPrefix(c.Request.RequestURI, "/webdav") {
 			c.Header("Access-Control-Allow-Methods", allowWebDavMethods)
-			c.Next()
-			return
-		}
-
-		if strings.HasPrefix(c.Request.RequestURI, "/caldav") {
-			c.Header("Access-Control-Allow-Methods", allowCalDavMethods)
-			c.Next()
-			return
-		}
-
-		if strings.HasPrefix(c.Request.RequestURI, "/carddav") {
-			c.Header("Access-Control-Allow-Methods", allowCardDavMethods)
 			c.Next()
 			return
 		}

@@ -17,6 +17,7 @@
 package sql
 
 import (
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,14 +41,49 @@ func disableCache() {
 	cacheDisabled = true
 }
 
+// 根据系统内存动态计算缓存大小
+func calculateCacheSize() int64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// 使用系统内存的1%作为缓存大小，最小10240，最大102400
+	cacheSize := int64(m.Sys / 100)
+	if cacheSize < 10240 {
+		cacheSize = 10240
+	}
+	if cacheSize > 102400 {
+		cacheSize = 102400
+	}
+	return cacheSize
+}
+
 var blockCache, _ = ristretto.NewCache(&ristretto.Config{
 	NumCounters: 102400,
-	MaxCost:     10240,
+	MaxCost:     calculateCacheSize(), // 动态计算缓存大小
 	BufferItems: 64,
+	Metrics:     true, // 启用缓存指标监控
 })
 
 func ClearCache() {
 	blockCache.Clear()
+}
+
+// GetCacheMetrics 获取缓存命中率统计信息
+func GetCacheMetrics() *ristretto.Metrics {
+	return blockCache.Metrics
+}
+
+// LogCacheStats 定期记录缓存统计信息
+func LogCacheStats() {
+	metrics := blockCache.Metrics
+	if metrics != nil {
+		hits := metrics.Hits()
+		misses := metrics.Misses()
+		total := hits + misses
+		if total > 0 {
+			hitRate := float64(hits) / float64(total) * 100
+			logging.LogInfof("Block cache stats - Hits: %d, Misses: %d, Hit Rate: %.2f%%", hits, misses, hitRate)
+		}
+	}
 }
 
 func putBlockCache(block *Block) {
