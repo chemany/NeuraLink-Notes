@@ -263,12 +263,6 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/file/readDir", model.CheckWebAuth, readDir)
 	ginServer.Handle("POST", "/api/file/getUniqueFilename", model.CheckWebAuth, getUniqueFilename)
 
-	ginServer.Handle("POST", "/api/ref/refreshBacklink", model.CheckWebAuth, refreshBacklink)
-	ginServer.Handle("POST", "/api/ref/getBacklink", model.CheckWebAuth, getBacklink)
-	ginServer.Handle("POST", "/api/ref/getBacklink2", model.CheckWebAuth, getBacklink2)
-	ginServer.Handle("POST", "/api/ref/getBacklinkDoc", model.CheckWebAuth, getBacklinkDoc)
-	ginServer.Handle("POST", "/api/ref/getBackmentionDoc", model.CheckWebAuth, getBackmentionDoc)
-
 	ginServer.Handle("POST", "/api/attr/getBookmarkLabels", model.CheckWebAuth, getBookmarkLabels)
 	ginServer.Handle("POST", "/api/attr/resetBlockAttrs", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, resetBlockAttrs)
 	ginServer.Handle("POST", "/api/attr/setBlockAttrs", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setBlockAttrs)
@@ -371,12 +365,6 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/setting/addVirtualBlockRefExclude", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, addVirtualBlockRefExclude)
 	ginServer.Handle("POST", "/api/setting/setSnippet", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setConfSnippet)
 	ginServer.Handle("POST", "/api/setting/setEditorReadOnly", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setEditorReadOnly)
-
-	// [关系图谱功能已禁用] 以下路由已注释，返回空数据
-	ginServer.Handle("POST", "/api/graph/resetGraph", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, resetGraph)
-	ginServer.Handle("POST", "/api/graph/resetLocalGraph", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, resetLocalGraph)
-	ginServer.Handle("POST", "/api/graph/getGraph", model.CheckWebAuth, getGraph)
-	ginServer.Handle("POST", "/api/graph/getLocalGraph", model.CheckWebAuth, getLocalGraph)
 
 	ginServer.Handle("POST", "/api/bazaar/getBazaarPlugin", model.CheckWebAuth, getBazaarPlugin)
 	ginServer.Handle("POST", "/api/bazaar/getInstalledPlugin", model.CheckWebAuth, getInstalledPlugin)
