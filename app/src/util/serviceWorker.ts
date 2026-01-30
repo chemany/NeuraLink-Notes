@@ -17,10 +17,8 @@ export const registerServiceWorker = (
         return;
     }
 
-    // 禁用 Service Worker：在通过 Nginx 代理访问时，Service Worker 的资源路径会出错
-    // Service Worker 中的绝对路径（如 /favicon.ico）需要加上代理前缀（如 /notepads/favicon.ico）
-    // 为了避免复杂的路径重写，暂时禁用 Service Worker
-    console.log('[Service Worker] 已禁用 Service Worker 以避免代理路径问题');
+    // [已精简] Service Worker 相关代码已移除
+    // 原设计用于离线缓存和推送通知，但在当前网络服务架构下不需要
     return;
 
     // REF https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration

@@ -81,7 +81,7 @@ export const fetchPost = (url: string, data?: any, cb?: (response: IWebSocketDat
 
                     // 重定向到应用根路径，会自动跳转到登录页
                     setTimeout(() => {
-                        window.location.href = window.location.origin + '/notepads/';
+                        window.location.href = window.location.origin + '/';
                     }, 1000);
                 }
 
