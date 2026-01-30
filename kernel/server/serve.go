@@ -264,29 +264,8 @@ func serveSnippets(ginServer *gin.Engine) {
 }
 
 func serveAppearance(ginServer *gin.Engine) {
-	// 字体文件不需要认证，直接在根路由组下提供
-	ginServer.GET("/appearance/fonts/*filepath", func(c *gin.Context) {
-		logging.LogInfof("[Font] Serving font file: %s", c.Request.URL.Path)
-
-		var appearancePath string
-		if "dev" == util.Mode {
-			appearancePath = filepath.Join(util.WorkingDir, "appearance")
-		} else {
-			appearancePath = util.AppearancePath
-		}
-
-		filePath := filepath.Join(appearancePath, strings.TrimPrefix(c.Request.URL.Path, "/appearance/"))
-		logging.LogInfof("[Font] Resolved file path: %s", filePath)
-
-		if !gulu.File.IsExist(filePath) {
-			logging.LogWarnf("[Font] File not found: %s", filePath)
-			c.Status(404)
-			return
-		}
-
-		logging.LogInfof("[Font] Serving file: %s", filePath)
-		c.File(filePath)
-	})
+	// 注意：字体文件等静态资源在 /appearance/*filepath 路由中统一处理
+	// 不需要单独的 /appearance/fonts/*filepath 路由
 
 	siyuan := ginServer.Group("", model.CheckWebAuth) // 使用Web认证中间件
 
@@ -403,7 +382,44 @@ func serveAppearance(ginServer *gin.Engine) {
 			}
 		}
 
-		c.File(filePath)
+		// 手动读取文件并设置正确的 MIME 类型
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			c.Status(404)
+			return
+		}
+
+		// 根据文件扩展名设置正确的 MIME 类型
+		ext := filepath.Ext(filePath)
+		contentType := ""
+		switch ext {
+		case ".css":
+			contentType = "text/css"
+		case ".js":
+			contentType = "application/javascript"
+		case ".json":
+			contentType = "application/json"
+		case ".svg":
+			contentType = "image/svg+xml"
+		case ".png":
+			contentType = "image/png"
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".gif":
+			contentType = "image/gif"
+		case ".woff":
+			contentType = "font/woff"
+		case ".woff2":
+			contentType = "font/woff2"
+		case ".ttf":
+			contentType = "font/ttf"
+		case ".eot":
+			contentType = "application/vnd.ms-fontobject"
+		default:
+			contentType = "application/octet-stream"
+		}
+		c.Header("Content-Type", contentType)
+		c.Data(200, contentType, data)
 	})
 
 	siyuan.Static("/stage", filepath.Join(util.WorkingDir, "stage"))

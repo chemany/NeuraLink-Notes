@@ -36,8 +36,8 @@ import {Constants} from "../../../constants";
 import {setReadOnly} from "../../../config/util/setReadOnly";
 import {lockScreen} from "../../../dialog/processSystem";
 import {newFile} from "../../../util/newFile";
-import {openCard} from "../../../card/openCard";
-import {syncGuide} from "../../../sync/syncGuide";
+// [闪卡功能已禁用] import {openCard} from "../../../card/openCard";
+// [同步功能已禁用] import {syncGuide} from "../../../sync/syncGuide";
 import {Wnd} from "../../../layout/Wnd";
 import {unsplitWnd} from "../../../menus/tab";
 import {openFile} from "../../../editor/util";
@@ -417,15 +417,21 @@ export const globalCommand = (command: string, app: App) => {
                 useSavePath: true
             });
             return true;
+        // [闪卡功能已禁用]
+        /*
         case "riffCard":
             openCard(app);
             return true;
+        */
         case "selectOpen1":
             selectOpenTab();
             return true;
+        // [同步功能已禁用]
+        /*
         case "syncNow":
             syncGuide(app);
             return true;
+        */
     }
 
     return false;

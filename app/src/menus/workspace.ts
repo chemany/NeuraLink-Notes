@@ -15,7 +15,7 @@ import {
     setStorageVal,
     writeText
 } from "../protyle/util/compatibility";
-import { openCard } from "../card/openCard";
+// [闪卡功能已禁用] import { openCard } from "../card/openCard";
 import { openSetting } from "../config";
 import { getAllDocks } from "../layout/getAll";
 import { exportLayout, getAllLayout } from "../layout/util";
@@ -25,7 +25,7 @@ import { showMessage } from "../dialog/message";
 import { unicode2Emoji } from "../emoji";
 import { Dock } from "../layout/dock";
 import { escapeHtml } from "../util/escape";
-import { viewCards } from "../card/viewCards";
+// [闪卡功能已禁用] import { viewCards } from "../card/viewCards";
 import { Dialog } from "../dialog";
 import { hasClosestByClassName } from "../protyle/util/hasClosest";
 import { confirmDialog } from "../dialog/confirmDialog";
@@ -471,6 +471,8 @@ export const workspaceMenu = (app: App, rect: DOMRect) => {
                     submenu
                 }).element);
             }
+            // [闪卡功能已禁用]
+            /*
             if (!window.siyuan.config.readonly) {
                 window.siyuan.menus.menu.append(new MenuItem({
                     id: "riffCard",
@@ -495,6 +497,7 @@ export const workspaceMenu = (app: App, rect: DOMRect) => {
                     }],
                 }).element);
             }
+            */
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "recentDocs",
                 label: window.siyuan.languages.recentDocs,

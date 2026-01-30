@@ -11,7 +11,7 @@ import {isInAndroid, isInHarmony, isInIOS, isIPad, isMac, openByMobile, writeTex
 import {showMessage} from "../dialog/message";
 import {Dialog} from "../dialog";
 import {confirmDialog} from "../dialog/confirmDialog";
-import {setKey} from "../sync/syncGuide";
+// [同步功能已禁用] import {setKey} from "../sync/syncGuide";
 import {useShell} from "../util/pathName";
 
 export const about = {

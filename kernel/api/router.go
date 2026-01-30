@@ -366,10 +366,6 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/setting/setSnippet", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setConfSnippet)
 	ginServer.Handle("POST", "/api/setting/setEditorReadOnly", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setEditorReadOnly)
 
-	ginServer.Handle("POST", "/api/bazaar/getBazaarPlugin", model.CheckWebAuth, getBazaarPlugin)
-	ginServer.Handle("POST", "/api/bazaar/getInstalledPlugin", model.CheckWebAuth, getInstalledPlugin)
-	ginServer.Handle("POST", "/api/bazaar/installBazaarPlugin", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, installBazaarPlugin)
-	ginServer.Handle("POST", "/api/bazaar/uninstallBazaarPlugin", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, uninstallBazaarPlugin)
 	ginServer.Handle("POST", "/api/bazaar/getBazaarWidget", model.CheckWebAuth, getBazaarWidget)
 	ginServer.Handle("POST", "/api/bazaar/getInstalledWidget", model.CheckWebAuth, getInstalledWidget)
 	ginServer.Handle("POST", "/api/bazaar/installBazaarWidget", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, installBazaarWidget)

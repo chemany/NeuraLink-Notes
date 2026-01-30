@@ -607,9 +607,10 @@ func getCloudUser(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
 
-	if !model.IsAdminRoleContext(c) {
-		return
-	}
+	// [同步功能已禁用] 移除非管理员限制，允许所有用户访问
+	// if !model.IsAdminRoleContext(c) {
+	// 	return
+	// }
 
 	// Web 模式下跳过云端用户检查，避免超时
 	// 云端同步功能在 Web 模式下不可用

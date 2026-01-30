@@ -8,7 +8,7 @@ import { hasClosestByClassName } from "../protyle/util/hasClosest";
 import { getEventName, isInIOS } from "../protyle/util/compatibility";
 import { processSync } from "../dialog/processSystem";
 import { needSubscribe } from "../util/needSubscribe";
-import { syncGuide } from "../sync/syncGuide";
+// [同步功能已禁用] import { syncGuide } from "../sync/syncGuide";
 import { hideElements } from "../protyle/ui/hideElements";
 import { getCloudURL, getIndexURL } from "./util/about";
 import { iOSPurchase } from "../util/iOSPurchase";

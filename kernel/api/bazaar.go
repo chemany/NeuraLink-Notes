@@ -48,9 +48,8 @@ func getUpdatedPackage(c *gin.Context) {
 	}
 
 	frontend := arg["frontend"].(string)
-	plugins, widgets, icons, themes, templates := model.UpdatedPackages(frontend)
+	_, widgets, icons, themes, templates := model.UpdatedPackages(frontend)
 	ret.Data = map[string]interface{}{
-		"plugins":   plugins,
 		"widgets":   widgets,
 		"icons":     icons,
 		"themes":    themes,
@@ -72,106 +71,6 @@ func getBazaarPackageREAME(c *gin.Context) {
 	packageType := arg["packageType"].(string)
 	ret.Data = map[string]interface{}{
 		"html": model.GetPackageREADME(repoURL, repoHash, packageType),
-	}
-}
-
-func getBazaarPlugin(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
-
-	frontend := arg["frontend"].(string)
-	var keyword string
-	if keywordArg := arg["keyword"]; nil != keywordArg {
-		keyword = keywordArg.(string)
-	}
-
-	ret.Data = map[string]interface{}{
-		"packages": model.BazaarPlugins(frontend, keyword),
-	}
-}
-
-func getInstalledPlugin(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
-
-	frontend := arg["frontend"].(string)
-	var keyword string
-	if keywordArg := arg["keyword"]; nil != keywordArg {
-		keyword = keywordArg.(string)
-	}
-
-	ret.Data = map[string]interface{}{
-		"packages": model.InstalledPlugins(frontend, keyword),
-	}
-}
-
-func installBazaarPlugin(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
-
-	var keyword string
-	if keywordArg := arg["keyword"]; nil != keywordArg {
-		keyword = keywordArg.(string)
-	}
-
-	repoURL := arg["repoURL"].(string)
-	repoHash := arg["repoHash"].(string)
-	packageName := arg["packageName"].(string)
-	err := model.InstallBazaarPlugin(repoURL, repoHash, packageName)
-	if err != nil {
-		ret.Code = 1
-		ret.Msg = err.Error()
-		return
-	}
-
-	frontend := arg["frontend"].(string)
-
-	util.PushMsg(model.Conf.Language(69), 3000)
-	ret.Data = map[string]interface{}{
-		"packages": model.BazaarPlugins(frontend, keyword),
-	}
-}
-
-func uninstallBazaarPlugin(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
-
-	var keyword string
-	if keywordArg := arg["keyword"]; nil != keywordArg {
-		keyword = keywordArg.(string)
-	}
-
-	frontend := arg["frontend"].(string)
-	packageName := arg["packageName"].(string)
-	err := model.UninstallBazaarPlugin(packageName, frontend)
-	if err != nil {
-		ret.Code = -1
-		ret.Msg = err.Error()
-		return
-	}
-
-	ret.Data = map[string]interface{}{
-		"packages": model.BazaarPlugins(frontend, keyword),
 	}
 }
 

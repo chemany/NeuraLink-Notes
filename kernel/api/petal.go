@@ -38,6 +38,7 @@ func loadPetals(c *gin.Context) {
 	frontend := arg["frontend"].(string)
 	isPublish := model.IsReadOnlyRole(model.GetGinContextRole(c))
 
+	// 自动加载所有内置插件，无需用户干预
 	ret.Data = model.LoadPetals(frontend, isPublish)
 }
 

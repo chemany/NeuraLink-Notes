@@ -13,7 +13,6 @@ import {openFileById} from "./editor/util";
 import {
     bootSync,
     downloadProgress,
-    processSync,
     progressBackgroundTask,
     progressLoading,
     progressStatus,
@@ -23,6 +22,16 @@ import {
     setTitle,
     transactionError
 } from "./dialog/processSystem";
+
+// [同步功能已禁用] 定义本地空函数并挂载到 window
+// 使用 window 属性确保函数在全局作用域可用
+// 必须定义在类之前，因为类构造函数中会引用此函数
+window.processSync = function () {
+    // 同步功能已禁用，保留空实现
+};
+
+// 定义别名，确保类内部可以访问
+const processSync = window.processSync;
 import {initMessage} from "./dialog/message";
 import {getAllTabs} from "./layout/getAll";
 import {getLocalStorage} from "./protyle/util/compatibility";

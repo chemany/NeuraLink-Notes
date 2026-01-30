@@ -15,7 +15,6 @@ import {isMobile} from "../util/functions";
 import {confirmDialog} from "./confirmDialog";
 import {escapeHtml} from "../util/escape";
 import {getWorkspaceName} from "../util/noRelyPCFunction";
-import {needSubscribe} from "../util/needSubscribe";
 import {redirectToCheckAuth, setNoteBook} from "../util/pathName";
 import {reloadProtyle} from "../protyle/util/reload";
 import {Tab} from "../layout/Tab";
@@ -478,36 +477,8 @@ export const progressBackgroundTask = (tasks: { action: string }[]) => {
 };
 
 export const bootSync = () => {
-    fetchPost("/api/sync/getBootSync", {}, response => {
-        if (response.code === 1) {
-            const dialog = new Dialog({
-                width: isMobile() ? "92vw" : "50vw",
-                title: "🌩️ " + window.siyuan.languages.bootSyncFailed,
-                content: `<div class="b3-dialog__content">${response.msg}</div>
-<div class="b3-dialog__action">
-    <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
-    <button class="b3-button b3-button--text">${window.siyuan.languages.syncNow}</button>
-</div>`
-            });
-            dialog.element.setAttribute("data-key", Constants.DIALOG_BOOTSYNCFAILED);
-            const btnsElement = dialog.element.querySelectorAll(".b3-button");
-            btnsElement[0].addEventListener("click", () => {
-                dialog.destroy();
-            });
-            btnsElement[1].addEventListener("click", () => {
-                if (btnsElement[1].getAttribute("disabled")) {
-                    return;
-                }
-                btnsElement[1].setAttribute("disabled", "disabled");
-                fetchPost("/api/sync/performBootSync", {}, (syncResponse) => {
-                    if (syncResponse.code === 0) {
-                        dialog.destroy();
-                    }
-                    btnsElement[1].removeAttribute("disabled");
-                });
-            });
-        }
-    });
+    // [同步功能已禁用] 跳过同步检查，不打开任何 dialog
+    // 同步功能入口已从界面中移除
 };
 
 export const setTitle = (title: string) => {
@@ -553,69 +524,9 @@ export const downloadProgress = (data: { id: string, percent: number }) => {
     }
 };
 
-export const processSync = (data?: IWebSocketData, plugins?: Plugin[]) => {
-    /// #if MOBILE
-    const menuSyncUseElement = document.querySelector("#menuSyncNow use");
-    const barSyncUseElement = document.querySelector("#toolbarSync use");
-    if (!data) {
-        if (!window.siyuan.config.sync.enabled || (0 === window.siyuan.config.sync.provider && needSubscribe(""))) {
-            menuSyncUseElement?.setAttribute("xlink:href", "#iconCloudOff");
-            barSyncUseElement.setAttribute("xlink:href", "#iconCloudOff");
-        } else {
-            menuSyncUseElement?.setAttribute("xlink:href", "#iconCloudSucc");
-            barSyncUseElement.setAttribute("xlink:href", "#iconCloudSucc");
-        }
-        return;
-    }
-    menuSyncUseElement?.parentElement.classList.remove("fn__rotate");
-    barSyncUseElement.parentElement.classList.remove("fn__rotate");
-    if (data.code === 0) {  // syncing
-        menuSyncUseElement?.parentElement.classList.add("fn__rotate");
-        barSyncUseElement.parentElement.classList.add("fn__rotate");
-        menuSyncUseElement?.setAttribute("xlink:href", "#iconRefresh");
-        barSyncUseElement.setAttribute("xlink:href", "#iconRefresh");
-    } else if (data.code === 2) {    // error
-        menuSyncUseElement?.setAttribute("xlink:href", "#iconCloudError");
-        barSyncUseElement.setAttribute("xlink:href", "#iconCloudError");
-    } else if (data.code === 1) {   // success
-        menuSyncUseElement?.setAttribute("xlink:href", "#iconCloudSucc");
-        barSyncUseElement.setAttribute("xlink:href", "#iconCloudSucc");
-    }
-    /// #else
-    const iconElement = document.querySelector("#barSync");
-    if (!iconElement) {
-        return;
-    }
-    const useElement = iconElement.querySelector("use");
-    if (!data) {
-        iconElement.classList.remove("toolbar__item--active");
-        if (!window.siyuan.config.sync.enabled || (0 === window.siyuan.config.sync.provider && needSubscribe(""))) {
-            useElement.setAttribute("xlink:href", "#iconCloudOff");
-        } else {
-            useElement.setAttribute("xlink:href", "#iconCloudSucc");
-        }
-        return;
-    }
-    iconElement.firstElementChild.classList.remove("fn__rotate");
-    if (data.code === 0) {  // syncing
-        iconElement.classList.add("toolbar__item--active");
-        iconElement.firstElementChild.classList.add("fn__rotate");
-        useElement.setAttribute("xlink:href", "#iconRefresh");
-    } else if (data.code === 2) {    // error
-        iconElement.classList.remove("toolbar__item--active");
-        useElement.setAttribute("xlink:href", "#iconCloudError");
-    } else if (data.code === 1) {   // success
-        iconElement.classList.remove("toolbar__item--active");
-        useElement.setAttribute("xlink:href", "#iconCloudSucc");
-    }
-    /// #endif
-    plugins.forEach((item) => {
-        if (data.code === 0) {
-            item.eventBus.emit("sync-start", data);
-        } else if (data.code === 1) {
-            item.eventBus.emit("sync-end", data);
-        } else if (data.code === 2) {
-            item.eventBus.emit("sync-fail", data);
-        }
-    });
-};
+// [同步功能已禁用] 此函数保留为空实现，避免 UI 报错
+// 同步功能入口已从界面中移除
+export function processSync(data?: IWebSocketData, plugins?: Plugin[]): void {
+    // 保留函数定义以供调用，但功能已禁用
+    // 此函数用于处理同步状态，由于同步功能已禁用，保留为空实现
+}

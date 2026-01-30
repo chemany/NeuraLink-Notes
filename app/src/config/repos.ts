@@ -1,7 +1,7 @@
 import { isPaidUser, needSubscribe } from "../util/needSubscribe";
 import { fetchPost } from "../util/fetch";
 import { showMessage } from "../dialog/message";
-import { bindSyncCloudListEvent, getSyncCloudList } from "../sync/syncGuide";
+// [同步功能已禁用] import { bindSyncCloudListEvent, getSyncCloudList } from "../sync/syncGuide";
 import { processSync } from "../dialog/processSystem";
 import { getCloudURL } from "./util/about";
 import { openByMobile } from "../protyle/util/compatibility";

@@ -15,7 +15,7 @@ import {bazaar} from "./bazaar";
 import {query} from "./query";
 import {Dialog} from "../dialog";
 import {ai} from "./ai";
-import {flashcard} from "./flashcard";
+// [闪卡功能已禁用] import {flashcard} from "./flashcard";
 import {publish} from "./publish";
 import {App} from "../index";
 import {isHuawei, isInHarmony} from "../protyle/util/compatibility";
@@ -35,11 +35,14 @@ export const genItemPanel = (type: string, containerElement: Element, app: App) 
             ai.element = containerElement;
             ai.bindEvent();
             break;
+        // [闪卡功能已禁用]
+        /*
         case "card":
             containerElement.innerHTML = flashcard.genHTML();
             flashcard.element = containerElement;
             flashcard.bindEvent();
             break;
+        */
         case "image":
             containerElement.innerHTML = image.genHTML();
             image.element = containerElement;
@@ -123,7 +126,9 @@ export const openSetting = (app: App) => {
     <div class="config__tab-hr"></div>
     <li data-name="editor" class="b3-list-item--focus b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconEdit"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.editor}</span></li>
     <li data-name="filetree" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconFiles"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.fileTree}</span></li>
+    <!-- [闪卡功能已禁用]
     <li data-name="card" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconRiffCard"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.riffCard}</span></li>
+    -->
     <li data-name="AI" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconSparkles"></use></svg><span class="b3-list-item__text">AI</span></li>
     <li data-name="image" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconImage"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.assets}</span></li>
     <li data-name="export" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconUpload"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.export}</span></li>
@@ -132,7 +137,9 @@ export const openSetting = (app: App) => {
     <li data-name="search" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconSearch"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.search}</span></li>
     <li data-name="keymap" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconKeymap"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.keymap}</span></li>
     <li data-name="account" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconAccount"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.account}</span></li>
+    <!-- [同步功能已禁用]
     <li data-name="repos" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconCloud"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.cloud}</span></li>
+    -->
     <li data-name="publish" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconLanguage"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.publish}</span></li>
     <li data-name="about" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconInfo"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.about}</span></li>
   </ul>
@@ -140,7 +147,9 @@ export const openSetting = (app: App) => {
       <div class="fn__hr--b resize__move"></div>
       <div class="config__tab-container" data-name="editor">${editor.genHTML()}</div>
       <div class="config__tab-container fn__none" data-name="filetree"></div>
+      <!-- [闪卡功能已禁用]
       <div class="config__tab-container fn__none" data-name="card"></div>
+      -->
       <div class="config__tab-container config__tab-container--top fn__none" data-name="AI"></div>
       <div class="config__tab-container config__tab-container--top fn__none" data-name="image"></div>
       <div class="config__tab-container fn__none" data-name="export"></div>
@@ -149,7 +158,9 @@ export const openSetting = (app: App) => {
       <div class="config__tab-container fn__none" data-name="search"></div>
       <div class="config__tab-container fn__none" style="overflow: scroll" data-name="keymap"></div>
       <div class="config__tab-container config__tab-container--full fn__none" data-name="account"></div>
+      <!-- [同步功能已禁用]
       <div class="config__tab-container fn__none" data-name="repos"></div>
+      -->
       <div class="config__tab-container fn__none" data-name="publish"></div>
       <div class="config__tab-container fn__none" data-name="about"></div>
       <div class="fn__hr--b"></div>

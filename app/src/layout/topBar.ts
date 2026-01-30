@@ -1,8 +1,7 @@
 import { getWorkspaceName } from "../util/noRelyPCFunction";
 import { isInAndroid, isInHarmony, isInIOS, setStorageVal, updateHotkeyTip } from "../protyle/util/compatibility";
-import { exitSiYuan, processSync } from "../dialog/processSystem";
+import { exitSiYuan } from "../dialog/processSystem";
 import { goBack, goForward } from "../util/backForward";
-import { syncGuide } from "../sync/syncGuide";
 import { workspaceMenu } from "../menus/workspace";
 import { MenuItem } from "../menus/Menu";
 import { setMode } from "../util/assets";
@@ -14,12 +13,8 @@ import { ipcRenderer, webFrame } from "electron";
 /// #endif
 import { Constants } from "../constants";
 import { isBrowser, isWindow } from "../util/functions";
-import { fetchPost } from "../util/fetch";
-import { needSubscribe } from "../util/needSubscribe";
-import * as dayjs from "dayjs";
 import { exportLayout } from "./util";
 import { commandPanel } from "../boot/globalEvent/command/panel";
-import { openTopBarMenu } from "../plugin/openTopBarMenu";
 import { getDockByType } from "./tabUtil";
 
 export const initBar = (app: App) => {
@@ -29,9 +24,11 @@ export const initBar = (app: App) => {
     <span class="toolbar__text">${getWorkspaceName()}</span>
     <svg class="toolbar__svg"><use xlink:href="#iconDown"></use></svg>
 </div>
+<!-- [同步功能已禁用]
 <div id="barSync" class="ariaLabel toolbar__item${window.siyuan.config.readonly ? " fn__none" : ""}">
     <svg><use xlink:href="#iconCloudSucc"></use></svg>
 </div>
+-->
 <button id="barBack" class="ariaLabel toolbar__item toolbar__item--disabled" aria-label="${window.siyuan.languages.goBack} ${updateHotkeyTip(window.siyuan.config.keymap.general.goBack.custom)}">
     <svg><use xlink:href="#iconBack"></use></svg>
 </button>
@@ -45,9 +42,11 @@ export const initBar = (app: App) => {
 <div id="barSettings" class="toolbar__item ariaLabel${window.siyuan.config.readonly ? " fn__none" : ""}" aria-label="${window.siyuan.languages.config} ${updateHotkeyTip(window.siyuan.config.keymap.general.config.custom)}">
     <svg><use xlink:href="#iconSettings"></use></svg>
 </div>
+<!-- [插件功能已禁用] 插件入口由管理员内置，用户不可见
 <div id="barPlugins" class="toolbar__item ariaLabel" aria-label="${window.siyuan.languages.plugin}">
     <svg><use xlink:href="#iconPlugin"></use></svg>
 </div>
+-->
 <div id="barCommand" class="toolbar__item ariaLabel" aria-label="${window.siyuan.languages.commandPanel} ${updateHotkeyTip(window.siyuan.config.keymap.general.commandPanel.custom)}">
     <svg><use xlink:href="#iconTerminal"></use></svg>
 </div>
@@ -119,10 +118,6 @@ export const initBar = (app: App) => {
                 goForward(app);
                 event.stopPropagation();
                 break;
-            } else if (targetId === "barSync") {
-                syncGuide(app);
-                event.stopPropagation();
-                break;
             } else if (targetId === "barWorkspace") {
                 workspaceMenu(app, target.getBoundingClientRect());
                 event.stopPropagation();
@@ -191,10 +186,6 @@ export const initBar = (app: App) => {
                 }
                 event.stopPropagation();
                 break;
-            } else if (targetId === "barPlugins") {
-                openTopBarMenu(app, target);
-                event.stopPropagation();
-                break;
             } else if (targetId === "barCommand") {
                 commandPanel(app);
                 event.stopPropagation();
@@ -254,36 +245,7 @@ export const initBar = (app: App) => {
             target = target.parentElement;
         }
     });
-    const barSyncElement = toolbarElement.querySelector("#barSync");
-    barSyncElement.addEventListener("mouseenter", (event) => {
-        event.stopPropagation();
-        event.preventDefault();
-        fetchPost("/api/sync/getSyncInfo", {}, (response) => {
-            let html = "";
-            if (!window.siyuan.config.sync.enabled || (0 === window.siyuan.config.sync.provider && needSubscribe(""))) {
-                html = response.data.stat;
-            } else {
-                html = window.siyuan.languages._kernel[82].replace("%s", dayjs(response.data.synced).format("YYYY-MM-DD HH:mm")) + "<br>";
-                html += "&emsp;" + response.data.stat;
-                if (response.data.kernels.length > 0) {
-                    html += "<br>";
-                    html += window.siyuan.languages.currentKernel + "<br>";
-                    html += "&emsp;" + response.data.kernel + "/" + window.siyuan.config.system.kernelVersion + " (" + window.siyuan.config.system.os + "/" + window.siyuan.config.system.name + ")<br>";
-                    html += window.siyuan.languages.otherOnlineKernels + "<br>";
-                    response.data.kernels.forEach((item: {
-                        os: string;
-                        ver: string;
-                        hostname: string;
-                        id: string;
-                    }) => {
-                        html += `&emsp;${item.id}/${item.ver} (${item.os}/${item.hostname}) <br>`;
-                    });
-                }
-            }
-            barSyncElement.setAttribute("aria-label", html);
-        });
-    });
-    barSyncElement.setAttribute("aria-label", window.siyuan.config.sync.stat || (window.siyuan.languages.syncNow + " " + updateHotkeyTip(window.siyuan.config.keymap.general.syncNow.custom)));
+    // [同步功能已禁用] 移除barSync事件处理器
 };
 
 export const setZoom = (type: "zoomIn" | "zoomOut" | "restore") => {
