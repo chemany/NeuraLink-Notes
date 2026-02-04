@@ -1,4 +1,6 @@
 import { updateHotkeyTip } from "../../protyle/util/compatibility";
+import { clearBeforeResizeTop, recordBeforeResizeTop } from "../../protyle/util/resize";
+import { Constants } from "../../constants";
 import { Layout } from "../index";
 import { Wnd } from "../Wnd";
 import { Tab } from "../Tab";
@@ -13,19 +15,11 @@ import { adjustLayout, saveLayout, setPanelFocus } from "../util";
 import { getDockByType, resizeTabs } from "../tabUtil";
 import { Inbox } from "./Inbox";
 import { Protyle } from "../../protyle";
-import { Backlink } from "./Backlink";
-import { resetFloatDockSize } from "./util";
-import { hasClosestByClassName } from "../../protyle/util/hasClosest";
-import { App } from "../../index";
-import { Plugin } from "../../plugin";
-import { Custom } from "./Custom";
-import { clearBeforeResizeTop, recordBeforeResizeTop } from "../../protyle/util/resize";
-import { Constants } from "../../constants";
-
 import { AI } from "./AI";
 
+// [反向链接功能已禁用] 移除 "backlink"
 // [关系图谱功能已禁用] 移除 "graph" 和 "globalGraph"
-const TYPES = ["file", "outline", "inbox", "bookmark", "tag", "backlink", "ai"];
+const TYPES = ["file", "outline", "inbox", "bookmark", "tag", "ai"];
 
 export class Dock {
     public element: HTMLElement;
@@ -346,7 +340,8 @@ export class Dock {
                 }
                 let minSize = 232;
                 Array.from(this.layout.element.querySelectorAll(".file-tree")).find((item) => {
-                    if (item.classList.contains("sy__backlink") || item.classList.contains("sy__graph")
+                    // [反向链接功能已禁用] 移除 sy__backlink
+                    if (item.classList.contains("sy__graph")
                         || item.classList.contains("sy__globalGraph") || item.classList.contains("sy__inbox")) {
                         if (!item.classList.contains("fn__none") && !hasClosestByClassName(item, "fn__none")) {
                             minSize = 320;
@@ -507,9 +502,11 @@ export class Dock {
         if (!type) {
             return;
         }
+        /// #if !MOBILE
         if (this.pin) {
             recordBeforeResizeTop();
         }
+        /// #endif
         const target = this.element.querySelector(`[data-type="${type}"]`) as HTMLElement;
         if (show && target.classList.contains("dock__item--active")) {
             target.classList.remove("dock__item--active", "dock__item--activefocus");
@@ -643,18 +640,7 @@ export class Dock {
                             }
                         });
                         break;
-                    case "backlink":
-                        tab = new Tab({
-                            callback: (tab: Tab) => {
-                                tab.addModel(new Backlink({
-                                    app: this.app,
-                                    type: "pin",
-                                    tab,
-                                    blockId: editor?.protyle?.block?.rootID,
-                                }));
-                            }
-                        });
-                        break;
+                    // [反向链接功能已禁用] 移除 "backlink"
                     case "inbox":
                         tab = new Tab({
                             callback: (tab: Tab) => {
@@ -859,7 +845,7 @@ export class Dock {
         this.element.querySelectorAll(".dock__item--active").forEach((item) => {
             let size;
             if (this.position === "Left" || this.position === "Right") {
-                size = parseInt(item.getAttribute("data-width")) || (["graph", "globalGraph", "backlink"].includes(item.getAttribute("data-type")) ? 320 : 232);
+                size = parseInt(item.getAttribute("data-width")) || (["graph", "globalGraph"].includes(item.getAttribute("data-type")) ? 320 : 232);
             } else {
                 size = parseInt(item.getAttribute("data-height")) || 232;
             }

@@ -43,10 +43,10 @@ import {mathRender} from "../render/mathRender";
 import {duplicateBlock} from "../wysiwyg/commonHotkey";
 import {movePathTo, useShell} from "../../util/pathName";
 import {hintMoveBlock} from "../hint/extend";
-import {makeCard, quickMakeCard} from "../../card/makeCard";
+// [闪卡功能已禁用] import {makeCard, quickMakeCard} from "../../card/makeCard";
 import {transferBlockRef} from "../../menus/block";
 import {isMobile} from "../../util/functions";
-import {AIActions} from "../../ai/actions";
+// [AI功能已禁用] import {AIActions} from "../../ai/actions";
 import {activeBlur, renderTextMenu, showKeyboardToolbarUtil} from "../../mobile/util/keyboardToolbar";
 import {hideTooltip} from "../../dialog/tooltip";
 import {appearanceMenu} from "../toolbar/Font";
@@ -55,7 +55,6 @@ import {emitOpenMenu} from "../../plugin/EventBus";
 import {insertAttrViewBlockAnimation, updateHeader} from "../render/av/row";
 import {avContextmenu, duplicateCompletely} from "../render/av/action";
 import {getPlainText} from "../util/paste";
-import {addEditorToDatabase} from "../render/av/addToDatabase";
 import {processClonePHElement} from "../render/util";
 /// #if !MOBILE
 import {openFileById} from "../../editor/util";
@@ -739,6 +738,8 @@ export class Gutter {
                 }).element);
             }
         }
+        // [AI功能已禁用]
+        /*
         if (!protyle.disabled) {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "ai",
@@ -750,6 +751,7 @@ export class Gutter {
                 }
             }).element);
         }
+        */
         const copyMenu: IMenu[] = (copySubMenu(Array.from(selectsElement).map(item => item.getAttribute("data-node-id")), true, selectsElement[0]) as IMenu[]).concat([{
             id: "copyPlainText",
             iconHTML: "",
@@ -873,36 +875,7 @@ export class Gutter {
             // this.genHeights(selectsElement, protyle);
         }
         if (!window.siyuan.config.readonly) {
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: "separator_quickMakeCard",
-                type: "separator"
-            }).element);
-            const allCardsMade = !selectsElement.some(item => !item.hasAttribute(Constants.CUSTOM_RIFF_DECKS) && item.getAttribute("data-type") !== "NodeThematicBreak");
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: allCardsMade ? "removeCard" : "quickMakeCard",
-                label: allCardsMade ? window.siyuan.languages.removeCard : window.siyuan.languages.quickMakeCard,
-                accelerator: window.siyuan.config.keymap.editor.general.quickMakeCard.custom,
-                icon: "iconRiffCard",
-                click() {
-                    quickMakeCard(protyle, selectsElement);
-                }
-            }).element);
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: "addToDeck",
-                label: window.siyuan.languages.addToDeck,
-                icon: "iconRiffCard",
-                ignore: !window.siyuan.config.flashcard.deck,
-                click() {
-                    const ids: string[] = [];
-                    selectsElement.forEach(item => {
-                        if (item.getAttribute("data-type") === "NodeThematicBreak") {
-                            return;
-                        }
-                        ids.push(item.getAttribute("data-node-id"));
-                    });
-                    makeCard(protyle.app, ids);
-                }
-            }).element);
+            // [闪卡功能已禁用]
         }
 
         if (protyle?.app?.plugins) {
@@ -1259,6 +1232,8 @@ export class Gutter {
                 submenu: turnIntoSubmenu
             }).element);
         }
+        // [AI功能已禁用]
+        /*
         if (!protyle.disabled && !nodeElement.classList.contains("hr")) {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "ai",
@@ -1270,6 +1245,7 @@ export class Gutter {
                 }
             }).element);
         }
+        */
 
         const copyMenu = (copySubMenu([id], true, nodeElement) as IMenu[]).concat([{
             id: "copyPlainText",
@@ -2007,26 +1983,7 @@ export class Gutter {
             }).element);
         }
         if (type !== "NodeThematicBreak" && !window.siyuan.config.readonly) {
-            const isCardMade = nodeElement.hasAttribute(Constants.CUSTOM_RIFF_DECKS);
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: isCardMade ? "removeCard" : "quickMakeCard",
-                icon: "iconRiffCard",
-                label: isCardMade ? window.siyuan.languages.removeCard : window.siyuan.languages.quickMakeCard,
-                accelerator: window.siyuan.config.keymap.editor.general.quickMakeCard.custom,
-                click() {
-                    quickMakeCard(protyle, [nodeElement]);
-                }
-            }).element);
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: "addToDeck",
-                label: window.siyuan.languages.addToDeck,
-                ignore: !window.siyuan.config.flashcard.deck,
-                icon: "iconRiffCard",
-                click() {
-                    makeCard(protyle.app, [id]);
-                }
-            }).element);
-            window.siyuan.menus.menu.append(new MenuItem({id: "separator_5", type: "separator"}).element);
+            // [闪卡功能已禁用]
         }
 
         if (protyle?.app?.plugins) {

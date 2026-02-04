@@ -265,7 +265,7 @@ func RenderDynamicIconContentTemplate(content, id string) (ret string) {
 	if nil == node {
 		return
 	}
-	block := sql.BuildBlockFromNode(node, tree)
+	block := sql.BuildBlockFromNode(node, tree, getUserID())
 	if nil == block {
 		return
 	}
@@ -311,7 +311,7 @@ func RenderTemplate(p, id string, preview bool) (tree *parse.Tree, dom string, e
 		err = ErrBlockNotFound
 		return
 	}
-	block := sql.BuildBlockFromNode(node, tree)
+	block := sql.BuildBlockFromNode(node, tree, getUserID())
 	md, err := os.ReadFile(p)
 	if err != nil {
 		return

@@ -1538,7 +1538,11 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 					unlinks = append(unlinks, n)
 				}
 			} else if n.IsTextMarkType("block-ref") {
-				sql.CacheRef(subTree, n)
+				if nil != tx.ctx {
+					sql.CacheRefWithContext(tx.ctx, subTree, n)
+				} else {
+					sql.CacheRef(subTree, n, "")
+				}
 
 				if "d" == n.TextMarkBlockRefSubtype {
 					// 偶发编辑文档标题后引用处的动态锚文本不更新 https://github.com/siyuan-note/siyuan/issues/5891

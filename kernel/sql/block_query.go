@@ -28,7 +28,7 @@ import (
 	"github.com/88250/lute/ast"
 	"github.com/88250/vitess-sqlparser/sqlparser"
 	"github.com/emirpasic/gods/sets/hashset"
-	sqlparser2 "github.com/rqlite/sql"
+	rqlite_sql "github.com/rqlite/sql"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
 )
@@ -80,7 +80,7 @@ func QueryRootBlockByCondition(condition string, limit int) (ret []*Block) {
 	for rows.Next() {
 		var block Block
 		var sepCount int
-		if err = rows.Scan(&block.ID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated, &sepCount); err != nil {
+		if err = rows.Scan(&block.ID, &block.UserID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated, &sepCount); err != nil {
 			logging.LogErrorf("query scan field failed: %s", err)
 			return
 		}
@@ -451,7 +451,7 @@ func Query(stmt string, limit int) (ret []map[string]interface{}, err error) {
 	// Kernel API `/api/query/sql` support `||` operator https://github.com/siyuan-note/siyuan/issues/9662
 	// 这里为了支持 || 操作符，使用了另一个 sql 解析器，但是这个解析器无法处理 UNION https://github.com/siyuan-note/siyuan/issues/8226
 	// 考虑到 UNION 的使用场景不多，这里还是以支持 || 操作符为主
-	p := sqlparser2.NewParser(strings.NewReader(stmt))
+	p := rqlite_sql.NewParser(strings.NewReader(stmt))
 	parsedStmt2, err := p.ParseStatement()
 	if err != nil {
 		if !strings.Contains(stmt, "||") {
@@ -481,10 +481,10 @@ func Query(stmt string, limit int) (ret []map[string]interface{}, err error) {
 		}
 	} else {
 		switch parsedStmt2.(type) {
-		case *sqlparser2.SelectStatement:
-			slct := parsedStmt2.(*sqlparser2.SelectStatement)
+		case *rqlite_sql.SelectStatement:
+			slct := parsedStmt2.(*rqlite_sql.SelectStatement)
 			if nil == slct.LimitExpr {
-				slct.LimitExpr = &sqlparser2.NumberLit{Value: strconv.Itoa(limit)}
+				slct.LimitExpr = &rqlite_sql.NumberLit{Value: strconv.Itoa(limit)}
 			}
 			stmt = slct.String()
 		default:
@@ -530,6 +530,7 @@ func ToBlocks(result []map[string]interface{}) (ret []*Block) {
 	for _, row := range result {
 		b := &Block{
 			ID:       row["id"].(string),
+			UserID:   row["user_id"].(string),
 			ParentID: row["parent_id"].(string),
 			RootID:   row["root_id"].(string),
 			Hash:     row["hash"].(string),
@@ -625,10 +626,12 @@ func queryRawStmt(stmt string, limit int) (ret []map[string]interface{}, err err
 }
 
 func SelectBlocksRawStmtNoParse(stmt string, limit int) (ret []*Block) {
+	stmt = InjectUserIDFilter(stmt)
 	return selectBlocksRawStmt(stmt, limit)
 }
 
 func SelectBlocksRawStmt(stmt string, page, limit int) (ret []*Block) {
+	stmt = InjectUserIDFilter(stmt)
 	parsedStmt, err := sqlparser.Parse(stmt)
 	if err != nil {
 		return selectBlocksRawStmt(stmt, limit)
@@ -707,7 +710,7 @@ func SelectBlocksRegex(stmt string, exp *regexp.Regexp, name, alias, memo, ial b
 		}
 
 		var block Block
-		if err := rows.Scan(&block.ID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
+		if err := rows.Scan(&block.ID, &block.UserID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
 			logging.LogErrorf("query scan field failed: %s\n%s", err, logging.ShortStack())
 			return
 		}
@@ -773,7 +776,7 @@ func selectBlocksRawStmt(stmt string, limit int) (ret []*Block) {
 
 func scanBlockRows(rows *sql.Rows) (ret *Block) {
 	var block Block
-	if err := rows.Scan(&block.ID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
+	if err := rows.Scan(&block.ID, &block.UserID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
 		logging.LogErrorf("query scan field failed: %s\n%s", err, logging.ShortStack())
 		return
 	}
@@ -784,7 +787,7 @@ func scanBlockRows(rows *sql.Rows) (ret *Block) {
 
 func scanBlockRow(row *sql.Row) (ret *Block) {
 	var block Block
-	if err := row.Scan(&block.ID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
+	if err := row.Scan(&block.ID, &block.UserID, &block.ParentID, &block.RootID, &block.Hash, &block.Box, &block.Path, &block.HPath, &block.Name, &block.Alias, &block.Memo, &block.Tag, &block.Content, &block.FContent, &block.Markdown, &block.Length, &block.Type, &block.SubType, &block.IAL, &block.Sort, &block.Created, &block.Updated); err != nil {
 		if sql.ErrNoRows != err {
 			logging.LogErrorf("query scan field failed: %s\n%s", err, logging.ShortStack())
 		}
@@ -1062,7 +1065,7 @@ func GetBlocksByBoxWithContext(ctx WorkspaceContext, boxID string) (ret []*Block
 // QueryWithContext 使用 WorkspaceContext 执行 SQL 查询
 func QueryWithContext(ctx WorkspaceContext, stmt string, limit int) (ret []map[string]interface{}, err error) {
 	// 使用与 Query 函数相同的逻辑,但使用 queryWithContext
-	p := sqlparser2.NewParser(strings.NewReader(stmt))
+	p := rqlite_sql.NewParser(strings.NewReader(stmt))
 	parsedStmt2, err := p.ParseStatement()
 	if err != nil {
 		if !strings.Contains(stmt, "||") {
@@ -1090,10 +1093,10 @@ func QueryWithContext(ctx WorkspaceContext, stmt string, limit int) (ret []map[s
 		}
 	} else {
 		switch parsedStmt2.(type) {
-		case *sqlparser2.SelectStatement:
-			slct := parsedStmt2.(*sqlparser2.SelectStatement)
+		case *rqlite_sql.SelectStatement:
+			slct := parsedStmt2.(*rqlite_sql.SelectStatement)
 			if nil == slct.LimitExpr {
-				slct.LimitExpr = &sqlparser2.NumberLit{Value: strconv.Itoa(limit)}
+				slct.LimitExpr = &rqlite_sql.NumberLit{Value: strconv.Itoa(limit)}
 			}
 			stmt = slct.String()
 		default:

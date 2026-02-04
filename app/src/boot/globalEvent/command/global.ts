@@ -54,9 +54,7 @@ export const globalCommand = (command: string, app: App) => {
         case "inbox":
             openDock(command);
             return true;
-        case "backlinks":
-            openDock("backlink");
-            return true;
+        // [反向链接功能已禁用]
         case "mainMenu":
             popMenu();
             return true;
@@ -80,9 +78,7 @@ export const globalCommand = (command: string, app: App) => {
         case "inbox":
             getDockByType(command).toggleModel(command);
             return true;
-        case "backlinks":
-            getDockByType("backlink").toggleModel("backlink");
-            return true;
+        // [反向链接功能已禁用]
         // [关系图谱功能已禁用] 以下命令已注释
         /*
         case "graphView":

@@ -118,11 +118,8 @@ export const windowKeyUp = (app: App, event: KeyboardEvent) => {
             }
             const currentType = currentLiElement.getAttribute("data-type");
             if (currentType) {
-                if (currentType === "riffCard") {
-                    openCard(app);
-                } else {
-                    getDockByType(currentType).toggleModel(currentType, true);
-                }
+                // [闪卡功能已禁用]
+                getDockByType(currentType).toggleModel(currentType, true);
                 if (document.activeElement) {
                     (document.activeElement as HTMLElement).blur();
                 }

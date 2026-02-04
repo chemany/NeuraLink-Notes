@@ -283,17 +283,10 @@ export class MeetingManager {
         // 解析会议纪要三行内容
         const parsedSummary = this.parseMeetingSummary(cleanSummary);
 
-        // 构建紧凑的思源笔记块格式
-        const timeStr = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-
-        // 使用思源笔记原生块格式，更紧凑
-        const content = `> ✨ **AI 纪要** <span style="opacity: 0.6; font-size: 0.9em;">${timeStr}</span>
-> 📌 **主题**：${parsedSummary.theme}
+        // 构建紧凑的纪要格式（仅保留核心三要素）
+        const content = `> 📌 **AI纪要主题**：${parsedSummary.theme}
 > 💬 **要点**：${parsedSummary.discussion}
 > ⚡ **后续**：${parsedSummary.actions}
-
-> 🔽 **转录原文**（点击展开）
-> ${cleanTranscription.split('\n').map(line => '> ' + line).join('\n')}
 `;
 
         const event = new CustomEvent("neura-meeting-transcription", { detail: content });

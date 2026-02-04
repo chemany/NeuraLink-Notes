@@ -227,7 +227,7 @@ func (m *BlockTreeManager) initTables(db *sql.DB) error {
 	}
 
 	// 创建表
-	_, err = db.Exec("CREATE TABLE blocktrees (id, root_id, parent_id, box_id, path, hpath, updated, type)")
+	_, err = db.Exec("CREATE TABLE blocktrees (id, user_id, root_id, parent_id, box_id, path, hpath, updated, type)")
 	if err != nil {
 		return err
 	}
@@ -248,6 +248,7 @@ func (m *BlockTreeManager) createIndexes(db *sql.DB) error {
 		sql  string
 	}{
 		{"idx_blocktrees_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_id ON blocktrees(id)"},
+		{"idx_blocktrees_user_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_user_id ON blocktrees(user_id)"},
 		{"idx_blocktrees_box_hpath", "CREATE INDEX IF NOT EXISTS idx_blocktrees_box_hpath ON blocktrees(box_id, hpath)"},
 		{"idx_blocktrees_box_path", "CREATE INDEX IF NOT EXISTS idx_blocktrees_box_path ON blocktrees(box_id, path)"},
 		{"idx_blocktrees_root_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_root_id ON blocktrees(root_id)"},
@@ -270,6 +271,8 @@ func (m *BlockTreeManager) ensureIndexes(db *sql.DB) {
 		name string
 		sql  string
 	}{
+		{"idx_blocktrees_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_id ON blocktrees(id)"},
+		{"idx_blocktrees_user_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_user_id ON blocktrees(user_id)"},
 		{"idx_blocktrees_box_hpath", "CREATE INDEX IF NOT EXISTS idx_blocktrees_box_hpath ON blocktrees(box_id, hpath)"},
 		{"idx_blocktrees_box_path", "CREATE INDEX IF NOT EXISTS idx_blocktrees_box_path ON blocktrees(box_id, path)"},
 		{"idx_blocktrees_root_id", "CREATE INDEX IF NOT EXISTS idx_blocktrees_root_id ON blocktrees(root_id)"},

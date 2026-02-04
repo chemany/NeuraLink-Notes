@@ -131,6 +131,21 @@ func getCurrentTasks() (ret []*Task) {
 	return
 }
 
+// GetCurrentTasks 返回当前任务列表，供外部API使用
+func GetCurrentTasks() []map[string]interface{} {
+	tasks := getCurrentTasks()
+	result := make([]map[string]interface{}, 0, len(tasks))
+	for _, t := range tasks {
+		result = append(result, map[string]interface{}{
+			"action":  t.Action,
+			"created": t.Created.Unix(),
+			"async":   t.Async,
+			"delay":   t.Delay.Milliseconds(),
+		})
+	}
+	return result
+}
+
 const (
 	RepoCheckout                    = "task.repo.checkout"                 // 从快照中检出
 	RepoAutoPurge                   = "task.repo.autoPurge"                // 自动清理数据仓库

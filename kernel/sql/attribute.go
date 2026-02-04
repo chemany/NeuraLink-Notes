@@ -18,6 +18,7 @@ package sql
 
 type Attribute struct {
 	ID      string
+	UserID  string
 	Name    string
 	Value   string
 	Type    string

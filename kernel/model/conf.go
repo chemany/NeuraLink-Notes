@@ -736,12 +736,43 @@ func (conf *AppConf) Box(boxID string) *Box {
 }
 
 // BoxWithContext 使用 WorkspaceContext 获取已打开的笔记本
-func (conf *AppConf) BoxWithContext(ctx *WorkspaceContext, boxID string) *Box {
-	for _, box := range conf.GetOpenedBoxesWithContext(ctx) {
+func (ac *AppConf) BoxWithContext(ctx *WorkspaceContext, boxID string) *Box {
+	// 先从当前打开的笔记本中找
+	for _, box := range ac.GetOpenedBoxesWithContext(ctx) {
 		if box.ID == boxID {
 			return box
 		}
 	}
+
+	// 如果没找到，尝试直接从磁盘加载（解决新建笔记本后的时序问题）
+	dataDir := ctx.GetDataDir()
+	boxDirPath := filepath.Join(dataDir, boxID)
+	boxConfPath := filepath.Join(boxDirPath, ".siyuan", "conf.json")
+	if filelock.IsExist(boxConfPath) {
+		data, readErr := filelock.ReadFile(boxConfPath)
+		if readErr == nil {
+			boxConf := conf.NewBoxConf()
+			if err := gulu.JSON.UnmarshalJSON(data, boxConf); err == nil {
+				return &Box{
+					ID:       boxID,
+					Name:     boxConf.Name,
+					Icon:     boxConf.Icon,
+					Sort:     boxConf.Sort,
+					SortMode: boxConf.SortMode,
+					Closed:   boxConf.Closed,
+				}
+			}
+		}
+	}
+	
+	// 如果配置不存在但目录存在，尝试作为一个损坏但存在的笔记本返回（Fallback）
+	if gulu.File.IsDir(boxDirPath) {
+		return &Box{
+			ID:   boxID,
+			Name: boxID, // 以 ID 作为临时名称
+		}
+	}
+
 	return nil
 }
 
@@ -848,17 +879,46 @@ func (conf *AppConf) language(num int) (ret string) {
 }
 
 func InitBoxes() {
-	blockCount := treenode.CountBlocks()
+	// 获取所有用户的工作空间根目录
+	usersRoot := util.WorkspaceDir
+	logging.LogInfof("InitBoxes: scanning usersRoot=[%s]", usersRoot)
+	entries, err := os.ReadDir(usersRoot)
+	if err != nil {
+		logging.LogErrorf("read users root [%s] failed: %s", usersRoot, err)
+		// 兜底逻辑：仅初始化默认工作空间
+		initWorkspace(GetDefaultWorkspaceContext())
+		return
+	}
+	logging.LogInfof("InitBoxes: found %d entries in usersRoot", len(entries))
+
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			logging.LogDebugf("InitBoxes: skipping entry [%s] (isDir=%v)", entry.Name(), entry.IsDir())
+			continue
+		}
+
+		userID := entry.Name()
+		workspacePath := filepath.Join(usersRoot, userID)
+		logging.LogInfof("InitBoxes: initializing workspace for userID=[%s] at [%s]", userID, workspacePath)
+		// 创建该用户的上下文 (假设用户名同 ID，或后续从数据库加载)
+		ctx := NewWorkspaceContextWithUser(workspacePath, userID, userID)
+		initWorkspace(ctx)
+	}
+}
+
+func initWorkspace(ctx *WorkspaceContext) {
+	blockCount := treenode.CountBlocksWithUserID(ctx.GetUserID())
 	initialized := 0 < blockCount
-	for _, box := range Conf.GetOpenedBoxes() {
+	
+	openedBoxes := Conf.GetOpenedBoxesWithContext(ctx)
+	for _, box := range openedBoxes {
 		box.UpdateHistoryGenerated() // 初始化历史生成时间为当前时间
 
 		if !initialized {
-			indexBox(box.ID)
+			indexBoxWithContext(ctx, box.ID)
 		}
 	}
-
-	logging.LogInfof("tree/block count [%d/%d]", treenode.CountTrees(), blockCount)
+	logging.LogInfof("workspace [%s] tree/block count [%d/%d]", ctx.GetUserID(), len(openedBoxes), blockCount)
 }
 
 func IsSubscriber() bool {

@@ -355,6 +355,10 @@ func IsBlockFolded(id string) (isFolded, isRoot bool) {
 }
 
 func RecentUpdatedBlocks() (ret []*Block) {
+	return RecentUpdatedBlocksWithContext(GetDefaultWorkspaceContext())
+}
+
+func RecentUpdatedBlocksWithContext(ctx *WorkspaceContext) (ret []*Block) {
 	ret = []*Block{}
 
 	sqlStmt := "SELECT * FROM blocks WHERE type = 'p' AND length > 1"
@@ -371,6 +375,9 @@ func RecentUpdatedBlocks() (ret []*Block) {
 		}
 		sqlStmt += buf.String()
 	}
+
+	// 注入用户 ID 过滤
+	sqlStmt = sql.InjectUserIDFilter(sqlStmt)
 
 	sqlStmt += " ORDER BY updated DESC"
 	sqlBlocks := sql.SelectBlocksRawStmt(sqlStmt, 1, 16)
@@ -1032,7 +1039,7 @@ func GetChildBlocks(id string) (ret []*ChildBlock) {
 	if ast.NodeHeading == node.Type {
 		children := treenode.HeadingChildren(node)
 		for _, c := range children {
-			block := sql.BuildBlockFromNode(c, tree)
+			block := sql.BuildBlockFromNode(c, tree, getUserID())
 			ret = append(ret, &ChildBlock{
 				ID:       c.ID,
 				Type:     treenode.TypeAbbr(c.Type.String()),
@@ -1053,7 +1060,7 @@ func GetChildBlocks(id string) (ret []*ChildBlock) {
 			continue
 		}
 
-		block := sql.BuildBlockFromNode(c, tree)
+		block := sql.BuildBlockFromNode(c, tree, getUserID())
 		ret = append(ret, &ChildBlock{
 			ID:       c.ID,
 			Type:     treenode.TypeAbbr(c.Type.String()),
@@ -1085,7 +1092,7 @@ func GetTailChildBlocks(id string, n int) (ret []*ChildBlock) {
 		children := treenode.HeadingChildren(node)
 		for i := len(children) - 1; 0 <= i; i-- {
 			c := children[i]
-			block := sql.BuildBlockFromNode(c, tree)
+			block := sql.BuildBlockFromNode(c, tree, getUserID())
 			ret = append(ret, &ChildBlock{
 				ID:       c.ID,
 				Type:     treenode.TypeAbbr(c.Type.String()),
@@ -1109,7 +1116,7 @@ func GetTailChildBlocks(id string, n int) (ret []*ChildBlock) {
 			continue
 		}
 
-		block := sql.BuildBlockFromNode(c, tree)
+		block := sql.BuildBlockFromNode(c, tree, getUserID())
 		ret = append(ret, &ChildBlock{
 			ID:       c.ID,
 			Type:     treenode.TypeAbbr(c.Type.String()),
@@ -1158,7 +1165,7 @@ func getBlock(id string, tree *parse.Tree) (ret *Block, err error) {
 		return
 	}
 
-	sqlBlock := sql.BuildBlockFromNode(node, tree)
+	sqlBlock := sql.BuildBlockFromNode(node, tree, getUserID())
 	if nil == sqlBlock {
 		return
 	}
@@ -1189,7 +1196,7 @@ func getBlockWithContext(ctx *WorkspaceContext, id string, tree *parse.Tree) (re
 		return
 	}
 
-	sqlBlock := sql.BuildBlockFromNode(node, tree)
+	sqlBlock := sql.BuildBlockFromNode(node, tree, getUserID())
 	if nil == sqlBlock {
 		return
 	}

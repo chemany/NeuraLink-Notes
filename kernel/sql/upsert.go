@@ -43,18 +43,18 @@ func init() {
 }
 
 const (
-	BlocksInsert                   = "INSERT INTO blocks (id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
-	BlocksFTSInsert                = "INSERT INTO blocks_fts (id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
-	BlocksFTSCaseInsensitiveInsert = "INSERT INTO blocks_fts_case_insensitive (id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
-	BlocksPlaceholder              = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	BlocksInsert                   = "INSERT INTO blocks (id, user_id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
+	BlocksFTSInsert                = "INSERT INTO blocks_fts (id, user_id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
+	BlocksFTSCaseInsensitiveInsert = "INSERT INTO blocks_fts_case_insensitive (id, user_id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated) VALUES %s"
+	BlocksPlaceholder              = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
-	SpansInsert      = "INSERT INTO spans (id, block_id, root_id, box, path, content, markdown, type, ial) VALUES %s"
-	SpansPlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	SpansInsert      = "INSERT INTO spans (id, user_id, block_id, root_id, box, path, content, markdown, type, ial) VALUES %s"
+	SpansPlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 
-	AssetsPlaceholder             = "(?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	AttributesPlaceholder         = "(?, ?, ?, ?, ?, ?, ?, ?)"
-	RefsPlaceholder               = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	FileAnnotationRefsPlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	AssetsPlaceholder             = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	AttributesPlaceholder         = "(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	RefsPlaceholder               = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	FileAnnotationRefsPlaceholder = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 )
 
 func insertBlocks(tx *sql.Tx, blocks []*Block, context map[string]interface{}) (err error) {
@@ -89,6 +89,7 @@ func insertBlocks0(tx *sql.Tx, bulk []*Block, context map[string]interface{}) (e
 	for _, b := range bulk {
 		valueStrings = append(valueStrings, BlocksPlaceholder)
 		valueArgs = append(valueArgs, b.ID)
+		valueArgs = append(valueArgs, b.UserID)
 		valueArgs = append(valueArgs, b.ParentID)
 		valueArgs = append(valueArgs, b.RootID)
 		valueArgs = append(valueArgs, b.Hash)
@@ -175,6 +176,7 @@ func insertAttribute0(tx *sql.Tx, bulk []*Attribute) (err error) {
 	for _, attr := range bulk {
 		valueStrings = append(valueStrings, AttributesPlaceholder)
 		valueArgs = append(valueArgs, attr.ID)
+		valueArgs = append(valueArgs, attr.UserID)
 		valueArgs = append(valueArgs, attr.Name)
 		valueArgs = append(valueArgs, attr.Value)
 		valueArgs = append(valueArgs, attr.Type)
@@ -183,7 +185,7 @@ func insertAttribute0(tx *sql.Tx, bulk []*Attribute) (err error) {
 		valueArgs = append(valueArgs, attr.Box)
 		valueArgs = append(valueArgs, attr.Path)
 	}
-	stmt := fmt.Sprintf("INSERT INTO attributes (id, name, value, type, block_id, root_id, box, path) VALUES %s", strings.Join(valueStrings, ","))
+	stmt := fmt.Sprintf("INSERT INTO attributes (id, user_id, name, value, type, block_id, root_id, box, path) VALUES %s", strings.Join(valueStrings, ","))
 	err = prepareExecInsertTx(tx, stmt, valueArgs)
 	return
 }
@@ -223,6 +225,7 @@ func insertAsset0(tx *sql.Tx, bulk []*Asset) (err error) {
 	for _, asset := range bulk {
 		valueStrings = append(valueStrings, AssetsPlaceholder)
 		valueArgs = append(valueArgs, asset.ID)
+		valueArgs = append(valueArgs, asset.UserID)
 		valueArgs = append(valueArgs, asset.BlockID)
 		valueArgs = append(valueArgs, asset.RootID)
 		valueArgs = append(valueArgs, asset.Box)
@@ -232,7 +235,7 @@ func insertAsset0(tx *sql.Tx, bulk []*Asset) (err error) {
 		valueArgs = append(valueArgs, asset.Title)
 		valueArgs = append(valueArgs, asset.Hash)
 	}
-	stmt := fmt.Sprintf("INSERT INTO assets (id, block_id, root_id, box, docpath, path, name, title, hash) VALUES %s", strings.Join(valueStrings, ","))
+	stmt := fmt.Sprintf("INSERT INTO assets (id, user_id, block_id, root_id, box, docpath, path, name, title, hash) VALUES %s", strings.Join(valueStrings, ","))
 	err = prepareExecInsertTx(tx, stmt, valueArgs)
 	return
 }
@@ -272,6 +275,7 @@ func insertSpans0(tx *sql.Tx, bulk []*Span) (err error) {
 	for _, span := range bulk {
 		valueStrings = append(valueStrings, SpansPlaceholder)
 		valueArgs = append(valueArgs, span.ID)
+		valueArgs = append(valueArgs, span.UserID)
 		valueArgs = append(valueArgs, span.BlockID)
 		valueArgs = append(valueArgs, span.RootID)
 		valueArgs = append(valueArgs, span.Box)
@@ -321,6 +325,7 @@ func insertRefs0(tx *sql.Tx, bulk []*Ref) (err error) {
 	for _, ref := range bulk {
 		valueStrings = append(valueStrings, RefsPlaceholder)
 		valueArgs = append(valueArgs, ref.ID)
+		valueArgs = append(valueArgs, ref.UserID)
 		valueArgs = append(valueArgs, ref.DefBlockID)
 		valueArgs = append(valueArgs, ref.DefBlockParentID)
 		valueArgs = append(valueArgs, ref.DefBlockRootID)
@@ -335,7 +340,7 @@ func insertRefs0(tx *sql.Tx, bulk []*Ref) (err error) {
 
 		putRefCache(ref)
 	}
-	stmt := fmt.Sprintf("INSERT INTO refs (id, def_block_id, def_block_parent_id, def_block_root_id, def_block_path, block_id, root_id, box, path, content, markdown, type) VALUES %s", strings.Join(valueStrings, ","))
+	stmt := fmt.Sprintf("INSERT INTO refs (id, user_id, def_block_id, def_block_parent_id, def_block_root_id, def_block_path, block_id, root_id, box, path, content, markdown, type) VALUES %s", strings.Join(valueStrings, ","))
 	err = prepareExecInsertTx(tx, stmt, valueArgs)
 	return
 }
@@ -375,6 +380,7 @@ func insertFileAnnotationRefs0(tx *sql.Tx, bulk []*FileAnnotationRef) (err error
 	for _, ref := range bulk {
 		valueStrings = append(valueStrings, FileAnnotationRefsPlaceholder)
 		valueArgs = append(valueArgs, ref.ID)
+		valueArgs = append(valueArgs, ref.UserID)
 		valueArgs = append(valueArgs, ref.FilePath)
 		valueArgs = append(valueArgs, ref.AnnotationID)
 		valueArgs = append(valueArgs, ref.BlockID)
@@ -384,21 +390,32 @@ func insertFileAnnotationRefs0(tx *sql.Tx, bulk []*FileAnnotationRef) (err error
 		valueArgs = append(valueArgs, ref.Content)
 		valueArgs = append(valueArgs, ref.Type)
 	}
-	stmt := fmt.Sprintf("INSERT INTO file_annotation_refs (id, file_path, annotation_id, block_id, root_id, box, path, content, type) VALUES %s", strings.Join(valueStrings, ","))
+	stmt := fmt.Sprintf("INSERT INTO file_annotation_refs (id, user_id, file_path, annotation_id, block_id, root_id, box, path, content, type) VALUES %s", strings.Join(valueStrings, ","))
 	err = prepareExecInsertTx(tx, stmt, valueArgs)
 	return
 }
 
 func indexTree(tx *sql.Tx, tree *parse.Tree, context map[string]interface{}) (err error) {
-	blocks, spans, assets, attributes := fromTree(tree.Root, tree)
-	refs, fileAnnotationRefs := refsFromTree(tree)
+	var userID string
+	if val, ok := context["userID"]; ok {
+		userID, _ = val.(string)
+	}
+
+	blocks, spans, assets, attributes := fromTree(tree.Root, tree, userID)
+	refs, fileAnnotationRefs := refsFromTree(tree, userID)
 	err = insertTree0(tx, tree, context, blocks, spans, assets, attributes, refs, fileAnnotationRefs)
 	return
 }
 
 func upsertTree(tx *sql.Tx, tree *parse.Tree, context map[string]interface{}) (err error) {
 	oldBlockHashes := queryBlockHashes(tree.ID)
-	blocks, spans, assets, attributes := fromTree(tree.Root, tree)
+	
+	var userID string
+	if val, ok := context["userID"]; ok {
+		userID, _ = val.(string)
+	}
+
+	blocks, spans, assets, attributes := fromTree(tree.Root, tree, userID)
 	newBlockHashes := map[string]string{}
 	for _, block := range blocks {
 		newBlockHashes[block.ID] = block.Hash
@@ -445,7 +462,7 @@ func upsertTree(tx *sql.Tx, tree *parse.Tree, context map[string]interface{}) (e
 		return
 	}
 
-	refs, fileAnnotationRefs := refsFromTree(tree)
+	refs, fileAnnotationRefs := refsFromTree(tree, userID)
 	if err = insertTree0(tx, tree, context, blocks, spans, assets, attributes, refs, fileAnnotationRefs); err != nil {
 		return
 	}
@@ -538,4 +555,36 @@ func getIndexIgnoreLines() (ret []string) {
 		indexIgnore = append(indexIgnore, line)
 	}
 	return
+}
+
+// InsertRootBlockSync 同步插入文档根块到 blocks 表
+// 用于新建文档时立即让 GetBlock 能查询到
+func InsertRootBlockSync(tree *parse.Tree, userID string) (err error) {
+	if nil == db {
+		return fmt.Errorf("database is not initialized")
+	}
+
+	// 使用现有的 buildBlockFromNode 函数创建根块
+	rootBlock, _ := buildBlockFromNode(tree.Root, tree, userID)
+
+	// 开启事务插入
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+	}()
+
+	context := map[string]interface{}{"userID": userID}
+	if err = insertBlocks(tx, []*Block{rootBlock}, context); err != nil {
+		return err
+	}
+
+	logging.LogInfof("InsertRootBlockSync: root block [%s] inserted for user [%s]", tree.Root.ID, userID)
+	return nil
 }

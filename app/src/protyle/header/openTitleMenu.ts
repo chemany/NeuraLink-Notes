@@ -13,7 +13,7 @@ import {Constants} from "../../constants";
 import {openCardByData} from "../../card/openCard";
 import {viewCards} from "../../card/viewCards";
 import {getDisplayName, getNotebookName, pathPosix, useShell} from "../../util/pathName";
-import {makeCard, quickMakeCard} from "../../card/makeCard";
+// [闪卡功能已禁用] import {makeCard, quickMakeCard} from "../../card/makeCard";
 import {emitOpenMenu} from "../../plugin/EventBus";
 import * as dayjs from "dayjs";
 import {hideTooltip} from "../../dialog/tooltip";
@@ -84,21 +84,7 @@ export const openTitleMenu = (protyle: IProtyle, position: IPosition, from: stri
                 });
             }
         }).element);
-        window.siyuan.menus.menu.append(new MenuItem({
-            id: "backlinks",
-            icon: "iconLink",
-            label: window.siyuan.languages.backlinks,
-            accelerator: window.siyuan.config.keymap.editor.general.backlinks.custom,
-            click: () => {
-                openBacklink({
-                    app: protyle.app,
-                    blockId: protyle.block.id,
-                    rootId: protyle.block.rootID,
-                    useBlockId: protyle.block.showAll,
-                    title: protyle.title ? (protyle.title.editElement.textContent || window.siyuan.languages.untitled) : null
-                });
-            }
-        }).element);
+        // [反向链接功能已禁用]
         // [关系图谱功能已禁用] 关系图谱菜单项已移除
         /*
         window.siyuan.menus.menu.append(new MenuItem({
@@ -139,60 +125,7 @@ export const openTitleMenu = (protyle: IProtyle, position: IPosition, from: stri
                     }
                 }).element);
             }
-            const isCardMade = !!response.data.ial[Constants.CUSTOM_RIFF_DECKS];
-            const riffCardMenu: IMenu[] = [{
-                id: "spaceRepetition",
-                iconHTML: "",
-                label: window.siyuan.languages.spaceRepetition,
-                accelerator: window.siyuan.config.keymap.editor.general.spaceRepetition.custom,
-                click: () => {
-                    fetchPost("/api/riff/getTreeRiffDueCards", {rootID: protyle.block.rootID}, (response) => {
-                        openCardByData(protyle.app, response.data, "doc", protyle.block.rootID, response.data.name);
-                    });
-                }
-            }, {
-                id: "manage",
-                iconHTML: "",
-                label: window.siyuan.languages.manage,
-                click: () => {
-                    fetchPost("/api/filetree/getHPathByID", {
-                        id: protyle.block.rootID
-                    }, (response) => {
-                        viewCards(protyle.app, protyle.block.rootID, pathPosix().join(getNotebookName(protyle.notebookId), (response.data)), "Tree");
-                    });
-                }
-            }, {
-                id: isCardMade ? "removeCard" : "quickMakeCard",
-                iconHTML: "",
-                label: isCardMade ? window.siyuan.languages.removeCard : window.siyuan.languages.quickMakeCard,
-                accelerator: window.siyuan.config.keymap.editor.general.quickMakeCard.custom,
-                click: () => {
-                    let titleElement = protyle.title?.element;
-                    if (!titleElement) {
-                        titleElement = document.createElement("div");
-                        titleElement.setAttribute("data-node-id", protyle.block.rootID);
-                        titleElement.setAttribute(Constants.CUSTOM_RIFF_DECKS, response.data.ial[Constants.CUSTOM_RIFF_DECKS]);
-                    }
-                    quickMakeCard(protyle, [titleElement]);
-                }
-            }];
-            if (window.siyuan.config.flashcard.deck) {
-                riffCardMenu.push({
-                    id: "addToDeck",
-                    iconHTML: "",
-                    label: window.siyuan.languages.addToDeck,
-                    click: () => {
-                        makeCard(protyle.app, [protyle.block.rootID]);
-                    }
-                });
-            }
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: "riffCard",
-                label: window.siyuan.languages.riffCard,
-                type: "submenu",
-                icon: "iconRiffCard",
-                submenu: riffCardMenu,
-            }).element);
+            // [闪卡功能已禁用]
         }
         window.siyuan.menus.menu.append(new MenuItem({
             id: "search",

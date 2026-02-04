@@ -93,13 +93,95 @@ func chatGPT(msg string, cloud bool) (ret string) {
 func chatGPTWithAction(msg string, action string, cloud bool) (ret string) {
 	action = strings.TrimSpace(action)
 	if "" != action {
-		msg = action + ":\n\n" + msg
+		// 根据不同动作使用专业的提示词
+		prompt := getProfessionalPrompt(action)
+		msg = prompt + "\n\n【文档正文内容】\n" + msg
 	}
 	ret, _, err := chatGPTContinueWrite(msg, nil, cloud)
 	if err != nil {
 		return
 	}
 	return
+}
+
+// getProfessionalPrompt 根据动作返回专业提示词
+func getProfessionalPrompt(action string) string {
+	switch action {
+	case "总结全文":
+		return `你是一位专业的内容分析专家。请对以下文档进行深度总结：
+
+请按照以下结构组织输出：
+
+## 一、核心观点概述（100字以内）
+简明扼要地阐述文档的核心主题和主要结论。
+
+## 二、关键内容提炼
+1. **主要发现/论点**：列出文档中最重要的3-5个发现或论点，每个用一句话概括。
+2. **重要数据**：提取文档中提到的关键数值、数据或指标（如有）。
+3. **方法/技术路线**：总结文档采用的研究方法或技术实现路径（如有）。
+
+## 三、结论与启示
+总结文档的最终结论，并说明其对实际应用的意义或启示。
+
+**写作要求**：
+- 使用专业但易懂的语言
+- 保持逻辑清晰，层次分明
+- 引用原文时注明来源
+- 不要添加文档中未提及的内容`
+
+	case "提取要点":
+		return `你是一位专业的内容分析专家。请从以下文档中提取核心要点：
+
+请按照以下结构组织输出：
+
+## 一、核心要点清单
+按重要程度列出文档的5-10个核心要点，每个要点包含：
+- **要点名称**：简洁概括
+- **详细内容**：用2-3句话详细解释该要点
+- **原文依据**：引用原文相关段落
+
+## 二、关键概念解释
+提取文档中的专业术语或关键概念，提供清晰解释（假设读者是高中生水平）。
+
+## 三、逻辑结构分析
+梳理文档的论述结构，说明各部分之间的逻辑关系。
+
+**写作要求**：
+- 要点要全面覆盖文档主要内容
+- 解释要清晰准确，避免歧义
+- 保持客观中立，不添加主观评价
+- 按重要性和逻辑顺序组织要点`
+
+	case "解释概念":
+		return `你是一位专业的内容分析专家。请对文档中的核心概念进行深入浅出的解释：
+
+请按照以下结构组织输出：
+
+## 一、概念定义
+用一句话定义文档中提到的核心概念，确保定义准确、专业。
+
+## 二、详细解释
+从以下维度详细解释概念：
+- **基本原理**：解释概念的基本原理和底层逻辑
+- **应用场景**：说明该概念在哪些场景下使用
+- **与其他概念的关系**：对比相关概念，说明异同
+- **实际案例**：提供1-2个具体案例帮助理解
+
+## 三、深度分析
+分析该概念：
+- **重要性**：为什么这个概念重要？
+- **局限性**：概念的适用范围和局限性
+- **发展趋势**：相关领域的最新发展（如有）
+
+**写作要求**：
+- 使用通俗易懂的语言，假设读者是高中生
+- 多用比喻和类比帮助理解
+- 保持专业性和准确性
+- 提供具体的例子而非抽象描述`
+
+	default:
+		return action + ":"
+	}
 }
 
 func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret string, retContextMsgs []string, err error) {
@@ -372,19 +454,178 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 	return nil
 }
 
+// enhanceWithPrebuiltVectors 在没有向量化服务时，直接读取已向量化的文件内容
+func enhanceWithPrebuiltVectors(ctx *WorkspaceContext, messages []openai.ChatCompletionMessage, allowedAssets []string, userQuery string) []openai.ChatCompletionMessage {
+	dataDir := ctx.GetDataDir()
+	logging.LogInfof("RAG: enhanceWithPrebuiltVectors - dataDir=%s", dataDir)
+
+	assets, err := loadAllAssetVectors(dataDir)
+	if err != nil {
+		logging.LogWarnf("RAG: 加载向量文件失败: %v", err)
+		return messages
+	}
+
+	if len(assets) == 0 {
+		logging.LogInfof("RAG: 未找到任何向量化的文件")
+		return messages
+	}
+
+	logging.LogInfof("RAG: 找到 %d 个向量化文件", len(assets))
+
+	// 过滤指定的附件
+	var filteredAssets []*AssetVector
+	for _, asset := range assets {
+		if len(allowedAssets) > 0 {
+			found := false
+			for _, allowed := range allowedAssets {
+				matchFileName := asset.FileName == allowed
+				matchPath := strings.Contains(asset.AssetPath, allowed)
+				if matchFileName || matchPath {
+					logging.LogInfof("RAG: 匹配到文件 assetPath=%s (fileName匹配=%v, path匹配=%v)", asset.AssetPath, matchFileName, matchPath)
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		filteredAssets = append(filteredAssets, asset)
+	}
+
+	if len(filteredAssets) == 0 {
+		logging.LogWarnf("RAG: 过滤后没有匹配的向量化文件，allowedAssets=%v", allowedAssets)
+		return messages
+	}
+
+	logging.LogInfof("RAG: 过滤后剩余 %d 个文件", len(filteredAssets))
+
+	var ragContext strings.Builder
+	ragContext.WriteString("以下是文档附件的内容，请据此回答用户问题：\n\n")
+
+	totalLen := 0
+	const maxLen = 50000
+	for _, asset := range filteredAssets {
+		if totalLen > maxLen {
+			break
+		}
+		ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
+		for _, chunk := range asset.Chunks {
+			if totalLen+len(chunk.Content) > maxLen {
+				ragContext.WriteString("...(内容已截断)\n")
+				break
+			}
+			ragContext.WriteString(chunk.Content)
+			ragContext.WriteString("\n")
+			totalLen += len(chunk.Content)
+		}
+		ragContext.WriteString("\n")
+	}
+
+	ragSystemMsg := openai.ChatCompletionMessage{
+		Role:    "system",
+		Content: ragContext.String(),
+	}
+
+	enhancedMessages := make([]openai.ChatCompletionMessage, 0, len(messages)+1)
+	enhancedMessages = append(enhancedMessages, ragSystemMsg)
+	enhancedMessages = append(enhancedMessages, messages...)
+
+	logging.LogInfof("RAG: 成功注入 %d 字符的附件内容", ragContext.Len())
+	return enhancedMessages
+}
+
+// enhanceWithPrebuiltVectorsFallback 降级函数：语义搜索失败时直接读取向量文件
+func enhanceWithPrebuiltVectorsFallback(ctx *WorkspaceContext, messages []openai.ChatCompletionMessage, allowedAssets []string, userQuery string) []openai.ChatCompletionMessage {
+	dataDir := ctx.GetDataDir()
+	logging.LogInfof("RAG Fallback: dataDir=%s, allowedAssets=%v, userQuery=%s", dataDir, allowedAssets, userQuery)
+
+	assets, err := loadAllAssetVectors(dataDir)
+	if err != nil {
+		logging.LogWarnf("RAG Fallback: 加载向量文件失败: %v", err)
+		return messages
+	}
+
+	if len(assets) == 0 {
+		logging.LogInfof("RAG Fallback: 未找到任何向量化的文件")
+		return messages
+	}
+
+	logging.LogInfof("RAG Fallback: 找到 %d 个向量化文件", len(assets))
+
+	// 过滤指定的附件
+	var filteredAssets []*AssetVector
+	for _, asset := range assets {
+		if len(allowedAssets) > 0 {
+			found := false
+			for _, allowed := range allowedAssets {
+				matchFileName := asset.FileName == allowed
+				matchPath := strings.Contains(asset.AssetPath, allowed)
+				if matchFileName || matchPath {
+					logging.LogInfof("RAG Fallback: 匹配到文件 %s", asset.AssetPath)
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+		filteredAssets = append(filteredAssets, asset)
+	}
+
+	if len(filteredAssets) == 0 {
+		logging.LogWarnf("RAG Fallback: 过滤后没有匹配的向量化文件")
+		return messages
+	}
+
+	logging.LogInfof("RAG Fallback: 过滤后剩余 %d 个文件", len(filteredAssets))
+
+	var ragContext strings.Builder
+	ragContext.WriteString("以下是文档附件的内容，请据此回答用户问题：\n\n")
+
+	totalLen := 0
+	const maxLen = 50000
+	for _, asset := range filteredAssets {
+		if totalLen > maxLen {
+			break
+		}
+		ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
+		for _, chunk := range asset.Chunks {
+			if totalLen+len(chunk.Content) > maxLen {
+				ragContext.WriteString("...(内容已截断)\n")
+				break
+			}
+			ragContext.WriteString(chunk.Content)
+			ragContext.WriteString("\n")
+			totalLen += len(chunk.Content)
+		}
+		ragContext.WriteString("\n")
+	}
+
+	ragSystemMsg := openai.ChatCompletionMessage{
+		Role:    "system",
+		Content: ragContext.String(),
+	}
+
+	enhancedMessages := make([]openai.ChatCompletionMessage, 0, len(messages)+1)
+	enhancedMessages = append(enhancedMessages, ragSystemMsg)
+	enhancedMessages = append(enhancedMessages, messages...)
+
+	logging.LogInfof("RAG Fallback: 成功注入 %d 字符的附件内容", ragContext.Len())
+	return enhancedMessages
+}
+
 // EnhanceMessagesWithRAGContext 使用 RAG 增强消息（支持用户上下文）
 func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.ChatCompletionMessage, allowedAssets []string) []openai.ChatCompletionMessage {
 	if ctx == nil {
 		logging.LogWarnf("RAG: 用户上下文为空，跳过 RAG 增强")
 		return messages
 	}
-	
-	embeddingService := NewEmbeddingService()
-	if embeddingService == nil || !embeddingService.IsEnabled() {
-		return messages
-	}
 
-	// 从最后一条用户消息中提取查询
+	logging.LogInfof("RAG: EnhanceMessagesWithRAGContext called, allowedAssets=%v", allowedAssets)
+
+	// 获取查询内容
 	var userQuery string
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "user" {
@@ -392,10 +633,22 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 			break
 		}
 	}
-
 	if userQuery == "" {
+		logging.LogWarnf("RAG: 未找到用户消息，跳过 RAG 增强")
 		return messages
 	}
+
+	logging.LogInfof("RAG: userQuery=%s", userQuery)
+
+	// 检查向量化服务
+	embeddingService := NewEmbeddingService()
+	if embeddingService == nil || !embeddingService.IsEnabled() {
+		logging.LogInfof("RAG: 向量化服务未启用，尝试直接读取已向量化的文件内容")
+		// 即使向量化服务未启用，也尝试加载已向量化的文件内容
+		return enhanceWithPrebuiltVectors(ctx, messages, allowedAssets, userQuery)
+	}
+
+	logging.LogInfof("RAG: 向量化服务已启用，使用语义搜索模式")
 
 	// 如果消息中已经包含了"【文档正文内容】"，说明前端已经提供了具体的文档上下文，此时跳过 RAG，避免干扰
 	for _, m := range messages {
@@ -454,20 +707,23 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 	} else {
 		// 问答模式：执行高配版分块检索 (Top-30)
 		chunks, err := SemanticSearchAssetChunksWithContext(ctx, userQuery, 30, allowedAssets)
-		if err == nil && len(chunks) > 0 {
-			logging.LogInfof("RAG: 问答模式，找到 %d 个相关分块", len(chunks))
-			ragContext.WriteString("以下是与用户问题高度相关的文档片段，请据此回答。注意区分不同来源，不要强行拼凑逻辑：\n\n")
-			ragContext.WriteString("以下是与用户问题高度相关的文档片段，请据此回答。注意区分不同来源，不要强行拼凑逻辑：\n\n")
-			totalLen := 0
-			const maxQALen = 30000 // 问答模式大幅扩容至 30,000 字符，提供深层上下文
-			for i, chunk := range chunks {
-				if totalLen+len(chunk.Content) > maxQALen {
-					ragContext.WriteString("...(由于长度限制，后续片段已忽略)\n")
-					break
-				}
-				ragContext.WriteString(fmt.Sprintf("【片段%d - 来源: %s】\n%s\n\n", i+1, chunk.Source, chunk.Content))
-				totalLen += len(chunk.Content)
+		if err != nil || len(chunks) == 0 {
+			logging.LogWarnf("RAG: 语义搜索失败或无结果，降级到直接读取向量文件，err=%v", err)
+			// 降级：直接读取向量文件内容
+			return enhanceWithPrebuiltVectorsFallback(ctx, messages, allowedAssets, userQuery)
+		}
+		logging.LogInfof("RAG: 问答模式，找到 %d 个相关分块", len(chunks))
+		ragContext.WriteString("以下是与用户问题高度相关的文档片段，请据此回答。注意区分不同来源，不要强行拼凑逻辑：\n\n")
+		ragContext.WriteString("以下是与用户问题高度相关的文档片段，请据此回答。注意区分不同来源，不要强行拼凑逻辑：\n\n")
+		totalLen := 0
+		const maxQALen = 30000 // 问答模式大幅扩容至 30,000 字符，提供深层上下文
+		for i, chunk := range chunks {
+			if totalLen+len(chunk.Content) > maxQALen {
+				ragContext.WriteString("...(由于长度限制，后续片段已忽略)\n")
+				break
 			}
+			ragContext.WriteString(fmt.Sprintf("【片段%d - 来源: %s】\n%s\n\n", i+1, chunk.Source, chunk.Content))
+			totalLen += len(chunk.Content)
 		}
 	}
 

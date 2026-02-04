@@ -27,14 +27,8 @@ export const onMessage = (app: App, data: IWebSocketData) => {
             case "setRefDynamicText":
                 setRefDynamicText(data.data);
                 break;
-            case "reloadPlugin":
-                reloadPlugin(app, data.data);
-                break;
             case "reloadEmojiConf":
                 reloadEmoji();
-                break;
-            case "syncMergeResult":
-                reloadSync(app, data.data);
                 break;
             case "setConf":
                 window.siyuan.config = data.data;
@@ -48,12 +42,6 @@ export const onMessage = (app: App, data: IWebSocketData) => {
                 break;
             case"progress":
                 progressLoading(data);
-                break;
-            case"syncing":
-                processSync(data, app.plugins);
-                if (data.code === 1) {
-                    document.getElementById("toolbarSync").classList.add("fn__none");
-                }
                 break;
             case "openFileById":
                 openMobileFileById(app, data.data.id);

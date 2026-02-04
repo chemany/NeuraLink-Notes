@@ -923,7 +923,7 @@ declare namespace Config {
         refTab: IKey;
         rename: IKey;
         showInFolder: IKey;
-        spaceRepetition: IKey;
+        // [闪卡功能已删除] spaceRepetition: IKey;
         switchReadonly: IKey;
         switchAdjust: IKey;
         undo: IKey;

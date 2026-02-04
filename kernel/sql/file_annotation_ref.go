@@ -22,6 +22,7 @@ import (
 
 type FileAnnotationRef struct {
 	ID           string
+	UserID       string
 	FilePath     string
 	AnnotationID string
 	BlockID      string

@@ -37,7 +37,7 @@ import {getAllTabs} from "./layout/getAll";
 import {getLocalStorage} from "./protyle/util/compatibility";
 import {getSearch} from "./util/functions";
 import {hideAllElements} from "./protyle/ui/hideElements";
-import {loadPlugins, reloadPlugin} from "./plugin/loader";
+import {loadPlugins} from "./plugin/loader";
 import "./assets/scss/base.scss";
 import {reloadEmoji} from "./emoji";
 import {processIOSPurchaseResponse} from "./util/iOSPurchase";
@@ -47,6 +47,7 @@ import {setLocalShorthandCount} from "./util/noRelyPCFunction";
 import {getDockByType} from "./layout/tabUtil";
 import {Tag} from "./layout/dock/Tag";
 import {updateControlAlt} from "./protyle/util/hotKey";
+import {startSystemStatusPolling, startTaskListPolling, stopAllPolling} from "./util/pollingManager";
 
 export class App {
     public plugins: import("./plugin").Plugin[] = [];
@@ -94,14 +95,8 @@ export class App {
                             case "setRefDynamicText":
                                 setRefDynamicText(data.data);
                                 break;
-                            case "reloadPlugin":
-                                reloadPlugin(this, data.data);
-                                break;
                             case "reloadEmojiConf":
                                 reloadEmoji();
-                                break;
-                            case "syncMergeResult":
-                                reloadSync(this, data.data);
                                 break;
                             case "reloaddoc":
                                 reloadSync(this, {upsertRootIDs: [data.data], removeRootIDs: []}, false, false, true);
@@ -118,7 +113,10 @@ export class App {
                                 progressLoading(data);
                                 break;
                             case "setLocalStorageVal":
-                                window.siyuan.storage[data.data.key] = data.data.val;
+                                // 检查 storage 是否已初始化，未初始化时忽略
+                                if (window.siyuan.storage) {
+                                    window.siyuan.storage[data.data.key] = data.data.val;
+                                }
                                 break;
                             case "rename":
                                 getAllTabs().forEach((tab) => {
@@ -168,18 +166,8 @@ export class App {
                             case "txerr":
                                 transactionError();
                                 break;
-                            case "syncing":
-                                processSync(data, this.plugins);
-                                break;
                             case "backgroundtask":
                                 progressBackgroundTask(data.data.tasks);
-                                break;
-                            case "refreshtheme":
-                                if ((window.siyuan.config.appearance.mode === 1 && window.siyuan.config.appearance.themeDark !== "midnight") || (window.siyuan.config.appearance.mode === 0 && window.siyuan.config.appearance.themeLight !== "daylight")) {
-                                    (document.getElementById("themeStyle") as HTMLLinkElement).href = data.data.theme;
-                                } else {
-                                    (document.getElementById("themeDefaultStyle") as HTMLLinkElement).href = data.data.theme;
-                                }
                                 break;
                             case "openFileById":
                                 openFileById({app: this, id: data.data.id, action: [Constants.CB_GET_FOCUS]});
@@ -191,7 +179,8 @@ export class App {
         };
 
         fetchPost("/api/system/getConf", {}, async (response) => {
-            addScriptSync(`${Constants.PROTYLE_CDN}/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}`, "protyleLuteScript");
+            // [性能优化] 异步加载 lute.js，避免阻塞页面渲染
+            await addScriptSync(`${Constants.PROTYLE_CDN}/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}`, "protyleLuteScript");
             addScript(`${Constants.PROTYLE_CDN}/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}`, "protyleWcHtmlScript");
             window.siyuan.config = response.data.conf;
             updateControlAlt();
@@ -208,6 +197,9 @@ export class App {
                         account.onSetaccount();
                         setTitle(window.siyuan.languages.siyuanNote);
                         initMessage();
+                        // 启动轮询机制
+                        startSystemStatusPolling();
+                        startTaskListPolling();
                     });
                 });
             });

@@ -24,6 +24,7 @@ import (
 
 type Ref struct {
 	ID               string
+	UserID           string
 	DefBlockID       string
 	DefBlockParentID string
 	DefBlockRootID   string
@@ -37,14 +38,14 @@ type Ref struct {
 	Type             string
 }
 
-func upsertRefs(tx *sql.Tx, tree *parse.Tree) (err error) {
+func upsertRefs(tx *sql.Tx, tree *parse.Tree, userID string) (err error) {
 	if err = deleteRefsByPath(tx, tree.Box, tree.Path); err != nil {
 		return
 	}
 	if err = deleteFileAnnotationRefsByPath(tx, tree.Box, tree.Path); err != nil {
 		return
 	}
-	err = insertRefs(tx, tree)
+	err = insertRefs(tx, tree, userID)
 	return
 }
 
@@ -58,8 +59,8 @@ func deleteRefs(tx *sql.Tx, tree *parse.Tree) (err error) {
 	return
 }
 
-func insertRefs(tx *sql.Tx, tree *parse.Tree) (err error) {
-	refs, fileAnnotationRefs := refsFromTree(tree)
+func insertRefs(tx *sql.Tx, tree *parse.Tree, userID string) (err error) {
+	refs, fileAnnotationRefs := refsFromTree(tree, userID)
 	if err = insertBlockRefs(tx, refs); err != nil {
 		return
 	}

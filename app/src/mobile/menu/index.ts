@@ -7,11 +7,11 @@ import {repos} from "../../config/repos";
 import {publish} from "../../config/publish";
 import {exitSiYuan, lockScreen, processSync} from "../../dialog/processSystem";
 import {openHistory} from "../../history/history";
-import {syncGuide} from "../../sync/syncGuide";
-import {openCard} from "../../card/openCard";
+// [同步功能已禁用] import {syncGuide} from "../../sync/syncGuide";
+// [闪卡功能已禁用] import {openCard} from "../../card/openCard";
 import {activeBlur} from "../util/keyboardToolbar";
 import {initAI} from "../settings/ai";
-import {initRiffCard} from "../settings/riffCard";
+// [闪卡功能已禁用] import {initRiffCard} from "../settings/riffCard";
 import {login, showAccountInfo} from "../settings/account";
 import {openModel} from "./model";
 import {initAbout} from "../settings/about";
@@ -88,9 +88,7 @@ export const initRightMenu = (app: App) => {
     <div id="menuNewDaily" class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}">
         <svg class="b3-menu__icon"><use xlink:href="#iconCalendar"></use></svg><span class="b3-menu__label">${window.siyuan.languages.dailyNote}</span>
     </div>
-    <div id="menuCard" class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}">
-        <svg class="b3-menu__icon"><use xlink:href="#iconRiffCard"></use></svg><span class="b3-menu__label">${window.siyuan.languages.spaceRepetition}</span>
-    </div>
+    <!-- [闪卡功能已禁用] menuCard -->
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuLock">
         <svg class="b3-menu__icon"><use xlink:href="#iconLock"></use></svg><span class="b3-menu__label">${window.siyuan.languages.lockScreen}</span>
     </div>
@@ -108,9 +106,7 @@ export const initRightMenu = (app: App) => {
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuFileTree">
         <svg class="b3-menu__icon"><use xlink:href="#iconFiles"></use></svg><span class="b3-menu__label">${window.siyuan.languages.fileTree}</span>
     </div>
-    <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuRiffCard">
-        <svg class="b3-menu__icon"><use xlink:href="#iconRiffCard"></use></svg><span class="b3-menu__label">${window.siyuan.languages.riffCard}</span>
-    </div>
+    <!-- [闪卡功能已禁用] menuRiffCard -->
     ${aiHTML}
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuAssets">
         <svg class="b3-menu__icon"><use xlink:href="#iconImage"></use></svg><span class="b3-menu__label">${window.siyuan.languages.assets}</span>
@@ -180,12 +176,12 @@ export const initRightMenu = (app: App) => {
                 event.preventDefault();
                 event.stopPropagation();
                 break;
-            } else if (target.id === "menuRiffCard") {
-                initRiffCard();
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            } else if (target.id === "menuEditor") {
+            // [闪卡功能已禁用] } else if (target.id === "menuRiffCard") {
+            //     initRiffCard();
+            //     event.preventDefault();
+            //     event.stopPropagation();
+            //     break;
+            // } else if (target.id === "menuEditor") {
                 initEditor();
                 event.preventDefault();
                 event.stopPropagation();
@@ -216,13 +212,13 @@ export const initRightMenu = (app: App) => {
                 event.preventDefault();
                 event.stopPropagation();
                 break;
-            } else if (target.id === "menuCard") {
-                openCard(app);
-                closePanel();
-                event.preventDefault();
-                event.stopPropagation();
-                break;
-            } else if (target.id === "menuNewNotebook") {
+            // [闪卡功能已禁用] } else if (target.id === "menuCard") {
+            //     openCard(app);
+            //     closePanel();
+            //     event.preventDefault();
+            //     event.stopPropagation();
+            //     break;
+            // } else if (target.id === "menuNewNotebook") {
                 newNotebook();
                 closePanel();
                 event.preventDefault();
@@ -269,7 +265,7 @@ export const initRightMenu = (app: App) => {
                 event.stopPropagation();
                 break;
             } else if (target.id === "menuSyncNow") {
-                syncGuide();
+                // [同步功能已禁用] syncGuide();
                 event.preventDefault();
                 event.stopPropagation();
                 break;

@@ -315,19 +315,11 @@ func serveAppearance(ginServer *gin.Engine) {
 			// 注意：此路径需要认证，所以 ctx 一定是用户特定的
 			appearancePath = filepath.Join(ctx.GetConfDir(), "appearance")
 		} else if strings.Contains(requestPath, "/themes/") || strings.Contains(requestPath, "/icons/") {
-			// 主题和图标从全局目录读取
-			if "dev" == util.Mode {
-				appearancePath = filepath.Join(util.WorkingDir, "appearance")
-			} else {
-				appearancePath = util.AppearancePath
-			}
+			// 主题和图标从应用程序目录读取（所有用户共享）
+			appearancePath = filepath.Join(util.WorkingDir, "appearance")
 		} else {
-			// 其他文件（如 boot、fonts、emojis 等）从全局目录读取
-			if "dev" == util.Mode {
-				appearancePath = filepath.Join(util.WorkingDir, "appearance")
-			} else {
-				appearancePath = util.AppearancePath
-			}
+			// 其他文件（如 boot、fonts、emojis 等）从应用程序目录读取
+			appearancePath = filepath.Join(util.WorkingDir, "appearance")
 		}
 		
 		filePath := filepath.Join(appearancePath, strings.TrimPrefix(c.Request.URL.Path, "/appearance/"))

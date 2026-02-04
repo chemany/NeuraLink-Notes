@@ -418,7 +418,9 @@ func getRecentUpdatedBlocks(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
 
-	blocks := model.RecentUpdatedBlocks()
+	// 获取 WorkspaceContext
+	ctx := model.GetWorkspaceContext(c)
+	blocks := model.RecentUpdatedBlocksWithContext(ctx)
 	ret.Data = blocks
 }
 

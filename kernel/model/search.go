@@ -224,7 +224,7 @@ func GetEmbedBlock(embedBlockID string, includeIDs []string, headingMode int, br
 }
 
 func getEmbedBlock(embedBlockID string, includeIDs []string, headingMode int, breadcrumb bool) (ret []*EmbedBlock) {
-	stmt := "SELECT * FROM `blocks` WHERE `id` IN ('" + strings.Join(includeIDs, "','") + "')"
+	stmt := "SELECT * FROM `blocks` WHERE `id` IN ('" + strings.Join(includeIDs, "','") + "')" + getUserIDFilter()
 	sqlBlocks := sql.SelectBlocksRawStmtNoParse(stmt, 1024)
 
 	// 根据 includeIDs 的顺序排序 Improve `//!js` query embed block result sorting https://github.com/siyuan-note/siyuan/issues/9977
@@ -376,7 +376,7 @@ func searchRefBlockWithContext(ctx *WorkspaceContext, id, rootID, keyword string
 
 		for _, node := range nodes {
 			tree := nodeTrees[node.ID]
-			sqlBlock := sql.BuildBlockFromNode(node, tree)
+			sqlBlock := sql.BuildBlockFromNode(node, tree, getUserID())
 			if nil == sqlBlock {
 				return
 			}
@@ -1504,6 +1504,7 @@ func buildTypeFilter(types map[string]bool) string {
 
 func searchBySQL(stmt string, beforeLen, page, pageSize int) (ret []*Block, matchedBlockCount, matchedRootCount int) {
 	stmt = strings.TrimSpace(stmt)
+	stmt = sql.InjectUserIDFilter(stmt)
 	blocks := sql.SelectBlocksRawStmt(stmt, page, pageSize)
 	ret = fromSQLBlocks(&blocks, "", beforeLen)
 	if 1 > len(ret) {
@@ -1643,7 +1644,7 @@ func extractID(content string) (ret string) {
 
 func fullTextSearchByRegexp(exp, boxFilter, pathFilter, typeFilter, ignoreFilter, orderBy string, beforeLen, page, pageSize int) (ret []*Block, matchedBlockCount, matchedRootCount int) {
 	fieldFilter := fieldRegexp(exp)
-	stmt := "SELECT * FROM `blocks` WHERE " + fieldFilter + " AND type IN " + typeFilter
+	stmt := "SELECT * FROM `blocks` WHERE " + fieldFilter + " AND type IN " + typeFilter + getUserIDFilter()
 	stmt += boxFilter + pathFilter + ignoreFilter + " " + orderBy
 	regex, err := regexp.Compile(exp)
 	if nil != err {
@@ -1663,7 +1664,7 @@ func fullTextSearchByRegexp(exp, boxFilter, pathFilter, typeFilter, ignoreFilter
 
 func fullTextSearchCountByRegexp(exp, boxFilter, pathFilter, typeFilter, ignoreFilter string) (matchedBlockCount, matchedRootCount int) {
 	fieldFilter := fieldRegexp(exp)
-	stmt := "SELECT COUNT(id) AS `matches`, COUNT(DISTINCT(root_id)) AS `docs` FROM `blocks` WHERE " + fieldFilter + " AND type IN " + typeFilter + ignoreFilter
+	stmt := "SELECT COUNT(id) AS `matches`, COUNT(DISTINCT(root_id)) AS `docs` FROM `blocks` WHERE " + fieldFilter + " AND type IN " + typeFilter + getUserIDFilter() + ignoreFilter
 	stmt += boxFilter + pathFilter
 	result, _ := sql.QueryNoLimit(stmt)
 	if 1 > len(result) {
@@ -1689,7 +1690,7 @@ func fullTextSearchByFTS(query, boxFilter, pathFilter, typeFilter, ignoreFilter,
 		"snippet(" + table + ", 11, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 512) AS content, " +
 		"fcontent, markdown, length, type, subtype, ial, sort, created, updated"
 	stmt := "SELECT " + projections + " FROM " + table + " WHERE (`" + table + "` MATCH '" + columnFilter() + ":(" + query + ")'"
-	stmt += ") AND type IN " + typeFilter
+	stmt += ") AND type IN " + typeFilter + getUserIDFilter()
 	stmt += boxFilter + pathFilter + ignoreFilter + " " + orderBy
 	stmt += " LIMIT " + strconv.Itoa(pageSize) + " OFFSET " + strconv.Itoa((page-1)*pageSize)
 	blocks := sql.SelectBlocksRawStmt(stmt, page, pageSize)
@@ -1709,7 +1710,7 @@ func fullTextSearchCountByFTS(query, boxFilter, pathFilter, typeFilter, ignoreFi
 	}
 
 	stmt := "SELECT COUNT(id) AS `matches`, COUNT(DISTINCT(root_id)) AS `docs` FROM `" + table + "` WHERE (`" + table + "` MATCH '" + columnFilter() + ":(" + query + ")'"
-	stmt += ") AND type IN " + typeFilter
+	stmt += ") AND type IN " + typeFilter + getUserIDFilter()
 	stmt += boxFilter + pathFilter + ignoreFilter
 	result, _ := sql.QueryNoLimit(stmt)
 	if 1 > len(result) {
@@ -1736,7 +1737,7 @@ func fullTextSearchByLikeWithRoot(query, boxFilter, pathFilter, typeFilter, igno
 	}
 	orderByLike += ")"
 	dMatchStmt := "SELECT root_id, MAX(CASE WHEN type = 'd' THEN (" + contentField + ") END) AS docContent" +
-		" FROM blocks WHERE type IN " + typeFilter + boxFilter + pathFilter + ignoreFilter +
+		" FROM blocks WHERE type IN " + typeFilter + boxFilter + pathFilter + ignoreFilter + getUserIDFilter() +
 		" GROUP BY root_id HAVING " + likeFilter + "ORDER BY " + orderByLike + " DESC, MAX(updated) DESC"
 	cteStmt := "WITH docBlocks AS (" + dMatchStmt + ")"
 	likeFilter = strings.ReplaceAll(likeFilter, "GROUP_CONCAT("+contentField+")", "concatContent")
@@ -1745,7 +1746,7 @@ func fullTextSearchByLikeWithRoot(query, boxFilter, pathFilter, typeFilter, igno
 		"(" + contentField + ") AS concatContent, " +
 		"(SELECT COUNT(root_id) FROM docBlocks) AS docs, " +
 		"(CASE WHEN (root_id IN (SELECT root_id FROM docBlocks) AND (" + strings.ReplaceAll(likeFilter, "concatContent", contentField) + ")) THEN 1 ELSE 0 END) AS blockSort" +
-		" FROM blocks WHERE type IN " + typeFilter + boxFilter + pathFilter + ignoreFilter +
+		" FROM blocks WHERE type IN " + typeFilter + boxFilter + pathFilter + ignoreFilter + getUserIDFilter() +
 		" AND (id IN (SELECT root_id FROM docBlocks " + limit + ") OR" +
 		"  (root_id IN (SELECT root_id FROM docBlocks" + limit + ") AND (" + likeFilter + ")))"
 	if strings.Contains(orderBy, "ORDER BY rank DESC") {

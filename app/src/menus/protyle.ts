@@ -475,18 +475,7 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
     }).element);
     /// #endif
     window.siyuan.menus.menu.append(new MenuItem({id: "separator_2", type: "separator"}).element);
-    window.siyuan.menus.menu.append(new MenuItem({
-        id: "backlinks",
-        icon: "iconLink",
-        label: window.siyuan.languages.backlinks,
-        accelerator: window.siyuan.config.keymap.editor.general.backlinks.custom,
-        click: () => {
-            openBacklink({
-                app: protyle.app,
-                blockId: refBlockId,
-            });
-        }
-    }).element);
+    // [反向链接功能已禁用]
     // [关系图谱功能已禁用] 关系图谱菜单项已移除
     /*
     window.siyuan.menus.menu.append(new MenuItem({

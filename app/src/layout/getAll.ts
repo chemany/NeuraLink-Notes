@@ -79,6 +79,10 @@ export const getAllModels = () => {
             const item = layout.children[i];
             if (item instanceof Tab) {
                 const model = item.model;
+                if (!model) {
+                    // [反向链接已禁用] 跳过没有 model 的 Tab
+                    continue;
+                }
                 if (model instanceof Editor) {
                     models.editor.push(model);
                 } else if (model instanceof Graph) {

@@ -62,17 +62,11 @@ class App {
                             case "setRefDynamicText":
                                 setRefDynamicText(data.data);
                                 break;
-                            case "reloadPlugin":
-                                reloadPlugin(this, data.data);
-                                break;
                             case "reloadEmojiConf":
                                 reloadEmoji();
                                 break;
                             case "reloaddoc":
                                 reloadSync(this, {upsertRootIDs: [data.data], removeRootIDs: []}, false, false, true);
-                                break;
-                            case "syncMergeResult":
-                                reloadSync(this, data.data);
                                 break;
                             case "readonly":
                                 window.siyuan.config.editor.readOnly = data.data;
@@ -133,18 +127,8 @@ class App {
                             case "txerr":
                                 transactionError();
                                 break;
-                            case "syncing":
-                                processSync(data, this.plugins);
-                                break;
                             case "backgroundtask":
                                 progressBackgroundTask(data.data.tasks);
-                                break;
-                            case "refreshtheme":
-                                if ((window.siyuan.config.appearance.mode === 1 && window.siyuan.config.appearance.themeDark !== "midnight") || (window.siyuan.config.appearance.mode === 0 && window.siyuan.config.appearance.themeLight !== "daylight")) {
-                                    (document.getElementById("themeStyle") as HTMLLinkElement).href = data.data.theme;
-                                } else {
-                                    (document.getElementById("themeDefaultStyle") as HTMLLinkElement).href = data.data.theme;
-                                }
                                 break;
                             case "openFileById":
                                 openFileById({app: this, id: data.data.id, action: [Constants.CB_GET_FOCUS]});

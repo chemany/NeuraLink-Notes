@@ -16,7 +16,7 @@ import {MobileBacklinks} from "../dock/MobileBacklinks";
 import {MobileBookmarks} from "../dock/MobileBookmarks";
 import {MobileTags} from "../dock/MobileTags";
 import {activeBlur, initKeyboardToolbar} from "./keyboardToolbar";
-import {syncGuide} from "../../sync/syncGuide";
+// [同步功能已禁用] import {syncGuide} from "../../sync/syncGuide";
 import {Inbox} from "../../layout/dock/Inbox";
 import {App} from "../../index";
 import {setTitle} from "../../dialog/processSystem";
@@ -169,9 +169,9 @@ export const initFramework = (app: App, isStart: boolean) => {
     document.getElementById("toolbarMore").addEventListener("click", () => {
         popMenu();
     });
-    document.getElementById("toolbarSync").addEventListener(getEventName(), () => {
-        syncGuide(app);
-    });
+    // [同步功能已禁用] document.getElementById("toolbarSync").addEventListener(getEventName(), () => {
+    //     syncGuide(app);
+    // });
     document.getElementById("modelClose").addEventListener("click", () => {
         closeModel();
     });

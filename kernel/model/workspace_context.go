@@ -82,7 +82,7 @@ func init() {
 		}
 		return dataDir
 	}
-	
+
 	filesys.GetDataDirFunc = getDataDir
 	treenode.GetDataDirFunc = getDataDir
 }
@@ -97,15 +97,15 @@ type WorkspaceContext struct {
 	RepoDir      string // 仓库目录（同步相关）
 	HistoryDir   string // 历史记录目录
 	TempDir      string // 临时文件目录
-	
+
 	// 数据库路径
 	BlockTreeDBPath    string // BlockTree 数据库路径
 	AssetContentDBPath string // 附件内容数据库路径
-	
+
 	// 用户信息
 	UserID   string // 用户 ID
 	Username string // 用户名
-	
+
 	// 元数据
 	WorkspaceName string // workspace 名称
 }
@@ -117,12 +117,12 @@ func NewWorkspaceContext(workspace string) *WorkspaceContext {
 	return &WorkspaceContext{
 		WorkspaceDir:       workspace,
 		DataDir:            workspace,           // 注意：用户的笔记本直接在 workspace 根目录
-		ConfDir:            workspace + "/conf",  // 配置目录在 workspace/conf（appearance、conf.json 等）
+		ConfDir:            workspace + "/conf", // 配置目录在 workspace/conf（appearance、conf.json 等）
 		RepoDir:            workspace + "/repo",
 		HistoryDir:         workspace + "/history",
 		TempDir:            tempDir,
-		BlockTreeDBPath:    tempDir + "/blocktree.db", // 用户特定的 BlockTree 数据库
-		AssetContentDBPath: tempDir + "/asset_content.db", // 用户特定的附件内容数据库
+		BlockTreeDBPath:    util.BlockTreeDBPath,    // 统一使用全局 BlockTree 数据库，通过 user_id 隔离
+		AssetContentDBPath: util.AssetContentDBPath, // 统一使用全局附件内容数据库，通过 user_id 隔离
 		WorkspaceName:      "",
 	}
 }
@@ -143,7 +143,7 @@ func GetWorkspaceContext(c *gin.Context) *WorkspaceContext {
 	if ctx, exists := c.Get("workspace_context"); exists {
 		return ctx.(*WorkspaceContext)
 	}
-	
+
 	// 如果不存在，返回默认的全局 workspace
 	return GetDefaultWorkspaceContext()
 }
@@ -205,7 +205,7 @@ func SetCurrentUserContext(userID string, ctx *WorkspaceContext) {
 	userContextsMutex.Lock()
 	defer userContextsMutex.Unlock()
 	userContexts[userID] = ctx
-	
+
 	currentUserMutex.Lock()
 	defer currentUserMutex.Unlock()
 	currentUserID = userID
@@ -216,18 +216,18 @@ func GetCurrentUserContext() *WorkspaceContext {
 	currentUserMutex.RLock()
 	userID := currentUserID
 	currentUserMutex.RUnlock()
-	
+
 	if userID == "" {
 		return GetDefaultWorkspaceContext()
 	}
-	
+
 	userContextsMutex.RLock()
 	defer userContextsMutex.RUnlock()
-	
+
 	if ctx, exists := userContexts[userID]; exists {
 		return ctx
 	}
-	
+
 	return GetDefaultWorkspaceContext()
 }
 
@@ -236,14 +236,14 @@ func GetUserContext(userID string) *WorkspaceContext {
 	if userID == "" {
 		return GetDefaultWorkspaceContext()
 	}
-	
+
 	userContextsMutex.RLock()
 	defer userContextsMutex.RUnlock()
-	
+
 	if ctx, exists := userContexts[userID]; exists {
 		return ctx
 	}
-	
+
 	return GetDefaultWorkspaceContext()
 }
 
@@ -300,4 +300,9 @@ func (ctx *WorkspaceContext) IsDefaultWorkspace() bool {
 // IsWebMode 判断是否为 Web 模式（多用户模式）
 func (ctx *WorkspaceContext) IsWebMode() bool {
 	return ctx.UserID != ""
+}
+
+// GetUserID 获取用户 ID
+func (ctx *WorkspaceContext) GetUserID() string {
+	return ctx.UserID
 }

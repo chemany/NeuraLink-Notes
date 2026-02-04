@@ -63,7 +63,11 @@ export const onGetConfig = (isStart: boolean, app: App) => {
             /// #endif
             openChangelog();
         } catch (e) {
-            resetLayout();
+            // [调试] 记录详细错误信息，不要调用 resetLayout() 否则会导致无限刷新
+            console.error("[灵枢笔记] JSONToLayout 异常:", e);
+            console.error("[灵枢笔记] uiLayout:", JSON.stringify(window.siyuan.config.uiLayout).substring(0, 500));
+            // 不调用 resetLayout()，避免无限刷新循环
+            // 如果有错误，让用户手动刷新页面
         }
     });
     initBar(app);

@@ -142,8 +142,6 @@ export const setLocalShorthandCount = () => {
         if (item.querySelector('[data-type="addLocal"]') || helpIDs.includes(item.getAttribute("data-url"))) {
             return;
         }
-        item.querySelector('[data-type="more-root"]').insertAdjacentHTML("beforebegin", `<span data-type="addLocal" class="b3-list-item__action">
-    <svg><use xlink:href="#iconRiffCard"></use></svg>
-</span>`);
+        // [闪卡功能已删除] 不再添加闪卡图标按钮
     });
 };

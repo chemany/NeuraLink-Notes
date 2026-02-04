@@ -76,7 +76,7 @@ func queryRefTexts(refSearchIgnoreLines []string) (ret []string) {
 	sqlStmt += " LIMIT 10240"
 	rows, err := query(sqlStmt)
 	if err != nil {
-		logging.LogErrorf("sql query failed: %s", sqlStmt, err)
+		logging.LogErrorf("sql query failed: %s, error: %v", sqlStmt, err)
 		return
 	}
 	defer rows.Close()
@@ -493,7 +493,7 @@ func DefRefs(condition string, limit int) (ret []map[*Block]*Block) {
 	for rows.Next() {
 		var ref Block
 		var rel string
-		if err = rows.Scan(&ref.ID, &ref.ParentID, &ref.RootID, &ref.Hash, &ref.Box, &ref.Path, &ref.HPath, &ref.Name, &ref.Alias, &ref.Memo, &ref.Tag, &ref.Content, &ref.FContent, &ref.Markdown, &ref.Length, &ref.Type, &ref.SubType, &ref.IAL, &ref.Sort, &ref.Created, &ref.Updated,
+		if err = rows.Scan(&ref.ID, &ref.UserID, &ref.ParentID, &ref.RootID, &ref.Hash, &ref.Box, &ref.Path, &ref.HPath, &ref.Name, &ref.Alias, &ref.Memo, &ref.Tag, &ref.Content, &ref.FContent, &ref.Markdown, &ref.Length, &ref.Type, &ref.SubType, &ref.IAL, &ref.Sort, &ref.Created, &ref.Updated,
 			&rel); err != nil {
 			logging.LogErrorf("query scan field failed: %s", err)
 			return
@@ -529,7 +529,7 @@ func DefRefs(condition string, limit int) (ret []map[*Block]*Block) {
 
 func scanRefRows(rows *sql.Rows) (ret *Ref) {
 	var ref Ref
-	if err := rows.Scan(&ref.ID, &ref.DefBlockID, &ref.DefBlockParentID, &ref.DefBlockRootID, &ref.DefBlockPath, &ref.BlockID, &ref.RootID, &ref.Box, &ref.Path, &ref.Content, &ref.Markdown, &ref.Type); err != nil {
+	if err := rows.Scan(&ref.ID, &ref.UserID, &ref.DefBlockID, &ref.DefBlockParentID, &ref.DefBlockRootID, &ref.DefBlockPath, &ref.BlockID, &ref.RootID, &ref.Box, &ref.Path, &ref.Content, &ref.Markdown, &ref.Type); err != nil {
 		logging.LogErrorf("query scan field failed: %s", err)
 		return
 	}

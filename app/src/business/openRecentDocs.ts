@@ -48,17 +48,7 @@ ${unicode2Emoji(item.icon || window.siyuan.storage[Constants.LOCAL_IMAGES].file,
     let dockHtml = "";
     if (!isWindow()) {
         dockHtml = '<ul class="b3-list b3-list--background" style="overflow: auto;width: 200px;">';
-        if (!key || window.siyuan.languages.riffCard.toLowerCase().includes(key.toLowerCase())) {
-            dockHtml += `<li data-type="riffCard" data-index="0" class="b3-list-item${!switchPath ? " b3-list-item--focus" : ""}">
-    <svg class="b3-list-item__graphic"><use xlink:href="#iconRiffCard"></use></svg>
-    <span class="b3-list-item__text">${window.siyuan.languages.riffCard}</span>
-    <span class="b3-list-item__meta">${updateHotkeyTip(window.siyuan.config.keymap.general.riffCard.custom)}</span>
-</li>`;
-            if (!switchPath) {
-                switchPath = window.siyuan.languages.riffCard;
-            }
-        }
-        let docIndex = 1;
+        let docIndex = 0;
         getAllDocks().forEach((item) => {
             if (!key || item.title.toLowerCase().includes(key.toLowerCase())) {
                 dockHtml += `<li data-type="${item.type}" data-index="${docIndex}" class="b3-list-item${!switchPath ? " b3-list-item--focus" : ""}">
@@ -67,9 +57,6 @@ ${unicode2Emoji(item.icon || window.siyuan.storage[Constants.LOCAL_IMAGES].file,
     <span class="b3-list-item__meta">${updateHotkeyTip(item.hotkey || "")}</span>
 </li>`;
                 docIndex++;
-                if (!switchPath) {
-                    switchPath = window.siyuan.languages.riffCard;
-                }
             }
         });
         dockHtml = dockHtml + "</ul>";

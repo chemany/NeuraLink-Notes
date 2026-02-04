@@ -55,17 +55,21 @@ export const commandPanel = (app: App) => {
     Object.keys(window.siyuan.config.keymap.general).forEach((key) => {
         let keys;
         /// #if MOBILE
-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
+        // [闪卡功能已禁用] 移除 "riffCard"
+        // [反向链接功能已禁用] 移除 "backlinks"
+        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox",
             "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "lockScreen", "mainMenu", "move",
-            "newFile", "recentDocs", "replace", "riffCard", "search", "selectOpen1", "syncNow"];
+            "newFile", "recentDocs", "replace", "search", "selectOpen1", "syncNow"];
         /// #else
         // [关系图谱功能已禁用] 移除 "graphView" 和 "globalGraph"
-        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
+        // [闪卡功能已禁用] 移除 "riffCard"
+        // [反向链接功能已禁用] 移除 "backlinks"
+        keys = ["addToDatabase", "fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox",
             "closeAll", "closeLeft", "closeOthers", "closeRight", "closeTab",
             "closeUnmodified", "config", "dataHistory", "editReadonly", "enter", "enterBack", "globalSearch", "goBack",
             "goForward", "goToEditTabNext", "goToEditTabPrev", "goToTab1", "goToTab2", "goToTab3", "goToTab4",
             "goToTab5", "goToTab6", "goToTab7", "goToTab8", "goToTab9", "goToTabNext", "goToTabPrev", "lockScreen",
-            "mainMenu", "move", "newFile", "recentDocs", "replace", "riffCard", "search", "selectOpen1", "syncNow",
+            "mainMenu", "move", "newFile", "recentDocs", "replace", "search", "selectOpen1", "syncNow",
             "splitLR", "splitMoveB", "splitMoveR", "splitTB", "tabToWindow", "stickSearch", "toggleDock", "unsplitAll",
             "unsplit", "recentClosed"];
         /// #if !BROWSER

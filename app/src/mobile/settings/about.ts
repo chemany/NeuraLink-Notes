@@ -8,7 +8,7 @@ import {isInAndroid, isInHarmony, isInIOS, isIPad, openByMobile, writeText} from
 import {exitSiYuan, processSync} from "../../dialog/processSystem";
 import {pathPosix} from "../../util/pathName";
 import {openModel} from "../menu/model";
-import {setKey} from "../../sync/syncGuide";
+// [同步功能已禁用] import {setKey} from "../../sync/syncGuide";
 import {isBrowser} from "../../util/functions";
 
 export const initAbout = () => {
@@ -256,10 +256,10 @@ export const initAbout = () => {
                         event.stopPropagation();
                         break;
                     } else if (target.id === "initKeyByPW") {
-                        setKey(false, () => {
-                            importKeyElement.parentElement.classList.add("fn__none");
-                            importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
-                        });
+                        // [同步功能已禁用] setKey(false, () => {
+                        //     importKeyElement.parentElement.classList.add("fn__none");
+                        //     importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
+                        // });
                         event.preventDefault();
                         event.stopPropagation();
                         break;

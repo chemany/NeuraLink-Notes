@@ -77,30 +77,45 @@ type File struct {
 
 func (box *Box) docFromFileInfo(fileInfo *FileInfo, ial map[string]string) (ret *File) {
 	ret = &File{}
+	id := util.GetTreeID(fileInfo.name)
+	title := id
+	if ial != nil {
+		if t, ok := ial["title"]; ok && t != "" {
+			title = t
+		}
+	}
+
 	ret.Path = fileInfo.path
 	ret.Size = uint64(fileInfo.size)
-	ret.Name = ial["title"] + ".sy"
-	ret.Icon = ial["icon"]
-	ret.ID = ial["id"]
-	ret.Name1 = ial["name"]
-	ret.Alias = ial["alias"]
-	ret.Memo = ial["memo"]
-	ret.Bookmark = ial["bookmark"]
-	t, _ := time.ParseInLocation("20060102150405", ret.ID[:14], time.Local)
+	ret.Name = title + ".sy"
+	if ial != nil {
+		ret.Icon = ial["icon"]
+		ret.ID = ial["id"]
+		ret.Name1 = ial["name"]
+		ret.Alias = ial["alias"]
+		ret.Memo = ial["memo"]
+		ret.Bookmark = ial["bookmark"]
+	}
+	if ret.ID == "" {
+		ret.ID = id
+	}
+
+	t, _ := time.ParseInLocation("20060102150405", id[:14], time.Local)
 	ret.CTime = t.Unix()
 	ret.HCtime = t.Format("2006-01-02 15:04:05") + ", " + util.HumanizeTime(t, Conf.Lang)
 	ret.HSize = humanize.BytesCustomCeil(ret.Size, 2)
 
 	mTime := t
-	if updated := ial["updated"]; "" != updated {
-		if updatedTime, err := time.ParseInLocation("20060102150405", updated, time.Local); err == nil {
-			mTime = updatedTime
+	if ial != nil {
+		if updated := ial["updated"]; "" != updated {
+			if updatedTime, err := time.ParseInLocation("20060102150405", updated, time.Local); err == nil {
+				mTime = updatedTime
+			}
 		}
 	}
-
 	ret.Mtime = mTime.Unix()
 	ret.HMtime = mTime.Format("2006-01-02 15:04:05") + ", " + util.HumanizeTime(mTime, Conf.Lang)
-	return
+	return ret
 }
 
 func (box *Box) docIAL(p string) (ret map[string]string) {
@@ -267,11 +282,6 @@ type FileInfo struct {
 }
 
 func ListDocTree(ctx *WorkspaceContext, boxID, listPath string, sortMode int, flashcard, showHidden bool, maxListCount int) (ret []*File, totals int, err error) {
-	//os.MkdirAll("pprof", 0755)
-	//cpuProfile, _ := os.Create("pprof/cpu_profile_list_doc_tree")
-	//pprof.StartCPUProfile(cpuProfile)
-	//defer pprof.StopCPUProfile()
-
 	ret = []*File{}
 
 	var deck *riff.Deck
@@ -281,7 +291,6 @@ func ListDocTree(ctx *WorkspaceContext, boxID, listPath string, sortMode int, fl
 		if nil == deck {
 			return
 		}
-
 		deckBlockIDs = deck.GetBlockIDs()
 	}
 
@@ -314,7 +323,7 @@ func ListDocTree(ctx *WorkspaceContext, boxID, listPath string, sortMode int, fl
 	boxLocalPath := filepath.Join(ctx.GetDataDir(), box.ID)
 	var docs []*File
 	processedDocs := make(map[string]bool) // 记录已处理的文档路径,避免重复添加
-	
+
 	for _, file := range files {
 		if file.isdir {
 			if !ast.IsNodeIDPattern(file.name) {
@@ -325,22 +334,20 @@ func ListDocTree(ctx *WorkspaceContext, boxID, listPath string, sortMode int, fl
 			if processedDocs[parentDocPath] {
 				continue // 已经处理过这个文档
 			}
-			
-			parentDocFile := box.Stat(parentDocPath)
-			if nil == parentDocFile {
+
+			parentDocFile := box.StatWithDataDir(ctx.GetDataDir(), parentDocPath)
+			ial := box.docIALWithContext(ctx, parentDocPath) // 不管有没有 IAL 都继续处理
+			if !showHidden && ial != nil && "true" == ial["custom-hidden"] {
 				continue
 			}
-			if ial := box.docIALWithContext(ctx, parentDocPath); nil != ial {
-				if !showHidden && "true" == ial["custom-hidden"] {
-					continue
-				}
 
+			if parentDocFile != nil {
 				doc := box.docFromFileInfo(parentDocFile, ial)
 				subFiles, err := os.ReadDir(filepath.Join(boxLocalPath, file.path))
 				if err == nil {
 					for _, subFile := range subFiles {
 						subDocFilePath := path.Join(file.path, subFile.Name())
-						if subIAL := box.docIALWithContext(ctx, subDocFilePath); "true" == subIAL["custom-hidden"] {
+						if subIAL := box.docIALWithContext(ctx, subDocFilePath); subIAL != nil && "true" == subIAL["custom-hidden"] {
 							continue
 						}
 
@@ -369,50 +376,45 @@ func ListDocTree(ctx *WorkspaceContext, boxID, listPath string, sortMode int, fl
 			continue
 		} else {
 			if strings.HasSuffix(file.name, ".sy") && !ast.IsNodeIDPattern(strings.TrimSuffix(file.name, ".sy")) {
-				// 不以块 ID 命名的 .sy 文件不应该被加载到思源中 https://github.com/siyuan-note/siyuan/issues/16089
 				continue
 			}
 		}
 
-		// 检查是否已经在目录处理中添加过
 		if processedDocs[file.path] {
 			continue
 		}
 
-		if ial := box.docIALWithContext(ctx, file.path); nil != ial {
-			if !showHidden && "true" == ial["custom-hidden"] {
-				continue
-			}
+		ial := box.docIALWithContext(ctx, file.path) // 不管有没有 IAL 都继续处理
+		if !showHidden && ial != nil && "true" == ial["custom-hidden"] {
+			continue
+		}
 
-			doc := box.docFromFileInfo(file, ial)
-			
-			// 计算子文档数量
-			subFolder := filepath.Join(boxLocalPath, strings.TrimSuffix(file.path, ".sy"))
-			if gulu.File.IsDir(subFolder) {
-				subFiles, err := os.ReadDir(subFolder)
-				if err == nil {
-					for _, subFile := range subFiles {
-						if strings.HasSuffix(subFile.Name(), ".sy") {
-							doc.SubFileCount++
-						}
+		doc := box.docFromFileInfo(file, ial)
+		subFolder := filepath.Join(boxLocalPath, strings.TrimSuffix(file.path, ".sy"))
+		if gulu.File.IsDir(subFolder) {
+			subFiles, err := os.ReadDir(subFolder)
+			if err == nil {
+				for _, subFile := range subFiles {
+					if strings.HasSuffix(subFile.Name(), ".sy") {
+						doc.SubFileCount++
 					}
 				}
 			}
+		}
 
-			if flashcard {
-				rootID := util.GetTreeID(file.path)
-				newFlashcardCount, dueFlashcardCount, flashcardCount := countTreeFlashcard(rootID, deck, deckBlockIDs)
-				if 0 < flashcardCount {
-					doc.NewFlashcardCount = newFlashcardCount
-					doc.DueFlashcardCount = dueFlashcardCount
-					doc.FlashcardCount = flashcardCount
-					docs = append(docs, doc)
-					processedDocs[file.path] = true
-				}
-			} else {
+		if flashcard {
+			rootID := util.GetTreeID(file.path)
+			newFlashcardCount, dueFlashcardCount, flashcardCount := countTreeFlashcard(rootID, deck, deckBlockIDs)
+			if 0 < flashcardCount {
+				doc.NewFlashcardCount = newFlashcardCount
+				doc.DueFlashcardCount = dueFlashcardCount
+				doc.FlashcardCount = flashcardCount
 				docs = append(docs, doc)
 				processedDocs[file.path] = true
 			}
+		} else {
+			docs = append(docs, doc)
+			processedDocs[file.path] = true
 		}
 	}
 	elapsed = time.Now().Sub(start).Milliseconds()
@@ -1879,28 +1881,16 @@ func createDocWithContext(ctx *WorkspaceContext, boxID, p, title, dom string) (t
 		return
 	}
 
-	// 使用 WorkspaceContext 获取笔记本
+	// 直接构造一个临时 Box 对象，不再依赖 Conf.BoxWithContext
 	box := Conf.BoxWithContext(ctx, boxID)
 	if nil == box {
-		err = errors.New(Conf.Language(0))
-		return
+		box = &Box{ID: boxID} 
 	}
 
 	id := util.GetTreeID(p)
-	var hPath string
-	folder := path.Dir(p)
-	if "/" != folder {
-		parentID := path.Base(folder)
-		parentTree, loadErr := LoadTreeByBlockIDWithContext(ctx, parentID)
-		if nil != loadErr {
-			logging.LogErrorf("get parent tree [%s] failed", parentID)
-			err = ErrBlockNotFound
-			return
-		}
-		hPath = path.Join(parentTree.HPath, title)
-	} else {
-		hPath = "/" + title
-	}
+	
+	// 使用完全去数据库化的 HPath 计算
+	hPath := getDocHPathByPathWithContext(ctx, boxID, p, title)
 
 	if depth := strings.Count(p, "/"); 7 < depth && !Conf.FileTree.AllowCreateDeeper {
 		err = errors.New(Conf.Language(118))
@@ -1908,7 +1898,7 @@ func createDocWithContext(ctx *WorkspaceContext, boxID, p, title, dom string) (t
 	}
 
 	// 使用用户特定的数据目录检查文件夹和文件是否存在
-	userFolderPath := filepath.Join(ctx.GetDataDir(), boxID, folder)
+	userFolderPath := filepath.Join(ctx.GetDataDir(), boxID, path.Dir(p))
 	if !filelock.IsExist(userFolderPath) {
 		if err = os.MkdirAll(userFolderPath, 0755); err != nil {
 			return
@@ -1916,13 +1906,10 @@ func createDocWithContext(ctx *WorkspaceContext, boxID, p, title, dom string) (t
 	}
 
 	userDocPath := filepath.Join(ctx.GetDataDir(), boxID, p)
-	logging.LogInfof("createDocWithContext: checking file existence at [%s]", userDocPath)
 	if filelock.IsExist(userDocPath) {
-		logging.LogWarnf("createDocWithContext: file already exists at [%s]", userDocPath)
 		err = errors.New(Conf.Language(1))
 		return
 	}
-	logging.LogInfof("createDocWithContext: file does not exist, proceeding with creation")
 
 	luteEngine := util.NewLute()
 	tree = luteEngine.BlockDOM2Tree(dom)
@@ -1970,17 +1957,65 @@ func createDocWithContext(ctx *WorkspaceContext, boxID, p, title, dom string) (t
 		unlink.Unlink()
 	}
 
-	// 使用带 Context 的事务处理，确保文件写入到正确的用户数据目录
-	transaction := &Transaction{
-		DoOperations: []*Operation{{
-			Action: "create", 
-			Data:   tree,
-		}},
-		ctx: ctx, // 传递 WorkspaceContext
+	// 写入文件
+	filesys.WriteTreeWithDataDir(tree, ctx.GetDataDir())
+
+	// 设置当前 goroutine 的 Context，确保 BlockTree 操作能获取到 user_id
+	treenode.SetCurrentContext(ctx)
+	defer treenode.ClearCurrentContext()
+
+	// 同步更新 BlockTree 索引到全局数据库，确保 GetBlock 能立即找到
+	// 所有用户共用同一个数据库，通过 user_id 隔离
+	treenode.UpsertBlockTree(tree)
+	logging.LogInfof("createDocWithContext: BlockTree index upserted for [%s]", tree.ID)
+
+	// 同步插入根块到 blocks 表，确保 GetBlock 能立即找到
+	// 注意：这里只插入根块，完整索引仍由异步任务处理
+	if err := sql.InsertRootBlockSync(tree, ctx.GetUserID()); err != nil {
+		logging.LogErrorf("createDocWithContext: insert root block sync failed: %s", err)
+	} else {
+		logging.LogInfof("createDocWithContext: root block [%s] inserted synchronously", tree.Root.ID)
 	}
-	PerformTransactionsWithContext(ctx, &[]*Transaction{transaction})
-	FlushTxQueue()
+
+	// 异步更新完整数据库索引 (FTS 等)
+	go func() {
+		sql.IndexTreeQueueWithContext(tree, ctx)
+	}()
+
 	return
+}
+
+func getDocHPathByPathWithContext(ctx *WorkspaceContext, boxID, p, title string) string {
+	folder := path.Dir(p)
+	if "/" == folder {
+		return "/" + title
+	}
+
+	parts := strings.Split(strings.Trim(folder, "/"), "/")
+	var hPathParts []string
+	
+	currentPath := ""
+	for _, id := range parts {
+		if !ast.IsNodeIDPattern(id) {
+			hPathParts = append(hPathParts, id)
+			continue
+		}
+		
+		currentPath = path.Join(currentPath, id)
+		fullPath := currentPath + ".sy"
+		
+		// 尝试读取 IAL 中的 title
+		filePath := filepath.Join(ctx.GetDataDir(), boxID, fullPath)
+		ial := filesys.DocIAL(filePath)
+		if ial != nil && ial["title"] != "" {
+			hPathParts = append(hPathParts, ial["title"])
+		} else {
+			hPathParts = append(hPathParts, id)
+		}
+	}
+	
+	hPathParts = append(hPathParts, title)
+	return "/" + strings.Join(hPathParts, "/")
 }
 
 func removeInvisibleCharsInTitle(title string) string {

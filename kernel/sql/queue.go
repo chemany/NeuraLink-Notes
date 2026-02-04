@@ -89,7 +89,7 @@ func getWorkspaceContextForBox(boxID string) (WorkspaceContext, error) {
 				RepoDir:       filepath.Join(userWorkspace, "repo"),
 				HistoryDir:    filepath.Join(userWorkspace, "history"),
 				TempDir:       filepath.Join(userWorkspace, "temp"),
-				UserID:        "",
+				UserID:        username, // Use username as UserID for now
 				Username:      username,
 				WorkspaceName: username,
 			}
@@ -129,6 +129,7 @@ func (ctx *WorkspaceContextImpl) GetDataDir() string           { return ctx.Data
 func (ctx *WorkspaceContextImpl) GetConfDir() string           { return ctx.ConfDir }
 func (ctx *WorkspaceContextImpl) GetTempDir() string           { return ctx.TempDir }
 func (ctx *WorkspaceContextImpl) GetAssetContentDBPath() string { return ctx.AssetContentDBPath }
+func (ctx *WorkspaceContextImpl) GetUserID() string             { return ctx.UserID }
 
 type dbQueueOperation struct {
 	inQueueTime                   time.Time
@@ -222,10 +223,27 @@ func FlushQueue() {
 		groupOpsCurrent[op.action]++
 		context["current"] = groupOpsCurrent[op.action]
 		context["total"] = groupOpsTotal[op.action]
+
+		// 设置 goroutine context 以便 InjectUserIDFilter 能获取到 UserID
+		currentWSCtx := op.workspaceCtx
+		if currentWSCtx == nil && op.boxID != "" {
+			currentWSCtx, _ = getWorkspaceContextForBox(op.boxID)
+		}
+		if currentWSCtx != nil {
+			SetCurrentContext(currentWSCtx)
+		}
+
 		if err = execOp(op, tx, context); err != nil {
+			if currentWSCtx != nil {
+				ClearCurrentContext()
+			}
 			tx.Rollback()
 			logging.LogErrorf("queue operation [%s] failed: %s", op.action, err)
 			continue
+		}
+
+		if currentWSCtx != nil {
+			ClearCurrentContext()
 		}
 
 		if err = commitTx(tx); err != nil {
@@ -254,6 +272,25 @@ func FlushQueue() {
 }
 
 func execOp(op *dbQueueOperation, tx *sql.Tx, context map[string]interface{}) (err error) {
+	// Inject UserID into context if available
+	userID := ""
+	if op.workspaceCtx != nil {
+		userID = op.workspaceCtx.GetUserID()
+	} else if op.boxID != "" {
+		if wsCtx, err := getWorkspaceContextForBox(op.boxID); err == nil {
+			userID = wsCtx.GetUserID()
+		}
+	}
+
+	// 最终兜底：从 goroutine context 获取
+	if userID == "" {
+		userID = GetUserID()
+	}
+
+	if userID != "" {
+		context["userID"] = userID
+	}
+
 	switch op.action {
 	case "index":
 		err = indexTree(tx, op.indexTree, context)
@@ -278,7 +315,8 @@ func execOp(op *dbQueueOperation, tx *sql.Tx, context map[string]interface{}) (e
 	case "delete_box_refs":
 		err = deleteRefsByBoxTx(tx, op.box)
 	case "update_refs":
-		err = upsertRefs(tx, op.upsertTree)
+		userID, _ := context["userID"].(string)
+		err = upsertRefs(tx, op.upsertTree, userID)
 	case "delete_refs":
 		err = deleteRefs(tx, op.upsertTree)
 	case "update_block_content":
@@ -289,7 +327,7 @@ func execOp(op *dbQueueOperation, tx *sql.Tx, context map[string]interface{}) (e
 		err = indexNode(tx, op.id)
 	default:
 		msg := fmt.Sprintf("unknown operation [%s]", op.action)
-		logging.LogErrorf(msg)
+		logging.LogErrorf("%s", msg)
 		err = errors.New(msg)
 	}
 	return

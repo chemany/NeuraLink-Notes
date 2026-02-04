@@ -27,6 +27,7 @@ import (
 
 type Span struct {
 	ID       string
+	UserID   string
 	BlockID  string
 	RootID   string
 	Box      string
@@ -139,7 +140,7 @@ func QueryTagSpans(p string) (ret []*Span) {
 
 func scanSpanRows(rows *sql.Rows) (ret *Span) {
 	var span Span
-	if err := rows.Scan(&span.ID, &span.BlockID, &span.RootID, &span.Box, &span.Path, &span.Content, &span.Markdown, &span.Type, &span.IAL); err != nil {
+	if err := rows.Scan(&span.ID, &span.UserID, &span.BlockID, &span.RootID, &span.Box, &span.Path, &span.Content, &span.Markdown, &span.Type, &span.IAL); err != nil {
 		logging.LogErrorf("query scan field failed: %s", err)
 		return
 	}

@@ -47,16 +47,6 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
-// WorkspaceContextInterface 定义 WorkspaceContext 的接口
-// 避免循环依赖，sql 包不能直接导入 model 包
-type WorkspaceContextInterface interface {
-	GetDataDir() string
-	GetConfDir() string
-	GetWorkspaceDir() string
-	GetTempDir() string
-	GetAssetContentDBPath() string
-}
-
 var (
 	db             *sql.DB
 	historyDB      *sql.DB
@@ -67,7 +57,7 @@ var (
 	assetContentDBLock     sync.Mutex
 
 	// goroutine-local Context 存储，用于多用户架构
-	contextMap = sync.Map{} // goroutineID -> WorkspaceContextInterface
+	contextMap = sync.Map{} // goroutineID -> util.WorkspaceContextInterface
 )
 
 func init() {
@@ -100,6 +90,8 @@ func InitDatabase(forceRebuild bool) (err error) {
 	}
 
 	initDBConnection()
+	// 将数据库连接设置到 treenode 包，确保所有包共享同一个连接
+	treenode.SetDB(db)
 	treenode.InitBlockTree(forceRebuild)
 
 	if !forceRebuild {
@@ -143,7 +135,7 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [blocks] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE blocks (id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated)")
+	_, err = db.Exec("CREATE TABLE blocks (id, user_id, parent_id, root_id, hash, box, path, hpath, name, alias, memo, tag, content, fcontent, markdown, length, type, subtype, ial, sort, created, updated)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [blocks] failed: %s", err)
 	}
@@ -151,6 +143,11 @@ func initDBTables() {
 	_, err = db.Exec("CREATE INDEX idx_blocks_id ON blocks(id)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocks_id] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocks_user_id ON blocks(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocks_user_id] failed: %s", err)
 	}
 
 	_, err = db.Exec("CREATE INDEX idx_blocks_parent_id ON blocks(parent_id)")
@@ -167,7 +164,7 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [blocks_fts] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE VIRTUAL TABLE blocks_fts USING fts5(id UNINDEXED, parent_id UNINDEXED, root_id UNINDEXED, hash UNINDEXED, box UNINDEXED, path UNINDEXED, hpath, name, alias, memo, tag, content, fcontent, markdown UNINDEXED, length UNINDEXED, type UNINDEXED, subtype UNINDEXED, ial, sort UNINDEXED, created UNINDEXED, updated UNINDEXED, tokenize=\"siyuan\")")
+	_, err = db.Exec("CREATE VIRTUAL TABLE blocks_fts USING fts5(id UNINDEXED, user_id UNINDEXED, parent_id UNINDEXED, root_id UNINDEXED, hash UNINDEXED, box UNINDEXED, path UNINDEXED, hpath, name, alias, memo, tag, content, fcontent, markdown UNINDEXED, length UNINDEXED, type UNINDEXED, subtype UNINDEXED, ial, sort UNINDEXED, created UNINDEXED, updated UNINDEXED, tokenize=\"siyuan\")")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [blocks_fts] failed: %s", err)
 	}
@@ -176,7 +173,7 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [blocks_fts_case_insensitive] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE VIRTUAL TABLE blocks_fts_case_insensitive USING fts5(id UNINDEXED, parent_id UNINDEXED, root_id UNINDEXED, hash UNINDEXED, box UNINDEXED, path UNINDEXED, hpath, name, alias, memo, tag, content, fcontent, markdown UNINDEXED, length UNINDEXED, type UNINDEXED, subtype UNINDEXED, ial, sort UNINDEXED, created UNINDEXED, updated UNINDEXED, tokenize=\"siyuan case_insensitive\")")
+	_, err = db.Exec("CREATE VIRTUAL TABLE blocks_fts_case_insensitive USING fts5(id UNINDEXED, user_id UNINDEXED, parent_id UNINDEXED, root_id UNINDEXED, hash UNINDEXED, box UNINDEXED, path UNINDEXED, hpath, name, alias, memo, tag, content, fcontent, markdown UNINDEXED, length UNINDEXED, type UNINDEXED, subtype UNINDEXED, ial, sort UNINDEXED, created UNINDEXED, updated UNINDEXED, tokenize=\"siyuan case_insensitive\")")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [blocks_fts_case_insensitive] failed: %s", err)
 	}
@@ -185,7 +182,7 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [spans] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE spans (id, block_id, root_id, box, path, content, markdown, type, ial)")
+	_, err = db.Exec("CREATE TABLE spans (id, user_id, block_id, root_id, box, path, content, markdown, type, ial)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [spans] failed: %s", err)
 	}
@@ -193,12 +190,16 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_spans_root_id] failed: %s", err)
 	}
+	_, err = db.Exec("CREATE INDEX idx_spans_user_id ON spans(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_spans_user_id] failed: %s", err)
+	}
 
 	_, err = db.Exec("DROP TABLE IF EXISTS assets")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [assets] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE assets (id, block_id, root_id, box, docpath, path, name, title, hash)")
+	_, err = db.Exec("CREATE TABLE assets (id, user_id, block_id, root_id, box, docpath, path, name, title, hash)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [assets] failed: %s", err)
 	}
@@ -206,18 +207,26 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_assets_root_id] failed: %s", err)
 	}
+	_, err = db.Exec("CREATE INDEX idx_assets_user_id ON assets(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_assets_user_id] failed: %s", err)
+	}
 
 	_, err = db.Exec("DROP TABLE IF EXISTS attributes")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [attributes] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE attributes (id, name, value, type, block_id, root_id, box, path)")
+	_, err = db.Exec("CREATE TABLE attributes (id, user_id, name, value, type, block_id, root_id, box, path)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [attributes] failed: %s", err)
 	}
 	_, err = db.Exec("CREATE INDEX idx_attributes_block_id ON attributes(block_id)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_attributes_block_id] failed: %s", err)
+	}
+	_, err = db.Exec("CREATE INDEX idx_attributes_user_id ON attributes(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_attributes_user_id] failed: %s", err)
 	}
 	_, err = db.Exec("CREATE INDEX idx_attributes_root_id ON attributes(root_id)")
 	if err != nil {
@@ -228,18 +237,56 @@ func initDBTables() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [refs] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE refs (id, def_block_id, def_block_parent_id, def_block_root_id, def_block_path, block_id, root_id, box, path, content, markdown, type)")
+	_, err = db.Exec("CREATE TABLE refs (id, user_id, def_block_id, def_block_parent_id, def_block_root_id, def_block_path, block_id, root_id, box, path, content, markdown, type)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [refs] failed: %s", err)
 	}
-
+	_, err = db.Exec("CREATE INDEX idx_refs_user_id ON refs(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_refs_user_id] failed: %s", err)
+	}
+	_, err = db.Exec("CREATE INDEX idx_refs_def_block_root_id ON refs(def_block_root_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_refs_def_block_root_id] failed: %s", err)
+	}
 	_, err = db.Exec("DROP TABLE IF EXISTS file_annotation_refs")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "drop table [refs] failed: %s", err)
 	}
-	_, err = db.Exec("CREATE TABLE file_annotation_refs (id, file_path, annotation_id, block_id, root_id, box, path, content, type)")
+	_, err = db.Exec("CREATE TABLE file_annotation_refs (id, user_id, file_path, annotation_id, block_id, root_id, box, path, content, type)")
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [refs] failed: %s", err)
+	}
+
+	// 创建 blocktrees 表（用于 BlockTree 索引，所有用户共用）
+	_, err = db.Exec("CREATE TABLE blocktrees (id, user_id, root_id, parent_id, box_id, path, hpath, updated, type)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create table [blocktrees] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocktrees_id ON blocktrees(id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocktrees_id] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocktrees_user_id ON blocktrees(user_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocktrees_user_id] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocktrees_box_hpath ON blocktrees(box_id, hpath)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocktrees_box_hpath] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocktrees_box_path ON blocktrees(box_id, path)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocktrees_box_path] failed: %s", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_blocktrees_root_id ON blocktrees(root_id)")
+	if err != nil {
+		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create index [idx_blocktrees_root_id] failed: %s", err)
 	}
 }
 
@@ -269,6 +316,12 @@ func initDBConnection() {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0) // 0表示连接永不过期
+}
+
+// GetGlobalDB 获取全局数据库连接
+// 用于让 treenode 包共享同一个数据库连接，避免多个连接池竞争
+func GetGlobalDB() *sql.DB {
+	return db
 }
 
 var initHistoryDatabaseLock = sync.Mutex{}
@@ -359,7 +412,7 @@ func InitAssetContentDatabase(forceRebuild bool) {
 }
 
 // InitAssetContentDatabaseWithContext 使用用户上下文初始化附件内容数据库
-func InitAssetContentDatabaseWithContext(ctx WorkspaceContextInterface, forceRebuild bool) error {
+func InitAssetContentDatabaseWithContext(ctx util.WorkspaceContextInterface, forceRebuild bool) error {
 	initAssetContentDatabaseLock.Lock()
 	defer initAssetContentDatabaseLock.Unlock()
 
@@ -459,7 +512,7 @@ func initAssetContentDBTables() {
 
 // SetAssetContentDBForContext 临时设置用户特定的附件内容数据库连接
 // 用于在重新索引等操作中临时切换数据库
-func SetAssetContentDBForContext(ctx WorkspaceContextInterface) error {
+func SetAssetContentDBForContext(ctx util.WorkspaceContextInterface) error {
 	assetContentDBLock.Lock()
 	defer assetContentDBLock.Unlock()
 
@@ -535,14 +588,14 @@ func SetIndexAssetPath(b bool) {
 	indexAssetPath = b
 }
 
-func refsFromTree(tree *parse.Tree) (refs []*Ref, fileAnnotationRefs []*FileAnnotationRef) {
+func refsFromTree(tree *parse.Tree, userID string) (refs []*Ref, fileAnnotationRefs []*FileAnnotationRef) {
 	ast.Walk(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
 		if entering {
 			return ast.WalkContinue
 		}
 
 		if treenode.IsBlockRef(n) {
-			ref := buildRef(tree, n)
+			ref := buildRef(tree, n, userID)
 			if !isRepeatedRef(refs, ref) {
 				refs = append(refs, ref)
 			}
@@ -564,6 +617,7 @@ func refsFromTree(tree *parse.Tree) (refs []*Ref, fileAnnotationRefs []*FileAnno
 			parentBlock := treenode.ParentBlock(n)
 			ref := &FileAnnotationRef{
 				ID:           ast.NewNodeID(),
+				UserID:       userID,
 				FilePath:     filePath,
 				AnnotationID: annotationID,
 				BlockID:      parentBlock.ID,
@@ -575,7 +629,7 @@ func refsFromTree(tree *parse.Tree) (refs []*Ref, fileAnnotationRefs []*FileAnno
 			}
 			fileAnnotationRefs = append(fileAnnotationRefs, ref)
 		} else if treenode.IsEmbedBlockRef(n) {
-			ref := buildEmbedRef(tree, n)
+			ref := buildEmbedRef(tree, n, userID)
 			if !isRepeatedRef(refs, ref) {
 				refs = append(refs, ref)
 			}
@@ -595,7 +649,7 @@ func isRepeatedRef(refs []*Ref, ref *Ref) bool {
 	return false
 }
 
-func buildRef(tree *parse.Tree, refNode *ast.Node) *Ref {
+func buildRef(tree *parse.Tree, refNode *ast.Node, userID string) *Ref {
 	// 多个类型可能会导致渲染的 Markdown 不正确，所以这里只保留 block-ref 类型
 	tmpTyp := refNode.TextMarkType
 	refNode.TextMarkType = "block-ref"
@@ -613,6 +667,7 @@ func buildRef(tree *parse.Tree, refNode *ast.Node) *Ref {
 	parentBlock := treenode.ParentBlock(refNode)
 	return &Ref{
 		ID:               ast.NewNodeID(),
+		UserID:           userID,
 		DefBlockID:       defBlockID,
 		DefBlockParentID: defBlockParentID,
 		DefBlockRootID:   defBlockRootID,
@@ -627,7 +682,7 @@ func buildRef(tree *parse.Tree, refNode *ast.Node) *Ref {
 	}
 }
 
-func buildEmbedRef(tree *parse.Tree, embedNode *ast.Node) *Ref {
+func buildEmbedRef(tree *parse.Tree, embedNode *ast.Node, userID string) *Ref {
 	defBlockID := getEmbedRef(embedNode)
 	var defBlockParentID, defBlockRootID, defBlockPath string
 	defBlock := treenode.GetBlockTree(defBlockID)
@@ -639,6 +694,7 @@ func buildEmbedRef(tree *parse.Tree, embedNode *ast.Node) *Ref {
 
 	return &Ref{
 		ID:               ast.NewNodeID(),
+		UserID:           userID,
 		DefBlockID:       defBlockID,
 		DefBlockParentID: defBlockParentID,
 		DefBlockRootID:   defBlockRootID,
@@ -658,7 +714,7 @@ func getEmbedRef(embedNode *ast.Node) (queryBlockID string) {
 	return
 }
 
-func fromTree(node *ast.Node, tree *parse.Tree) (blocks []*Block, spans []*Span, assets []*Asset, attributes []*Attribute) {
+func fromTree(node *ast.Node, tree *parse.Tree, userID string) (blocks []*Block, spans []*Span, assets []*Asset, attributes []*Attribute) {
 	rootID := tree.Root.ID
 	boxID := tree.Box
 	p := tree.Path
@@ -668,7 +724,7 @@ func fromTree(node *ast.Node, tree *parse.Tree) (blocks []*Block, spans []*Span,
 		}
 
 		// 构造行级元素
-		spanBlocks, spanSpans, spanAssets, spanAttrs, walkStatus := buildSpanFromNode(n, tree, rootID, boxID, p)
+		spanBlocks, spanSpans, spanAssets, spanAttrs, walkStatus := buildSpanFromNode(n, tree, rootID, boxID, p, userID)
 		if 0 < len(spanBlocks) {
 			blocks = append(blocks, spanBlocks...)
 		}
@@ -683,7 +739,7 @@ func fromTree(node *ast.Node, tree *parse.Tree) (blocks []*Block, spans []*Span,
 		}
 
 		// 构造属性
-		attrs := buildAttributeFromNode(n, rootID, boxID, p)
+		attrs := buildAttributeFromNode(n, rootID, boxID, p, userID)
 		if 0 < len(attrs) {
 			attributes = append(attributes, attrs...)
 		}
@@ -696,7 +752,7 @@ func fromTree(node *ast.Node, tree *parse.Tree) (blocks []*Block, spans []*Span,
 			return ast.WalkContinue
 		}
 
-		b, attrs := buildBlockFromNode(n, tree)
+		b, attrs := buildBlockFromNode(n, tree, userID)
 		blocks = append(blocks, b)
 		if 0 < len(attrs) {
 			attributes = append(attributes, attrs...)
@@ -706,7 +762,7 @@ func fromTree(node *ast.Node, tree *parse.Tree) (blocks []*Block, spans []*Span,
 	return
 }
 
-func buildAttributeFromNode(n *ast.Node, rootID, boxID, p string) (attributes []*Attribute) {
+func buildAttributeFromNode(n *ast.Node, rootID, boxID, p, userID string) (attributes []*Attribute) {
 	switch n.Type {
 	case ast.NodeKramdownSpanIAL:
 		parentBlock := treenode.ParentBlock(n)
@@ -718,6 +774,7 @@ func buildAttributeFromNode(n *ast.Node, rootID, boxID, p string) (attributes []
 
 			attr := &Attribute{
 				ID:      ast.NewNodeID(),
+				UserID:  userID,
 				Name:    name,
 				Value:   val,
 				Type:    "s",
@@ -737,6 +794,7 @@ func buildAttributeFromNode(n *ast.Node, rootID, boxID, p string) (attributes []
 
 			attr := &Attribute{
 				ID:      ast.NewNodeID(),
+				UserID:  userID,
 				Name:    name,
 				Value:   val,
 				Type:    "b",
@@ -755,7 +813,7 @@ func isAttr(name string) bool {
 	return strings.HasPrefix(name, "custom-") || "name" == name || "alias" == name || "memo" == name || "bookmark" == name || "fold" == name || "heading-fold" == name || "style" == name
 }
 
-func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (blocks []*Block, spans []*Span, assets []*Asset, attributes []*Attribute, walkStatus ast.WalkStatus) {
+func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p, userID string) (blocks []*Block, spans []*Span, assets []*Asset, attributes []*Attribute, walkStatus ast.WalkStatus) {
 	boxLocalPath := filepath.Join(util.DataDir, boxID)
 	docDirLocalPath := filepath.Join(boxLocalPath, p)
 	switch n.Type {
@@ -765,6 +823,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		parentBlock := treenode.ParentBlock(n)
 		span := &Span{
 			ID:       ast.NewNodeID(),
+			UserID:   userID,
 			BlockID:  parentBlock.ID,
 			RootID:   rootID,
 			Box:      boxID,
@@ -807,6 +866,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		name, _ := util.LastID(dest)
 		asset := &Asset{
 			ID:      ast.NewNodeID(),
+			UserID:  userID,
 			BlockID: parentBlock.ID,
 			RootID:  rootID,
 			Box:     boxID,
@@ -826,6 +886,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		parentBlock := treenode.ParentBlock(n)
 		span := &Span{
 			ID:       ast.NewNodeID(),
+			UserID:   userID,
 			BlockID:  parentBlock.ID,
 			RootID:   rootID,
 			Box:      boxID,
@@ -858,6 +919,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 				name, _ := util.LastID(dest)
 				asset := &Asset{
 					ID:      ast.NewNodeID(),
+					UserID:  userID,
 					BlockID: parentBlock.ID,
 					RootID:  rootID,
 					Box:     boxID,
@@ -873,10 +935,10 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		walkStatus = ast.WalkSkipChildren
 		return
 	case ast.NodeDocument:
-		if asset := docTitleImgAsset(n, boxLocalPath, docDirLocalPath); nil != asset {
+		if asset := docTitleImgAsset(n, boxLocalPath, docDirLocalPath, userID); nil != asset {
 			assets = append(assets, asset)
 		}
-		if tags := docTagSpans(n); 0 < len(tags) {
+		if tags := docTagSpans(n, userID); 0 < len(tags) {
 			spans = append(spans, tags...)
 		}
 	case ast.NodeInlineHTML, ast.NodeHTMLBlock, ast.NodeIFrame, ast.NodeWidget, ast.NodeAudio, ast.NodeVideo:
@@ -893,7 +955,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		}
 
 		if ast.NodeHTMLBlock == n.Type || ast.NodeIFrame == n.Type || ast.NodeWidget == n.Type || ast.NodeAudio == n.Type || ast.NodeVideo == n.Type {
-			b, attrs := buildBlockFromNode(n, tree)
+			b, attrs := buildBlockFromNode(n, tree, userID)
 			blocks = append(blocks, b)
 			attributes = append(attributes, attrs...)
 		}
@@ -903,7 +965,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 			n.ID = ast.NewNodeID()
 			n.SetIALAttr("id", n.ID)
 			n.SetIALAttr("updated", n.ID[:14])
-			b, attrs := buildBlockFromNode(n, tree)
+			b, attrs := buildBlockFromNode(n, tree, userID)
 			b.Type = ast.NodeHTMLBlock.String()
 			blocks = append(blocks, b)
 			attributes = append(attributes, attrs...)
@@ -951,6 +1013,7 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 		name, _ := util.LastID(dest)
 		asset := &Asset{
 			ID:      ast.NewNodeID(),
+			UserID:  userID,
 			BlockID: parentBlock.ID,
 			RootID:  rootID,
 			Box:     boxID,
@@ -968,12 +1031,12 @@ func buildSpanFromNode(n *ast.Node, tree *parse.Tree, rootID, boxID, p string) (
 	return
 }
 
-func BuildBlockFromNode(n *ast.Node, tree *parse.Tree) (block *Block) {
-	block, _ = buildBlockFromNode(n, tree)
+func BuildBlockFromNode(n *ast.Node, tree *parse.Tree, userID string) (block *Block) {
+	block, _ = buildBlockFromNode(n, tree, userID)
 	return
 }
 
-func buildBlockFromNode(n *ast.Node, tree *parse.Tree) (block *Block, attributes []*Attribute) {
+func buildBlockFromNode(n *ast.Node, tree *parse.Tree, userID string) (block *Block, attributes []*Attribute) {
 	boxID := tree.Box
 	p := tree.Path
 	rootID := tree.Root.ID
@@ -1034,6 +1097,7 @@ func buildBlockFromNode(n *ast.Node, tree *parse.Tree) (block *Block, attributes
 
 	block = &Block{
 		ID:       n.ID,
+		UserID:   userID,
 		ParentID: parentID,
 		RootID:   rootID,
 		Hash:     hash,
@@ -1064,6 +1128,7 @@ func buildBlockFromNode(n *ast.Node, tree *parse.Tree) (block *Block, attributes
 
 		attr := &Attribute{
 			ID:      ast.NewNodeID(),
+			UserID:  userID,
 			Name:    attrName,
 			Value:   attrVal,
 			Type:    "b",
@@ -1185,7 +1250,7 @@ func deleteBlocksByIDs(tx *sql.Tx, ids []string) (err error) {
 }
 
 // deleteBlocksByIDsWithContext 使用 WorkspaceContext 删除块（带缓存清理）
-func deleteBlocksByIDsWithContext(ctx WorkspaceContextInterface, tx *sql.Tx, ids []string) (err error) {
+func deleteBlocksByIDsWithContext(ctx util.WorkspaceContextInterface, tx *sql.Tx, ids []string) (err error) {
 	if 1 > len(ids) {
 		return
 	}
@@ -1559,6 +1624,13 @@ func queryRow(query string, args ...interface{}) *sql.Row {
 		logging.LogErrorf("statement is empty")
 		return nil
 	}
+
+	// 优先使用当前 goroutine 的 Context（多用户架构）
+	if ctx, ok := GetCurrentContext(); ok {
+		return queryRowWithContext(ctx, query, args...)
+	}
+
+	query = InjectUserIDFilter(query)
 	if nil == db {
 		return nil
 	}
@@ -1566,13 +1638,14 @@ func queryRow(query string, args ...interface{}) *sql.Row {
 }
 
 // queryRowWithContext 使用 WorkspaceContext 查询单行数据
-func queryRowWithContext(ctx WorkspaceContextInterface, query string, args ...interface{}) *sql.Row {
+func queryRowWithContext(ctx util.WorkspaceContextInterface, query string, args ...interface{}) *sql.Row {
 	query = strings.TrimSpace(query)
 	if "" == query {
 		logging.LogErrorf("statement is empty")
 		return nil
 	}
 
+	query = InjectUserIDFilter(query)
 	database, err := GetDBWithContext(ctx)
 	if err != nil {
 		logging.LogErrorf("get database failed: %s", err)
@@ -1584,7 +1657,7 @@ func queryRowWithContext(ctx WorkspaceContextInterface, query string, args ...in
 
 // SetCurrentContext 设置当前 goroutine 的 WorkspaceContext
 // 用于多用户架构，让数据库查询使用正确的用户数据库
-func SetCurrentContext(ctx WorkspaceContextInterface) {
+func SetCurrentContext(ctx util.WorkspaceContextInterface) {
 	gid := goid.Get()
 	contextMap.Store(gid, ctx)
 }
@@ -1595,11 +1668,11 @@ func ClearCurrentContext() {
 	contextMap.Delete(gid)
 }
 
-// getCurrentContext 获取当前 goroutine 的 WorkspaceContext
-func getCurrentContext() (WorkspaceContextInterface, bool) {
+// GetCurrentContext 获取当前 goroutine 的 WorkspaceContext
+func GetCurrentContext() (util.WorkspaceContextInterface, bool) {
 	gid := goid.Get()
 	if ctx, ok := contextMap.Load(gid); ok {
-		return ctx.(WorkspaceContextInterface), true
+		return ctx.(util.WorkspaceContextInterface), true
 	}
 	return nil, false
 }
@@ -1611,10 +1684,11 @@ func query(query string, args ...interface{}) (*sql.Rows, error) {
 	}
 
 	// 优先使用当前 goroutine 的 Context（多用户架构）
-	if ctx, ok := getCurrentContext(); ok {
+	if ctx, ok := GetCurrentContext(); ok {
 		return queryWithContext(ctx, query, args...)
 	}
 
+	query = InjectUserIDFilter(query)
 	// 回退到全局连接（单用户模式或向后兼容）
 	if nil == db {
 		return nil, errors.New("database is nil")
@@ -1623,12 +1697,13 @@ func query(query string, args ...interface{}) (*sql.Rows, error) {
 }
 
 // queryWithContext 使用 WorkspaceContext 查询多行数据
-func queryWithContext(ctx WorkspaceContextInterface, query string, args ...interface{}) (*sql.Rows, error) {
+func queryWithContext(ctx util.WorkspaceContextInterface, query string, args ...interface{}) (*sql.Rows, error) {
 	query = strings.TrimSpace(query)
 	if "" == query {
 		return nil, errors.New("statement is empty")
 	}
 
+	query = InjectUserIDFilter(query)
 	logging.LogInfof("[DB] 开始查询，workspace: %s", ctx.GetWorkspaceDir())
 
 	database, err := GetDBWithContext(ctx)
@@ -1659,7 +1734,7 @@ func beginTx() (tx *sql.Tx, err error) {
 }
 
 // beginTxWithContext 使用 WorkspaceContext 开始事务
-func beginTxWithContext(ctx WorkspaceContextInterface) (tx *sql.Tx, err error) {
+func beginTxWithContext(ctx util.WorkspaceContextInterface) (tx *sql.Tx, err error) {
 	database, err := GetDBWithContext(ctx)
 	if err != nil {
 		logging.LogErrorf("get database failed: %s", err)
@@ -1744,6 +1819,7 @@ func prepareExecInsertTx(tx *sql.Tx, stmtSQL string, args []interface{}) (err er
 }
 
 func execStmtTx(tx *sql.Tx, stmt string, args ...interface{}) (err error) {
+	stmt = InjectUserIDFilter(stmt)
 	if _, err = tx.Exec(stmt, args...); err != nil {
 		if strings.Contains(err.Error(), "database disk image is malformed") {
 			tx.Rollback()

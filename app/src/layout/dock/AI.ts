@@ -24,6 +24,7 @@ export class AI extends Model {
     private element: Element;
     private messages: IAIMessage[] = [];
     private currentEditor: any = null;
+    private currentDocId: string = ""; // 跟踪当前文档ID，用于检测文档切换
     private activeTab: "chat" | "meeting" = "chat";
     private meetingTimer: any = null;
 
@@ -220,13 +221,16 @@ export class AI extends Model {
             </div>
             
             <div style="padding: 12px; background: var(--b3-theme-surface); border-top: 1px solid var(--b3-border-color); flex-shrink: 0;">
-                <div class="ai-prompts" style="margin-bottom: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
-                    <button class="b3-button b3-button--outline" data-prompt="总结" style="font-size: 11px; padding: 6px 2px;">📝 总结全文</button>
-                    <button class="b3-button b3-button--outline" data-prompt="要点" style="font-size: 11px; padding: 6px 2px;">🎯 提取要点</button>
-                    <button class="b3-button b3-button--outline" data-prompt="翻译" style="font-size: 11px; padding: 6px 2px;">🌐 翻译内容</button>
-                    <button class="b3-button b3-button--outline" data-prompt="润色" style="font-size: 11px; padding: 6px 2px;">✍️ 文章润色</button>
-                    <button class="b3-button b3-button--outline" data-prompt="解释" style="font-size: 11px; padding: 6px 2px;">💡 解释概念</button>
-                    <button class="b3-button b3-button--outline" data-prompt="续写" style="font-size: 11px; padding: 6px 2px;">� 继续写作</button>
+                <div class="ai-prompts" style="margin-bottom: 10px; display: flex; flex-direction: row; gap: 6px;">
+                    <button class="b3-button b3-button--outline fn__flex-1" data-prompt="总结" style="font-size: 11px; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        📋 总结
+                    </button>
+                    <button class="b3-button b3-button--outline fn__flex-1" data-prompt="要点" style="font-size: 11px; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        🎯 要点
+                    </button>
+                    <button class="b3-button b3-button--outline fn__flex-1" data-prompt="续写" style="font-size: 11px; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        ✍️ 续写
+                    </button>
                 </div>
                 
                 <div class="ai-input-container" style="display: flex; flex-direction: column; gap: 8px;">
@@ -425,12 +429,9 @@ export class AI extends Model {
     private handlePromptClick(promptType: string) {
         const inputElement = this.element.querySelector('[data-type="input"]') as HTMLInputElement;
         const promptTexts: { [key: string]: string } = {
-            "总结": "请总结这篇文档的内容",
-            "要点": "请提取这篇文档的核心要点",
-            "翻译": "请将这段内容翻译成中文",
-            "润色": "请润色这段文字，使其表达更专业",
-            "解释": "请详细解释提到的核心概念",
-            "续写": "请基于当前上下文继续写作"
+            "总结": "总结本文档：1）文档类型与目的 2）核心技术方案/业务逻辑 3）关键决策与结论 4）待办事项或风险点",
+            "要点": "提取关键信息：1）需求/问题定义 2）技术参数与约束 3）决策项与待办 4）依赖关系",
+            "续写": "基于当前内容续写：分析逻辑脉络，补充技术细节、实现步骤或验证方法，保持技术写作风格"
         };
 
         if (inputElement && promptTexts[promptType]) {
@@ -480,9 +481,9 @@ export class AI extends Model {
         }).catch(error => {
             // 移除加载消息
             this.messages.pop();
-            // 显示错误信息
+            // 显示错误信息（不添加到历史记录，避免污染上下文）
             const errorMsg = `❌ AI调用失败: ${error.message || '未知错误'}\n\n请检查AI配置是否正确。`;
-            this.addMessage("assistant", errorMsg);
+            this.renderErrorMessage(errorMsg);
             console.error('AI调用失败:', error);
         });
     }
@@ -588,12 +589,21 @@ export class AI extends Model {
 
         if (activeEditor && activeEditor.editor?.protyle) {
             this.currentEditor = activeEditor.editor;
+
+            // 检测文档是否切换
+            const newDocId = activeEditor.editor.protyle.block?.id || "";
+            if (newDocId && this.currentDocId !== newDocId) {
+                console.log(`[AI] 文档切换: ${this.currentDocId} -> ${newDocId}`);
+                this.currentDocId = newDocId;
+                // 切换文档时自动清空历史上下文
+                this.clearMessages(true);
+            }
+
             const wysiwygElement = activeEditor.editor.protyle.wysiwyg.element;
             const content = wysiwygElement.textContent || "";
             return content;
         }
 
-        // console.log("[AI] 警告：未能获取到任何编辑器内容！");
         return "";
     }
 
@@ -636,8 +646,14 @@ export class AI extends Model {
 
         const addAttachment = (href: string) => {
             if (href && supportedExtensions.some(ext => href.toLowerCase().endsWith(ext))) {
-                // 如果是PDF文件，检查是否存在对应的OCR JSON文件
+                // 如果是PDF文件，同时添加原始路径和OCR路径
                 if (href.toLowerCase().endsWith('.pdf')) {
+                    // 1. 添加原始PDF路径 - 后端会匹配对应的 .vectors.json 文件
+                    if (!attachments.includes(href)) {
+                        attachments.push(href);
+                        console.log("[AI] 找到PDF附件:", href);
+                    }
+                    // 2. 同时添加OCR JSON路径作为备选
                     const ocrJsonPath = findOCRJson(href);
                     if (ocrJsonPath && !attachments.includes(ocrJsonPath)) {
                         attachments.push(ocrJsonPath);
@@ -783,22 +799,20 @@ export class AI extends Model {
 
         // 调试日志
         console.log("[AI] callAI被调用，准备依靠后端 RAG 增强");
+        console.log("[AI] 发现附件:", activeAttachments.length, "个", activeAttachments);
 
-        // 1. 构建系统消息（主要包含当前文档正文）
-        let systemContent = "";
-        if (docContent && docContent.trim()) {
-            const docMaxLength = 50000; // 适配 72k 模型：大幅提升至 50,000 字符，确保长文档完整注入
-            systemContent += `【当前活动文档正文】\n${docContent.substring(0, docMaxLength)}${docContent.length > docMaxLength ? "...(正文已截断)" : ""}\n`;
-        }
+        // 1. 构建系统消息（简短提示，具体内容由后端RAG注入）
         messages.push({
             role: "system",
-            content: `你是一个拥有超长上下文窗口的智能文档助手（适配 72k Token 模型）。后端已为你注入了海量的附件 RAG 上下文或长文本总结。
-请充分利用这些详细信息，优先参考注入的【相关片段】或【所有相关附件】内容，对用户问题进行深度、全面的回答，无需担心长度限制。
-${systemContent}`
+            content: `你是文档分析助手。后端将自动注入当前文档正文和相关附件内容，请基于注入的上下文回答用户问题。`
         });
 
-        // 2. 添加历史消息（含当前用户问题）
-        const history = this.messages.slice(0, -1);
+        // 调试日志
+        console.log("[AI] 附件列表:", activeAttachments);
+        console.log("[AI] 文档内容长度:", docContent.length);
+
+        // 2. 添加历史消息（只保留最近4轮对话，避免超出上下文限制）
+        const history = this.messages.slice(0, -1).slice(-8); // 最多保留8条消息（4轮对话）
         history.forEach((msg) => {
             let content = msg.content;
             if (msg.role === "assistant") {
@@ -813,7 +827,14 @@ ${systemContent}`
             }
         });
 
+        // 3. 最重要：添加当前用户的问题
+        messages.push({
+            role: "user",
+            content: question
+        });
+
         console.log("[AI] 发送给后端的消息条数:", messages.length);
+        console.log("[AI] 最后一条消息角色:", messages[messages.length - 1]?.role);
 
         // 使用流式 API
         return this.callAIStream(messages, activeAttachments, notebookId);
@@ -931,6 +952,33 @@ ${systemContent}`
 
         this.messages.push(message);
         this.renderMessages();
+    }
+
+    private renderErrorMessage(content: string) {
+        const messagesContainer = this.element.querySelector('[data-type="messages"]');
+        if (!messagesContainer) return;
+
+        // 移除欢迎消息
+        const welcomeElement = messagesContainer.querySelector('.ai-welcome');
+        if (welcomeElement) {
+            welcomeElement.remove();
+        }
+
+        // 渲染错误消息（不保存到历史记录）
+        const errorHtml = `
+            <div style="display: flex; justify-content: flex-start; margin-bottom: 12px;">
+                <div style="max-width: 85%; background: var(--b3-theme-error-lighter, #ffebee); padding: 8px 12px; border-radius: 8px; word-wrap: break-word; border-left: 3px solid var(--b3-theme-error);">
+                    <div style="font-size: 11px; color: var(--b3-theme-error); margin-bottom: 4px;">
+                        ⚠️ 错误
+                    </div>
+                    <div style="line-height: 1.6; white-space: pre-wrap; font-size: 13px; color: var(--b3-theme-on-surface);">${this.escapeHtml(content)}</div>
+                </div>
+            </div>
+        `;
+        messagesContainer.insertAdjacentHTML('beforeend', errorHtml);
+
+        // 滚动到底部
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
     private renderMessages() {
@@ -1063,17 +1111,21 @@ ${systemContent}`
         }
     }
 
-    private clearMessages() {
+    private clearMessages(switchDoc: boolean = false) {
         this.messages = [];
         const messagesContainer = this.element.querySelector('[data-type="messages"]');
         if (messagesContainer) {
+            // 如果是文档切换，显示切换提示
+            const welcomeText = switchDoc
+                ? `📝 已切换到新文档<br>历史对话已自动清空`
+                : `选择一个提示词快速开始分析当前文档<br>分析完成后可以保存到笔记末尾`;
+
             messagesContainer.innerHTML = `
                 <div class="ai-welcome" style="color: var(--b3-theme-on-surface-light); text-align: center; padding: 20px 10px;">
                     <div style="font-size: 24px; margin-bottom: 8px;">🤖</div>
                     <div style="font-weight: bold; margin-bottom: 8px;">AI 文档分析助手</div>
                     <div style="font-size: 12px; line-height: 1.6;">
-                        选择一个提示词快速开始分析当前文档<br>
-                        分析完成后可以保存到笔记末尾
+                        ${welcomeText}
                     </div>
                 </div>
             `;

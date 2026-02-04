@@ -40,6 +40,16 @@ import (
 	"github.com/siyuan-note/httpclient"
 	"github.com/siyuan-note/logging"
 )
+// WorkspaceContextInterface 定义 WorkspaceContext 的接口
+// 统一在 util 包中定义，避免各包之间的循环依赖
+type WorkspaceContextInterface interface {
+	GetDataDir() string
+	GetConfDir() string
+	GetWorkspaceDir() string
+	GetTempDir() string
+	GetAssetContentDBPath() string
+	GetUserID() string
+}
 
 // var Mode = "dev"
 var Mode = "prod"
@@ -316,10 +326,11 @@ func initWorkspaceDir(workspaceArg string) {
 	os.Setenv("TMPDIR", osTmpDir)
 	os.Setenv("TEMP", osTmpDir)
 	os.Setenv("TMP", osTmpDir)
-	DBPath = filepath.Join(TempDir, DBName)
+	// Unified Global Database Path
+	DBPath = "/root/code/MindOcean/global.db"
 	HistoryDBPath = filepath.Join(TempDir, "history.db")
 	AssetContentDBPath = filepath.Join(TempDir, "asset_content.db")
-	BlockTreeDBPath = filepath.Join(TempDir, "blocktree.db")
+	BlockTreeDBPath = DBPath // 统一 BlockTree 到 global.db
 	SnippetsPath = filepath.Join(DataDir, "snippets")
 	ShortcutsPath = filepath.Join(userHomeConfDir, "shortcuts")
 }

@@ -86,7 +86,7 @@ var IsExiting = atomic.Bool{}
 var MobileOSVer string
 
 // DatabaseVer 数据库版本。修改表结构的话需要修改这里。
-const DatabaseVer = "20220501"
+const DatabaseVer = "20240204-01"
 
 func logBootInfo() {
 	plat := GetOSPlatform()

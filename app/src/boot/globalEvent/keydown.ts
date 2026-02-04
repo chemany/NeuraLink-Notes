@@ -84,11 +84,8 @@ const switchDialogEvent = (app: App, event: MouseEvent) => {
         if (target.classList.contains("b3-list-item")) {
             const currentType = target.getAttribute("data-type");
             if (currentType) {
-                if (currentType === "riffCard") {
-                    openCard(app);
-                } else {
-                    getDockByType(currentType).toggleModel(currentType, true);
-                }
+                // [闪卡功能已禁用]
+                getDockByType(currentType).toggleModel(currentType, true);
             } else {
                 const currentId = target.getAttribute("data-id");
                 getAllTabs().find(item => {
@@ -138,8 +135,8 @@ const dialogArrow = (app: App, element: HTMLElement, event: KeyboardEvent) => {
         } else if (event.key === "Enter") {
             const currentType = currentLiElement.getAttribute("data-type");
             if (currentType) {
-                if (currentType === "riffCard") {
-                    openCard(app);
+                // [闪卡功能已删除] 移除 riffCard 处理
+                if (false) {
                 } else {
                     getDockByType(currentType).toggleModel(currentType, true);
                 }
@@ -242,22 +239,7 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
         }
         const models = getAllModels();
         if (!protyle) {
-            models.backlink.find(item => {
-                if (item.element.classList.contains("layout__tab--active")) {
-                    if (range) {
-                        item.editors.find(editor => {
-                            if (editor.protyle.element.contains(range.startContainer)) {
-                                protyle = editor.protyle;
-                                return true;
-                            }
-                        });
-                    }
-                    if (!protyle && item.editors.length > 0) {
-                        protyle = item.editors[0].protyle;
-                    }
-                    return true;
-                }
-            });
+            // [反向链接功能已禁用]
         }
         if (!protyle) {
             models.editor.find(item => {
@@ -291,25 +273,25 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
         event.preventDefault();
         return true;
     }
-    if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.editor.general.quickMakeCard.custom, event) && !window.siyuan.config.readonly) {
-        if (protyle.title?.editElement.contains(range.startContainer)) {
-            quickMakeCard(protyle, [protyle.title.element]);
-        } else {
-            const selectElement: Element[] = [];
-            protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select").forEach(item => {
-                selectElement.push(item);
-            });
-            if (selectElement.length === 0) {
-                const nodeElement = hasClosestBlock(range.startContainer);
-                if (nodeElement) {
-                    selectElement.push(nodeElement);
-                }
-            }
-            quickMakeCard(protyle, selectElement);
-        }
-        event.preventDefault();
-        return true;
-    }
+    // [闪卡功能已禁用] if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.editor.general.quickMakeCard.custom, event) && !window.siyuan.config.readonly) {
+    //     if (protyle.title?.editElement.contains(range.startContainer)) {
+    //         quickMakeCard(protyle, [protyle.title.element]);
+    //     } else {
+    //         const selectElement: Element[] = [];
+    //         protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select").forEach(item => {
+    //             selectElement.push(item);
+    //         });
+    //         if (selectElement.length === 0) {
+    //             const nodeElement = hasClosestBlock(range.startContainer);
+    //             if (nodeElement) {
+    //                 selectElement.push(nodeElement);
+    //             }
+    //         }
+    //         quickMakeCard(protyle, selectElement);
+    //     }
+    //     event.preventDefault();
+    //     return true;
+    // }
     if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.general.addToDatabase.custom, event)) {
         execByCommand({
             command: "addToDatabase",
@@ -320,13 +302,7 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
         event.preventDefault();
         return true;
     }
-    if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.editor.general.spaceRepetition.custom, event) && !window.siyuan.config.readonly) {
-        fetchPost("/api/riff/getTreeRiffDueCards", {rootID: protyle.block.rootID}, (response) => {
-            openCardByData(app, response.data, "doc", protyle.block.rootID, protyle.title?.editElement.textContent || window.siyuan.languages.untitled);
-        });
-        event.preventDefault();
-        return true;
-    }
+    // [闪卡功能已删除] 移除 spaceRepetition 快捷键处理
     if (!isFileFocus && matchHotKey(window.siyuan.config.keymap.general.move.custom, event)) {
         execByCommand({
             command: "move",
@@ -397,27 +373,7 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
         return true;
     }
 
-    if (matchHotKey(window.siyuan.config.keymap.editor.general.backlinks.custom, event)) {
-        event.preventDefault();
-        if (range) {
-            const refElement = hasClosestByAttribute(range.startContainer, "data-type", "block-ref");
-            if (refElement) {
-                openBacklink({
-                    app: protyle.app,
-                    blockId: refElement.dataset.id,
-                });
-                return true;
-            }
-        }
-        openBacklink({
-            app: protyle.app,
-            blockId: protyle.block.id,
-            rootId: protyle.block.rootID,
-            useBlockId: protyle.block.showAll,
-            title: protyle.title ? (protyle.title.editElement.textContent || window.siyuan.languages.untitled) : null,
-        });
-        return true;
-    }
+    // [反向链接功能已禁用]
     // [关系图谱功能已禁用] 以下快捷键处理已注释
     /*
     if (matchHotKey(window.siyuan.config.keymap.editor.general.graphView.custom, event)) {
@@ -629,36 +585,23 @@ const fileTreeKeydown = (app: App, event: KeyboardEvent) => {
         }
     });
 
-    if (matchHotKey(window.siyuan.config.keymap.editor.general.spaceRepetition.custom, event) && !window.siyuan.config.readonly) {
-        if (isFile) {
-            const id = liElements[0].getAttribute("data-node-id");
-            fetchPost("/api/riff/getTreeRiffDueCards", {rootID: id}, (response) => {
-                openCardByData(app, response.data, "doc", id, getDisplayName(liElements[0].getAttribute("data-name"), false, true));
-            });
-        } else {
-            fetchPost("/api/riff/getNotebookRiffDueCards", {notebook: notebookId}, (response) => {
-                openCardByData(app, response.data, "notebook", notebookId, getNotebookName(notebookId));
-            });
-        }
-        event.preventDefault();
-        return true;
-    }
+    // [闪卡功能已删除] 移除 spaceRepetition 快捷键处理
 
-    if (matchHotKey(window.siyuan.config.keymap.editor.general.quickMakeCard.custom, event)) {
-        if (ids.length > 0) {
-            transaction(undefined, [{
-                action: "addFlashcards",
-                deckID: Constants.QUICK_DECK_ID,
-                blockIDs: ids,
-            }], [{
-                action: "removeFlashcards",
-                deckID: Constants.QUICK_DECK_ID,
-                blockIDs: ids,
-            }]);
-        }
-        event.preventDefault();
-        return true;
-    }
+    // [闪卡功能已禁用] if (matchHotKey(window.siyuan.config.keymap.editor.general.quickMakeCard.custom, event)) {
+    //     if (ids.length > 0) {
+    //         transaction(undefined, [{
+    //             action: "addFlashcards",
+    //             deckID: Constants.QUICK_DECK_ID,
+    //             blockIDs: ids,
+    //         }], [{
+    //             action: "removeFlashcards",
+    //             deckID: Constants.QUICK_DECK_ID,
+    //             blockIDs: ids,
+    //         }]);
+    //     }
+    //     event.preventDefault();
+    //     return true;
+    // }
 
     if (matchHotKey(window.siyuan.config.keymap.general.addToDatabase.custom, event)) {
         execByCommand({
@@ -1229,12 +1172,7 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
         }
         let dockHtml = "";
         if (!isTabWindow) {
-            dockHtml = `<ul class="b3-list b3-list--background" style="overflow: auto;width: 200px;">
-<li data-type="riffCard" data-index="0" class="b3-list-item${!tabHtml ? " b3-list-item--focus" : ""}">
-    <svg class="b3-list-item__graphic"><use xlink:href="#iconRiffCard"></use></svg>
-    <span class="b3-list-item__text">${window.siyuan.languages.riffCard}</span>
-    <span class="b3-list-item__meta">${updateHotkeyTip(window.siyuan.config.keymap.general.riffCard.custom)}</span>
-</li>`;
+            dockHtml = `<ul class="b3-list b3-list--background" style="overflow: auto;width: 200px;">`;
             getAllDocks().forEach((item, index) => {
                 dockHtml += `<li data-type="${item.type}" data-index="${index + 1}" class="b3-list-item">
     <svg class="b3-list-item__graphic"><use xlink:href="#${item.icon}"></use></svg>
@@ -1387,14 +1325,7 @@ export const windowKeyDown = (app: App, event: KeyboardEvent) => {
     if (matchDock) {
         return;
     }
-    if (!isTabWindow && matchHotKey(window.siyuan.config.keymap.general.riffCard.custom, event)) {
-        openCard(app);
-        if (document.activeElement) {
-            (document.activeElement as HTMLElement).blur();
-        }
-        event.preventDefault();
-        return;
-    }
+    // [闪卡功能已禁用]
     if (!isTabWindow && matchHotKey(window.siyuan.config.keymap.general.dailyNote.custom, event)) {
         newDailyNote(app);
         event.stopPropagation();

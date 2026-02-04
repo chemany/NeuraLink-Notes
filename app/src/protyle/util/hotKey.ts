@@ -222,8 +222,9 @@ export const updateControlAlt = () => {
         return;
     }
     Object.keys(window.siyuan.config.keymap.general).forEach(key => {
+        // [闪卡功能已删除] 移除 riffCard
         if (["fileTree", "outline", "bookmark", "tag", "dailyNote", "inbox", "backlinks",
-            "graphView", "globalGraph", "riffCard"].includes(key)) {
+            "graphView", "globalGraph"].includes(key)) {
             if (navigator.platform.toUpperCase().indexOf("MAC") > -1) {
                 window.siyuan.config.keymap.general[key].default = window.siyuan.config.keymap.general[key].default.replace("⌥", "⌃");
                 if (window.siyuan.config.keymap.general[key].default === window.siyuan.config.keymap.general[key].custom) {

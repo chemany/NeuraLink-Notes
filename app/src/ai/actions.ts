@@ -182,21 +182,14 @@ export const AIActions = (elements: Element[], protyle: IProtyle) => {
     <input class="b3-text-field fn__flex-shrink" placeholder="${window.siyuan.languages.ai}"/>
     <div class="fn__hr"></div>
     <div class="b3-list fn__flex-1 b3-list--background">
-       <div class="b3-list-item b3-list-item--narrow b3-list-item--focus" data-action="Continue writing">
-            ${window.siyuan.languages.aiContinueWrite}
+        <div class="b3-list-item b3-list-item--narrow" data-action="总结全文">
+            总结全文
         </div>
-        <div class="b3-menu__separator"></div>
-        <div class="b3-list-item b3-list-item--narrow" data-action="${window.siyuan.languages.aiExtractSummary}">
-            ${window.siyuan.languages.aiExtractSummary}
+        <div class="b3-list-item b3-list-item--narrow" data-action="提取要点">
+            提取要点
         </div>
-        <div class="b3-list-item b3-list-item--narrow" data-action="${window.siyuan.languages.aiBrainStorm}">
-            ${window.siyuan.languages.aiBrainStorm}
-        </div>
-        <div class="b3-list-item b3-list-item--narrow" data-action="${window.siyuan.languages.aiFixGrammarSpell}">
-            ${window.siyuan.languages.aiFixGrammarSpell}
-        </div>
-        <div class="b3-list-item b3-list-item--narrow" data-action="${clearContext}">
-            ${window.siyuan.languages.clearContext}
+        <div class="b3-list-item b3-list-item--narrow" data-action="解释概念">
+            解释概念
         </div>
         <div class="b3-menu__separator"></div>
         <div class="b3-list-item b3-list-item--narrow" data-type="custom">

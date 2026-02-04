@@ -36,6 +36,7 @@ import (
 
 type Block struct {
 	ID       string
+	UserID   string
 	ParentID string
 	RootID   string
 	Hash     string

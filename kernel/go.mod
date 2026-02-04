@@ -71,6 +71,7 @@ require (
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/xrash/smetrics v0.0.0-20250705151800-55b8f293f342
 	github.com/xuri/excelize/v2 v2.9.0
+	github.com/xwb1989/sqlparser v0.0.0-20180606152119-120387863bf2
 	golang.org/x/crypto v0.44.0
 	golang.org/x/image v0.32.0
 	golang.org/x/mobile v0.0.0-20251009145931-8baca8bf4eeb

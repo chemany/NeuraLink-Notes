@@ -319,7 +319,11 @@ func (box *Box) LsWithDataDir(dataDir, p string) (ret []*FileInfo, totals int, e
 }
 
 func (box *Box) Stat(p string) (ret *FileInfo) {
-	absPath := filepath.Join(util.DataDir, box.ID, p)
+	return box.StatWithDataDir(util.DataDir, p)
+}
+
+func (box *Box) StatWithDataDir(dataDir, p string) (ret *FileInfo) {
+	absPath := filepath.Join(dataDir, box.ID, p)
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if !os.IsNotExist(err) {

@@ -28,6 +28,7 @@ import (
 	gcache "github.com/patrickmn/go-cache"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/cache"
+	"github.com/siyuan-note/siyuan/kernel/util"
 	"github.com/siyuan-note/siyuan/kernel/search"
 )
 
@@ -137,8 +138,8 @@ func GetRefsCacheByDefID(defID string) (ret []*Ref) {
 	return
 }
 
-func CacheRef(tree *parse.Tree, refNode *ast.Node) {
-	ref := buildRef(tree, refNode)
+func CacheRef(tree *parse.Tree, refNode *ast.Node, userID string) {
+	ref := buildRef(tree, refNode, userID)
 	putRefCache(ref)
 }
 
@@ -189,7 +190,7 @@ func getBlockCacheWithContext(ctx WorkspaceContext, id string) (ret *Block) {
 }
 
 // removeBlockCacheWithContext 从用户缓存删除 Block
-func removeBlockCacheWithContext(ctx WorkspaceContextInterface, id string) {
+func removeBlockCacheWithContext(ctx util.WorkspaceContextInterface, id string) {
 	userCache := cache.GetUserCacheWithContext(ctx)
 	userCache.GetBlockCache().Del(id)
 	removeRefCacheByDefIDWithContext(ctx, id)
@@ -218,7 +219,7 @@ func GetRefsCacheByDefIDWithContext(ctx WorkspaceContext, defID string) (ret []*
 
 // CacheRefWithContext 缓存引用（带 Context）
 func CacheRefWithContext(ctx WorkspaceContext, tree *parse.Tree, refNode *ast.Node) {
-	ref := buildRef(tree, refNode)
+	ref := buildRef(tree, refNode, ctx.GetUserID())
 	putRefCacheWithContext(ctx, ref)
 }
 

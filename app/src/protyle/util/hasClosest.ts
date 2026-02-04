@@ -1,3 +1,22 @@
+export const hasClosestByClassName = (element: Node, className: string, top = false) => {
+    if (!element || element.nodeType === 9) {
+        return false;
+    }
+    if (element.nodeType === 3) {
+        element = element.parentElement;
+    }
+    let e = element as HTMLElement;
+    let isClosest = false;
+    while (e && !isClosest && (top ? e.tagName !== "BODY" : !e.classList.contains("protyle-wysiwyg"))) {
+        if (e.classList?.contains(className)) {
+            isClosest = true;
+        } else {
+            e = e.parentElement;
+        }
+    }
+    return isClosest && e;
+};
+
 export const hasTopClosestByClassName = (element: Node, className: string, top = false) => {
     let closest = hasClosestByClassName(element, className, top);
     let parentClosest: boolean | HTMLElement = false;
@@ -83,25 +102,6 @@ export const hasClosestByTag = (element: Node, nodeName: string) => {
     return isClosest && e;
 };
 
-export const hasClosestByClassName = (element: Node, className: string, top = false) => {
-    if (!element || element.nodeType === 9) {
-        return false;
-    }
-    if (element.nodeType === 3) {
-        element = element.parentElement;
-    }
-    let e = element as HTMLElement;
-    let isClosest = false;
-    while (e && !isClosest && (top ? e.tagName !== "BODY" : !e.classList.contains("protyle-wysiwyg"))) {
-        if (e.classList?.contains(className)) {
-            isClosest = true;
-        } else {
-            e = e.parentElement;
-        }
-    }
-    return isClosest && e;
-};
-
 export const hasClosestBlock = (element: Node) => {
     const nodeElement = hasClosestByAttribute(element, "data-node-id", null);
     if (nodeElement && nodeElement.tagName !== "BUTTON" && nodeElement.getAttribute("data-type")?.startsWith("Node")) {
@@ -129,3 +129,4 @@ export const isInAVBlock = (element: Element) => {
     }
     return false;
 };
+

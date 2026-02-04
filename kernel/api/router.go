@@ -533,4 +533,10 @@ func ServeAPI(ginServer *gin.Engine) {
 
 	meetingAPI := ginServer.Group("/api/meeting", model.CheckWebAuth)
 	meetingAPI.POST("/transcribe", TranscribeAudio)
+
+	// 轮询API - 用于替代不稳定的WebSocket
+	ginServer.Handle("POST", "/api/system/status", model.CheckWebAuth, getSystemStatus)
+	ginServer.Handle("POST", "/api/task/list", model.CheckWebAuth, getTaskList)
+	ginServer.Handle("POST", "/api/ref/count", model.CheckWebAuth, getRefCount)
+	ginServer.Handle("POST", "/api/tag/list", model.CheckWebAuth, getTagList)
 }

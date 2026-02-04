@@ -309,13 +309,7 @@ const JSONToDock = (json: any, app: App) => {
         if (!json.left.data[1]) {
             json.left.data[1] = [];
         }
-        json.left.data[1].push({
-            type: "backlink",
-            size: { width: 320, height: 0 },
-            show: false,
-            icon: "iconLink",
-            hotkeyLangId: "backlinks",
-        });
+        // [反向链接功能已禁用] 不再添加 backlink 按钮
     }
     
     // 从左侧移除 AI（如果存在）
@@ -441,13 +435,12 @@ export const JSONToCenter = (
             page: json.page,
         }));
     } else if (json.instance === "Backlink") {
-        (layout as Tab).addModel(new Backlink({
-            app,
-            tab: (layout as Tab),
-            blockId: json.blockId,
-            rootId: json.rootId,
-            type: json.type as "pin" | "local",
-        }));
+        // [反向链接已禁用] 跳过 Backlink 初始化，避免崩溃
+        console.warn("[灵枢笔记] 反向链接功能已禁用，跳过 Backlink 初始化");
+        // 不使用 return，让代码继续执行到 children 处理
+        if (!("children" in json) && child instanceof Tab) {
+            removedTabs.push(child);
+        }
     } else if (json.instance === "Bookmark") {
         (layout as Tab).addModel(new Bookmark(app, (layout as Tab)));
     } else if (json.instance === "Files") {
@@ -609,11 +602,12 @@ export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, brea
             json.icon = layout.icon;
             json.docIcon = layout.docIcon;
             json.pin = layout.headElement.classList.contains("item--pin");
-            if (layout.model instanceof Files) {
+            // [反向链接已禁用] 检查 model 是否存在且类型正确
+            if (layout.model && layout.model instanceof Files) {
                 json.lang = "fileTree";
-            } else if (layout.model instanceof Backlink && layout.model.type === "pin") {
+            } else if (layout.model && layout.model instanceof Backlink && layout.model.type === "pin") {
                 json.lang = "backlinks";
-            } else if (layout.model instanceof Bookmark) {
+            } else if (layout.model && layout.model instanceof Bookmark) {
                 json.lang = "bookmark";
             } else if (layout.model instanceof Graph && layout.model.type !== "local") {
                 json.lang = "graphView";
@@ -1038,7 +1032,12 @@ export const addResize = (obj: Layout | Wnd) => {
     });
 };
 
-export const adjustLayout = (layout: Layout = window.siyuan.layout.centerLayout.parent) => {
+export const adjustLayout = (layout?: Layout) => {
+    // 如果未传入 layout 且 centerLayout 未初始化，则跳过
+    if (!layout && (!window.siyuan.layout.centerLayout || !window.siyuan.layout.centerLayout.parent)) {
+        return;
+    }
+    layout = layout || window.siyuan.layout.centerLayout.parent;
     layout.children.forEach((item: Layout | Wnd) => {
         item.element.style.maxWidth = "";
         if (!item.element.style.width && !item.element.classList.contains("layout__center")) {

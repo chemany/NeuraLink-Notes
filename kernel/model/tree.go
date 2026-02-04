@@ -222,6 +222,7 @@ func LoadTreeByBlockID(id string) (ret *parse.Tree, err error) {
 }
 
 // LoadTreeByBlockIDWithContext 使用 WorkspaceContext 加载树
+// 所有用户共用同一个全局数据库，通过 user_id 隔离
 func LoadTreeByBlockIDWithContext(ctx *WorkspaceContext, id string) (ret *parse.Tree, err error) {
 	if !ast.IsNodeIDPattern(id) {
 		stack := logging.ShortStack()
@@ -229,20 +230,31 @@ func LoadTreeByBlockIDWithContext(ctx *WorkspaceContext, id string) (ret *parse.
 		return nil, ErrTreeNotFound
 	}
 
+	// 从全局 BlockTree 数据库查询（所有用户共用同一个数据库）
 	bt := treenode.GetBlockTree(id)
+
 	if nil == bt {
 		if task.ContainIndexTask() {
 			err = ErrIndexing
 			return
 		}
 
-		stack := logging.ShortStack()
-		if !strings.Contains(stack, "BuildBlockBreadcrumb") {
-			if "dev" == util.Mode {
-				logging.LogWarnf("block tree not found [id=%s], stack: [%s]", id, stack)
+		// 尝试从文件系统加载（最后的兜底）
+		// 注意：这里的 indexTreeInFilesystemWithContext 受限流器影响
+		indexTreeInFilesystemWithContext(ctx, id)
+		
+		// 再次尝试获取
+		bt = treenode.GetBlockTree(id)
+
+		if nil == bt {
+			stack := logging.ShortStack()
+			if !strings.Contains(stack, "BuildBlockBreadcrumb") {
+				if "dev" == util.Mode {
+					logging.LogWarnf("block tree not found [id=%s], stack: [%s]", id, stack)
+				}
 			}
+			return nil, ErrTreeNotFound
 		}
-		return nil, ErrTreeNotFound
 	}
 
 	ret, err = loadTreeByBlockTreeWithContext(ctx, bt)
@@ -256,26 +268,12 @@ func loadTreeByBlockTree(bt *treenode.BlockTree) (ret *parse.Tree, err error) {
 }
 
 // loadTreeByBlockTreeWithContext 使用 WorkspaceContext 加载树
+// 所有用户共用同一个全局数据库，通过 user_id 隔离
 func loadTreeByBlockTreeWithContext(ctx *WorkspaceContext, bt *treenode.BlockTree) (ret *parse.Tree, err error) {
 	luteEngine := util.NewLute()
 	
-	// 如果是 Web 模式，从用户特定的数据库读取 BlockTree
-	if ctx.IsWebMode() {
-		database, dbErr := treenode.GetBlockTreeDBManager().GetOrCreateDB(ctx.BlockTreeDBPath)
-		if nil == dbErr {
-			// 从用户特定的数据库读取
-			userBT := treenode.GetBlockTreeWithDB(bt.ID, database)
-			if nil != userBT {
-				bt = userBT
-				logging.LogInfof("loaded BlockTree from user database [%s] for block [%s]", ctx.BlockTreeDBPath, bt.ID)
-			} else {
-				logging.LogWarnf("BlockTree not found in user database [%s] for block [%s], using provided BlockTree", ctx.BlockTreeDBPath, bt.ID)
-			}
-		} else {
-			logging.LogErrorf("get or create BlockTree database [%s] failed: %s", ctx.BlockTreeDBPath, dbErr)
-		}
-	}
-	
+	// 所有用户共用同一个全局 BlockTree 数据库
+	// 直接从全局数据库读取（BlockTree 不区分用户，通过文件路径区分）
 	ret, err = filesys.LoadTreeWithDataDir(ctx.GetDataDir(), bt.BoxID, bt.Path, luteEngine)
 	return
 }
