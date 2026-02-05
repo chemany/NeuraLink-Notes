@@ -56,6 +56,7 @@ export const about = {
     <div class="fn__space"></div>
     <input class="b3-switch fn__flex-center" id="downloadInstallPkg" type="checkbox"${window.siyuan.config.system.downloadInstallPkg ? " checked" : ""}>
 </label>
+<!-- [网络伺服功能已禁用]
 <label class="b3-label fn__flex">
     <div class="fn__flex-1">
         ${window.siyuan.languages.about11}
@@ -64,6 +65,7 @@ export const about = {
     <div class="fn__space"></div>
     <input class="b3-switch fn__flex-center" id="networkServe" type="checkbox"${window.siyuan.config.system.networkServe ? " checked" : ""}>
 </label>
+-->
 <div class="b3-label${(window.siyuan.config.readonly || (isBrowser() && !isInIOS() && !isInAndroid() && !isIPad() && !isInHarmony())) ? " fn__none" : ""}">
     <div class="fn__flex">
         <div class="fn__flex-1">
@@ -111,6 +113,7 @@ export const about = {
         <svg><use xlink:href="#iconLink"></use></svg>${window.siyuan.languages.about4}
     </button>
 </div>
+<!-- [数据仓库密钥功能已禁用]
 <div class="b3-label fn__flex config__item">
     <div class="fn__flex-1 fn__flex-center">
         ${window.siyuan.languages.dataRepoKey}
@@ -141,6 +144,7 @@ export const about = {
         </button>
     </div>
 </div>
+-->
 <div class="b3-label">
     <div>
         ${window.siyuan.languages.dataRepoPurge}
@@ -196,7 +200,8 @@ export const about = {
         <svg><use xlink:href="#iconUpload"></use></svg>${window.siyuan.languages.export}
     </button>
 </div>
-${checkUpdateHTML}
+<!-- [检查更新功能已禁用] ${checkUpdateHTML} -->
+<!-- [API Token 功能已禁用]
 <div class="fn__flex config__item  b3-label">
     <div class="fn__flex-1">
         ${window.siyuan.languages.about13}
@@ -205,6 +210,8 @@ ${checkUpdateHTML}
     <span class="fn__space"></span>
     <input class="b3-text-field fn__flex-center fn__size200" id="token" value="${window.siyuan.config.api.token}">
 </div>
+-->
+<!-- [网络代理功能已禁用]
 <div class="b3-label">
     ${window.siyuan.languages.networkProxy}
     <div class="b3-label__text">
@@ -225,17 +232,20 @@ ${checkUpdateHTML}
         <button id="aboutConfirm" class="b3-button fn__size200 b3-button--outline">${window.siyuan.languages.confirm}</button>
     </div>
 </div>
+-->
 <div class="b3-label">
     <div class="config-about__logo">
         <img src="/stage/icon.png">
-        <span>${window.siyuan.languages.siyuanNote}</span>
+        <span>灵枢笔记</span>
         <span class="fn__space"></span>
-        <span class="ft__on-surface">${window.siyuan.languages.slogan}</span>
-        <span class="fn__space"></span>
-        <span style="color:var(--b3-theme-background);font-family: cursive;">会泽百家&nbsp;至公天下</span>
+        <span class="ft__on-surface">基于思源笔记 v${Constants.SIYUAN_VERSION} 构建</span>
     </div>
     <div class='fn__hr'></div>
-    ${window.siyuan.languages.about1} ${"harmony" === window.siyuan.config.system.container ? " • " + window.siyuan.languages.feedback + " 845765@qq.com" : ""} 
+    <div style="text-align: center; color: var(--b3-theme-on-surface);">
+        <p>灵枢笔记 - 个人知识管理与协作平台</p>
+        <p>当前版本 v${Constants.SIYUAN_VERSION}</p>
+        <p style="margin-top: 8px;">如有问题或建议，请联系管理员</p>
+    </div>
 </div>`;
     },
     bindEvent: () => {
@@ -254,16 +264,17 @@ ${checkUpdateHTML}
                 window.siyuan.config.repo.retentionIndexesDaily = parseInt(retentionIndexesDailyElement.value);
             });
         });
-        const tokenElement = about.element.querySelector("#token") as HTMLInputElement;
-        tokenElement.addEventListener("click", () => {
-            tokenElement.select();
-        });
-        tokenElement.addEventListener("change", () => {
-            fetchPost("/api/system/setAPIToken", {token: tokenElement.value}, () => {
-                window.siyuan.config.api.token = tokenElement.value;
-                about.element.querySelector("#tokenTip").innerHTML = window.siyuan.languages.about14.replace("${token}", window.siyuan.config.api.token);
-            });
-        });
+        // [API Token 功能已禁用]
+        // const tokenElement = about.element.querySelector("#token") as HTMLInputElement;
+        // tokenElement.addEventListener("click", () => {
+        //     tokenElement.select();
+        // });
+        // tokenElement.addEventListener("change", () => {
+        //     fetchPost("/api/system/setAPIToken", {token: tokenElement.value}, () => {
+        //         window.siyuan.config.api.token = tokenElement.value;
+        //         about.element.querySelector("#tokenTip").innerHTML = window.siyuan.languages.about14.replace("${token}", window.siyuan.config.api.token);
+        //     });
+        // });
         about.element.querySelector("#vacuumDataIndex").addEventListener("click", () => {
             fetchPost("/api/system/vacuumDataIndex", {}, () => {});
         });
@@ -275,16 +286,17 @@ ${checkUpdateHTML}
                 openByMobile(response.data.zip);
             });
         });
-        const updateElement = about.element.querySelector("#checkUpdateBtn");
-        updateElement?.addEventListener("click", () => {
-            if (updateElement.firstElementChild.classList.contains("fn__rotate")) {
-                return;
-            }
-            updateElement.innerHTML = `<svg class="fn__rotate"><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}`;
-            fetchPost("/api/system/checkUpdate", {showMsg: true}, () => {
-                updateElement.innerHTML = `<svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}`;
-            });
-        });
+        // [检查更新功能已禁用]
+        // const updateElement = about.element.querySelector("#checkUpdateBtn");
+        // updateElement?.addEventListener("click", () => {
+        //     if (updateElement.firstElementChild.classList.contains("fn__rotate")) {
+        //         return;
+        //     }
+        //     updateElement.innerHTML = `<svg class="fn__rotate"><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}`;
+        //     fetchPost("/api/system/checkUpdate", {showMsg: true}, () => {
+        //         updateElement.innerHTML = `<svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}`;
+        //     });
+        // });
         about.element.querySelectorAll('[data-type="open"]').forEach(item => {
             item.addEventListener("click", () => {
                 const url = item.getAttribute("data-url");
@@ -300,82 +312,84 @@ ${checkUpdateHTML}
             });
         });
 
-        about.element.querySelector("#authCode").addEventListener("click", () => {
+        about.element.querySelector("#authCode")?.addEventListener("click", () => {
             setAccessAuthCode();
         });
-        const importKeyElement = about.element.querySelector("#importKey");
-        importKeyElement.addEventListener("click", () => {
-            const passwordDialog = new Dialog({
-                title: "🔑 " + window.siyuan.languages.key,
-                content: `<div class="b3-dialog__content">
-    <textarea spellcheck="false" style="resize: vertical;" class="b3-text-field fn__block" placeholder="${window.siyuan.languages.keyPlaceholder}"></textarea>
-</div>
-<div class="b3-dialog__action">
-    <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
-    <button class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-</div>`,
-                width: "520px",
-            });
-            passwordDialog.element.setAttribute("data-key", Constants.DIALOG_PASSWORD);
-            const textAreaElement = passwordDialog.element.querySelector("textarea");
-            textAreaElement.focus();
-            const btnsElement = passwordDialog.element.querySelectorAll(".b3-button");
-            btnsElement[0].addEventListener("click", () => {
-                passwordDialog.destroy();
-            });
-            btnsElement[1].addEventListener("click", () => {
-                fetchPost("/api/repo/importRepoKey", {key: textAreaElement.value}, (response) => {
-                    window.siyuan.config.repo.key = response.data.key;
-                    importKeyElement.parentElement.classList.add("fn__none");
-                    importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
-                    passwordDialog.destroy();
-                });
-            });
-        });
-        about.element.querySelector("#initKey").addEventListener("click", () => {
-            confirmDialog("🔑 " + window.siyuan.languages.genKey, window.siyuan.languages.initRepoKeyTip, () => {
-                fetchPost("/api/repo/initRepoKey", {}, (response) => {
-                    window.siyuan.config.repo.key = response.data.key;
-                    importKeyElement.parentElement.classList.add("fn__none");
-                    importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
-                });
-            });
-        });
-        about.element.querySelector("#initKeyByPW").addEventListener("click", () => {
-            setKey(false, () => {
-                importKeyElement.parentElement.classList.add("fn__none");
-                importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
-            });
-        });
-        about.element.querySelector("#copyKey").addEventListener("click", () => {
-            showMessage(window.siyuan.languages.copied);
-            writeText(window.siyuan.config.repo.key);
-        });
-        about.element.querySelector("#resetRepo").addEventListener("click", () => {
-            confirmDialog("⚠️ " + window.siyuan.languages.resetRepo, window.siyuan.languages.resetRepoTip, () => {
-                fetchPost("/api/repo/resetRepo", {}, () => {
-                    window.siyuan.config.repo.key = "";
-                    window.siyuan.config.sync.enabled = false;
-                    processSync();
-                    importKeyElement.parentElement.classList.remove("fn__none");
-                    importKeyElement.parentElement.nextElementSibling.classList.add("fn__none");
-                });
-            });
-        });
-        about.element.querySelector("#purgeRepo").addEventListener("click", () => {
+        // [数据仓库密钥功能已禁用]
+        // const importKeyElement = about.element.querySelector("#importKey");
+        // importKeyElement.addEventListener("click", () => {
+        //     const passwordDialog = new Dialog({
+        //         title: "🔑 " + window.siyuan.languages.key,
+        //         content: `<div class="b3-dialog__content">
+        //     <textarea spellcheck="false" style="resize: vertical;" class="b3-text-field fn__block" placeholder="${window.siyuan.languages.keyPlaceholder}"></textarea>
+        // </div>
+        // <div class="b3-dialog__action">
+        //     <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
+        //     <button class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
+        // </div>`,
+        //         width: "520px",
+        //     });
+        //     passwordDialog.element.setAttribute("data-key", Constants.DIALOG_PASSWORD);
+        //     const textAreaElement = passwordDialog.element.querySelector("textarea");
+        //     textAreaElement.focus();
+        //     const btnsElement = passwordDialog.element.querySelectorAll(".b3-button");
+        //     btnsElement[0].addEventListener("click", () => {
+        //         passwordDialog.destroy();
+        //     });
+        //     btnsElement[1].addEventListener("click", () => {
+        //         fetchPost("/api/repo/importRepoKey", {key: textAreaElement.value}, (response) => {
+        //             window.siyuan.config.repo.key = response.data.key;
+        //             importKeyElement.parentElement.classList.add("fn__none");
+        //             importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
+        //             passwordDialog.destroy();
+        //         });
+        //     });
+        // });
+        // about.element.querySelector("#initKey").addEventListener("click", () => {
+        //     confirmDialog("🔑 " + window.siyuan.languages.genKey, window.siyuan.languages.initRepoKeyTip, () => {
+        //         fetchPost("/api/repo/initRepoKey", {}, (response) => {
+        //             window.siyuan.config.repo.key = response.data.key;
+        //             importKeyElement.parentElement.classList.add("fn__none");
+        //             importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
+        //         });
+        //     });
+        // });
+        // about.element.querySelector("#initKeyByPW").addEventListener("click", () => {
+        //     setKey(false, () => {
+        //         importKeyElement.parentElement.classList.add("fn__none");
+        //         importKeyElement.parentElement.nextElementSibling.classList.remove("fn__none");
+        //     });
+        // });
+        // about.element.querySelector("#copyKey").addEventListener("click", () => {
+        //     showMessage(window.siyuan.languages.copied);
+        //     writeText(window.siyuan.config.repo.key);
+        // });
+        // about.element.querySelector("#resetRepo").addEventListener("click", () => {
+        //     confirmDialog("⚠️ " + window.siyuan.languages.resetRepo, window.siyuan.languages.resetRepoTip, () => {
+        //         fetchPost("/api/repo/resetRepo", {}, () => {
+        //             window.siyuan.config.repo.key = "";
+        //             window.siyuan.config.sync.enabled = false;
+        //             processSync();
+        //             importKeyElement.parentElement.classList.remove("fn__none");
+        //             importKeyElement.parentElement.nextElementSibling.classList.add("fn__none");
+        //         });
+        //     });
+        // });
+        about.element.querySelector("#purgeRepo")?.addEventListener("click", () => {
             confirmDialog("♻️ " + window.siyuan.languages.dataRepoPurge, window.siyuan.languages.dataRepoPurgeConfirm, () => {
                 fetchPost("/api/repo/purgeRepo");
             });
         });
-        const networkServeElement = about.element.querySelector("#networkServe") as HTMLInputElement;
-        networkServeElement.addEventListener("change", () => {
-            fetchPost("/api/system/setNetworkServe", {networkServe: networkServeElement.checked}, () => {
-                exportLayout({
-                    errorExit: true,
-                    cb: exitSiYuan
-                });
-            });
-        });
+        // [网络伺服功能已禁用]
+        // const networkServeElement = about.element.querySelector("#networkServe") as HTMLInputElement;
+        // networkServeElement.addEventListener("change", () => {
+        //     fetchPost("/api/system/setNetworkServe", {networkServe: networkServeElement.checked}, () => {
+        //         exportLayout({
+        //             errorExit: true,
+        //             cb: exitSiYuan
+        //         });
+        //     });
+        // });
         const lockScreenModeElement = about.element.querySelector("#lockScreenMode") as HTMLInputElement;
         lockScreenModeElement.addEventListener("change", () => {
             fetchPost("/api/system/setFollowSystemLockScreen", {lockScreenMode: lockScreenModeElement.checked ? 1 : 0}, () => {
@@ -401,28 +415,29 @@ ${checkUpdateHTML}
             });
         });
         /// #endif
-        about.element.querySelector("#aboutConfirm").addEventListener("click", () => {
-            const scheme = (about.element.querySelector("#aboutScheme") as HTMLInputElement).value as Config.TSystemNetworkProxyScheme;
-            const host = (about.element.querySelector("#aboutHost") as HTMLInputElement).value;
-            const port = (about.element.querySelector("#aboutPort") as HTMLInputElement).value;
-            fetchPost("/api/system/setNetworkProxy", {scheme, host, port}, async () => {
-                window.siyuan.config.system.networkProxy.scheme = scheme;
-                window.siyuan.config.system.networkProxy.host = host;
-                window.siyuan.config.system.networkProxy.port = port;
-                /// #if !BROWSER
-                ipcRenderer.invoke(Constants.SIYUAN_GET, {
-                    cmd: "setProxy",
-                    proxyURL: `${window.siyuan.config.system.networkProxy.scheme}://${window.siyuan.config.system.networkProxy.host}:${window.siyuan.config.system.networkProxy.port}`,
-                }).then(() => {
-                    exportLayout({
-                        errorExit: false,
-                        cb() {
-                            window.location.reload();
-                        },
-                    });
-                });
-                /// #endif
-            });
-        });
+        // [网络代理功能已禁用]
+        // about.element.querySelector("#aboutConfirm")?.addEventListener("click", () => {
+        //     const scheme = (about.element.querySelector("#aboutScheme") as HTMLInputElement).value as Config.TSystemNetworkProxyScheme;
+        //     const host = (about.element.querySelector("#aboutHost") as HTMLInputElement).value;
+        //     const port = (about.element.querySelector("#aboutPort") as HTMLInputElement).value;
+        //     fetchPost("/api/system/setNetworkProxy", {scheme, host, port}, async () => {
+        //         window.siyuan.config.system.networkProxy.scheme = scheme;
+        //         window.siyuan.config.system.networkProxy.host = host;
+        //         window.siyuan.config.system.networkProxy.port = port;
+        //         /// #if !BROWSER
+        //         ipcRenderer.invoke(Constants.SIYUAN_GET, {
+        //             cmd: "setProxy",
+        //             proxyURL: `${window.siyuan.config.system.networkProxy.scheme}://${window.siyuan.config.system.networkProxy.host}:${window.siyuan.config.system.networkProxy.port}`,
+        //         }).then(() => {
+        //             exportLayout({
+        //                 errorExit: false,
+        //                 cb() {
+        //                     window.location.reload();
+        //                 },
+        //             });
+        //         });
+        //         /// #endif
+        //     });
+        // });
     }
 };

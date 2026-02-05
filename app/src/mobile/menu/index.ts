@@ -4,7 +4,7 @@ import {initAssets} from "../settings/assets";
 import {closePanel} from "../util/closePanel";
 import {newDailyNote, newNotebook} from "../../util/mount";
 import {repos} from "../../config/repos";
-import {publish} from "../../config/publish";
+// [发布功能已禁用] import {publish} from "../../config/publish";
 import {exitSiYuan, lockScreen, processSync} from "../../dialog/processSystem";
 import {openHistory} from "../../history/history";
 // [同步功能已禁用] import {syncGuide} from "../../sync/syncGuide";
@@ -117,9 +117,11 @@ export const initRightMenu = (app: App) => {
     <div id="menuSync" class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}">
         <svg class="b3-menu__icon"><use xlink:href="#iconCloud"></use></svg><span class="b3-menu__label">${window.siyuan.languages.cloud}</span>
     </div>
+    <!-- [发布功能已禁用]
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuPublish">
         <svg class="b3-menu__icon"><use xlink:href="#iconLanguage"></use></svg><span class="b3-menu__label">${window.siyuan.languages.publish}</span>
     </div>
+    -->
     <div class="b3-menu__item" id="menuAbout">
         <svg class="b3-menu__icon"><use xlink:href="#iconInfo"></use></svg><span class="b3-menu__label">${window.siyuan.languages.about}</span>
     </div>
@@ -251,19 +253,21 @@ export const initRightMenu = (app: App) => {
                 event.preventDefault();
                 event.stopPropagation();
                 break;
-            } else if (target.id === "menuPublish") {
-                openModel({
-                    title: window.siyuan.languages.publish,
-                    icon: "iconLanguage",
-                    html: publish.genHTML(),
-                    bindEvent(modelMainElement: HTMLElement) {
-                        publish.element = modelMainElement;
-                        publish.bindEvent();
-                    }
-                });
-                event.preventDefault();
-                event.stopPropagation();
-                break;
+            // [发布功能已禁用]
+            // } else if (target.id === "menuPublish") {
+            //     openModel({
+            //         title: window.siyuan.languages.publish,
+            //         icon: "iconLanguage",
+            //         html: publish.genHTML(),
+            //         bindEvent(modelMainElement: HTMLElement) {
+            //             publish.element = modelMainElement;
+            //             publish.bindEvent();
+            //         }
+            //     });
+            //     event.preventDefault();
+            //     event.stopPropagation();
+            //     break;
+            // } else if (target.id === "menuSyncNow") {
             } else if (target.id === "menuSyncNow") {
                 // [同步功能已禁用] syncGuide();
                 event.preventDefault();

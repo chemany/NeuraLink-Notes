@@ -11,12 +11,12 @@ import {exportConfig} from "./exportConfig";
 import {account} from "./account";
 import {repos} from "./repos";
 import {keymap} from "./keymap";
-import {bazaar} from "./bazaar";
+// [集市功能仅管理员可见] import {bazaar} from "./bazaar";
 import {query} from "./query";
 import {Dialog} from "../dialog";
 import {ai} from "./ai";
 // [闪卡功能已禁用] import {flashcard} from "./flashcard";
-import {publish} from "./publish";
+// [发布功能已禁用] import {publish} from "./publish";
 import {App} from "../index";
 import {isHuawei, isInHarmony} from "../protyle/util/compatibility";
 import {Constants} from "../constants";
@@ -63,11 +63,12 @@ export const genItemPanel = (type: string, containerElement: Element, app: App) 
             keymap.element = containerElement;
             keymap.bindEvent(app);
             break;
-        case "bazaar":
-            bazaar.element = containerElement;
-            containerElement.innerHTML = bazaar.genHTML();
-            bazaar.bindEvent(app);
-            break;
+        // [集市功能仅管理员可见]
+        // case "bazaar":
+        //     bazaar.element = containerElement;
+        //     containerElement.innerHTML = bazaar.genHTML();
+        //     bazaar.bindEvent(app);
+        //     break;
         case "account":
             containerElement.innerHTML = account.genHTML();
             account.element = containerElement;
@@ -88,11 +89,12 @@ export const genItemPanel = (type: string, containerElement: Element, app: App) 
             query.element = containerElement;
             query.bindEvent();
             break;
-        case "publish":
-            containerElement.innerHTML = publish.genHTML();
-            publish.element = containerElement;
-            publish.bindEvent();
-            break;
+        // [发布功能已禁用]
+        // case "publish":
+        //     containerElement.innerHTML = publish.genHTML();
+        //     publish.element = containerElement;
+        //     publish.bindEvent();
+        //     break;
         default:
             break;
     }
@@ -133,14 +135,18 @@ export const openSetting = (app: App) => {
     <li data-name="image" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconImage"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.assets}</span></li>
     <li data-name="export" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconUpload"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.export}</span></li>
     <li data-name="appearance" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconTheme"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.appearance}</span></li>
+    <!-- [集市功能仅管理员可见]
     <li data-name="bazaar" class="b3-list-item${isHuawei() || isInHarmony() ? " fn__none" : ""}"><svg class="b3-list-item__graphic"><use xlink:href="#iconBazaar"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.bazaar}</span></li>
+    -->
     <li data-name="search" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconSearch"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.search}</span></li>
     <li data-name="keymap" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconKeymap"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.keymap}</span></li>
     <li data-name="account" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconAccount"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.account}</span></li>
     <!-- [同步功能已禁用]
     <li data-name="repos" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconCloud"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.cloud}</span></li>
     -->
+    <!-- [发布功能已禁用]
     <li data-name="publish" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconLanguage"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.publish}</span></li>
+    -->
     <li data-name="about" class="b3-list-item"><svg class="b3-list-item__graphic"><use xlink:href="#iconInfo"></use></svg><span class="b3-list-item__text">${window.siyuan.languages.about}</span></li>
   </ul>
   <div class="config__tab-wrap">
@@ -154,14 +160,18 @@ export const openSetting = (app: App) => {
       <div class="config__tab-container config__tab-container--top fn__none" data-name="image"></div>
       <div class="config__tab-container fn__none" data-name="export"></div>
       <div class="config__tab-container fn__none" data-name="appearance"></div>
+      <!-- [集市功能仅管理员可见]
       <div class="config__tab-container config__tab-container--top fn__none" data-name="bazaar"></div>
+      -->
       <div class="config__tab-container fn__none" data-name="search"></div>
       <div class="config__tab-container fn__none" style="overflow: scroll" data-name="keymap"></div>
       <div class="config__tab-container config__tab-container--full fn__none" data-name="account"></div>
       <!-- [同步功能已禁用]
       <div class="config__tab-container fn__none" data-name="repos"></div>
       -->
+      <!-- [发布功能已禁用]
       <div class="config__tab-container fn__none" data-name="publish"></div>
+      -->
       <div class="config__tab-container fn__none" data-name="about"></div>
       <div class="fn__hr--b"></div>
   </div>
