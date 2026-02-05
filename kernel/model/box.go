@@ -783,11 +783,20 @@ func FullReindexWithContext(ctx *WorkspaceContext) {
 	// 相反,我们只清空当前用户的数据并重新索引
 	sql.ClearQueue()
 	
+	// 设置 SQL Context 确保所有数据库操作使用正确的 user_id
+	sql.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	
+	// 清空当前用户的所有数据（blocks 和 blocktrees）
+	userID := ctx.GetUserID()
+	if "" != userID {
+		if err := sql.ClearUserBlocks(userID); err != nil {
+			logging.LogErrorf("clear user blocks failed: %s", err)
+		}
+	}
+	
 	// 清空当前用户的块树缓存
 	openedBoxes := Conf.GetOpenedBoxesWithContext(ctx)
-	for _, openedBox := range openedBoxes {
-		treenode.RemoveBlockTreesByBoxID(openedBox.ID)
-	}
 
 	sql.IndexIgnoreCached = false
 	for _, openedBox := range openedBoxes {

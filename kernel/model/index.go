@@ -175,12 +175,54 @@ func indexBoxWithContext(ctx *WorkspaceContext, boxID string) {
 
 	dataDir := ctx.GetDataDir()
 	util.SetBootDetails("Listing files...")
-	files, _, err := box.LsWithDataDir(dataDir, "/")
+
+	// 递归收集所有 .sy 文件
+	var allFiles []*FileInfo
+	boxLocalPath := filepath.Join(dataDir, box.ID)
+	err := filepath.WalkDir(boxLocalPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// 记录错误但继续遍历
+			logging.LogWarnf("walk box [%s] path [%s] error: %s", boxID, path, err)
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".sy") {
+			return nil
+		}
+		if !ast.IsNodeIDPattern(strings.TrimSuffix(name, ".sy")) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			logging.LogWarnf("get file info failed [%s]: %s", path, err)
+			return nil
+		}
+		// 计算相对路径
+		relPath, err := filepath.Rel(boxLocalPath, path)
+		if err != nil {
+			logging.LogWarnf("get relative path failed [%s]: %s", path, err)
+			return nil
+		}
+		// 转换为使用 / 的路径格式
+		relPath = "/" + filepath.ToSlash(relPath)
+		allFiles = append(allFiles, &FileInfo{
+			name:  name,
+			path:  relPath,
+			size:  info.Size(),
+			isdir: false,
+		})
+		return nil
+	})
 	if err != nil {
-		logging.LogErrorf("list files in box [%s] failed: %s", boxID, err)
+		logging.LogErrorf("walk box [%s] failed: %s", boxID, err)
 		return
 	}
-	
+	logging.LogInfof("walk box [%s] found [%d] .sy files", boxID, len(allFiles))
+
+	files := allFiles
 	boxLen := len(Conf.GetOpenedBoxesWithContext(ctx))
 	if 1 > boxLen {
 		boxLen = 1
@@ -230,23 +272,18 @@ func indexBoxWithContext(ctx *WorkspaceContext, boxID string) {
 		lock.Unlock()
 
 		cache.PutDocIAL(file.path, docIAL)
+		// 设置 Context 确保 blocktrees 表中的 user_id 正确
+		treenode.SetCurrentContext(ctx)
 		treenode.IndexBlockTree(tree)
-		sql.IndexTreeQueue(tree)
+		treenode.ClearCurrentContext()
+		// 使用带 Context 的队列函数，确保 blocks 表中的 user_id 正确
+		sql.IndexTreeQueueWithContext(tree, ctx)
 		util.IncBootProgress(bootProgressPart, fmt.Sprintf(Conf.Language(92), util.ShortPathForBootingDisplay(tree.Path)))
 		if 1 < i && 0 == i%64 {
 			util.PushStatusBar(fmt.Sprintf(Conf.Language(88), i, (len(files))-i))
 		}
 	})
 	for _, file := range files {
-		if file.isdir || !strings.HasSuffix(file.name, ".sy") {
-			continue
-		}
-
-		if !ast.IsNodeIDPattern(strings.TrimSuffix(file.name, ".sy")) {
-			// 不以块 ID 命名的 .sy 文件不应该被加载到思源中 https://github.com/siyuan-note/siyuan/issues/16089
-			continue
-		}
-
 		waitGroup.Add(1)
 		invokeErr := p.Invoke(file)
 		if nil != invokeErr {

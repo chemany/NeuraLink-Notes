@@ -401,6 +401,26 @@ func indexTree(tx *sql.Tx, tree *parse.Tree, context map[string]interface{}) (er
 		userID, _ = val.(string)
 	}
 
+	// 先删除该文档的旧记录，避免重复索引
+	if err = deleteBlocksByRootID(tx, tree.Root.ID); err != nil {
+		return
+	}
+	if err = deleteSpansByRootID(tx, tree.Root.ID); err != nil {
+		return
+	}
+	if err = deleteAssetsByRootID(tx, tree.Root.ID); err != nil {
+		return
+	}
+	if err = deleteAttributesByRootID(tx, tree.Root.ID); err != nil {
+		return
+	}
+	if err = deleteRefsByPathTx(tx, tree.Box, tree.Path); err != nil {
+		return
+	}
+	if err = deleteFileAnnotationRefsByPathTx(tx, tree.Box, tree.Path); err != nil {
+		return
+	}
+
 	blocks, spans, assets, attributes := fromTree(tree.Root, tree, userID)
 	refs, fileAnnotationRefs := refsFromTree(tree, userID)
 	err = insertTree0(tx, tree, context, blocks, spans, assets, attributes, refs, fileAnnotationRefs)

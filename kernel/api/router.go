@@ -56,13 +56,16 @@ func ServeAPI(ginServer *gin.Engine) {
 	// 需要鉴权
 
 	ginServer.Handle("POST", "/api/system/getEmojiConf", model.CheckWebAuth, getEmojiConf)
-	ginServer.Handle("POST", "/api/system/setAPIToken", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setAPIToken)
+	// [API Token 功能已禁用]
+	// ginServer.Handle("POST", "/api/system/setAPIToken", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setAPIToken)
 	ginServer.Handle("POST", "/api/system/setAccessAuthCode", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setAccessAuthCode)
 	ginServer.Handle("POST", "/api/system/setFollowSystemLockScreen", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setFollowSystemLockScreen)
-	ginServer.Handle("POST", "/api/system/setNetworkServe", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setNetworkServe)
+	// [网络伺服功能已禁用]
+	// ginServer.Handle("POST", "/api/system/setNetworkServe", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setNetworkServe)
 	ginServer.Handle("POST", "/api/system/setAutoLaunch", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setAutoLaunch)
 	ginServer.Handle("POST", "/api/system/setDownloadInstallPkg", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setDownloadInstallPkg)
-	ginServer.Handle("POST", "/api/system/setNetworkProxy", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setNetworkProxy)
+	// [网络代理功能已禁用]
+	// ginServer.Handle("POST", "/api/system/setNetworkProxy", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setNetworkProxy)
 	ginServer.Handle("POST", "/api/system/setWorkspaceDir", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setWorkspaceDir)
 	ginServer.Handle("POST", "/api/system/getWorkspaces", model.CheckWebAuth, getWorkspaces)
 	ginServer.Handle("POST", "/api/system/getMobileWorkspaces", model.CheckWebAuth, getMobileWorkspaces)
@@ -75,7 +78,8 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/system/getSysFonts", model.CheckWebAuth, getSysFonts)
 	ginServer.Handle("POST", "/api/system/exit", model.CheckWebAuth, model.CheckAdminRole, exit)
 	ginServer.Handle("POST", "/api/system/getConf", model.CheckWebAuth, getConf)
-	ginServer.Handle("POST", "/api/system/checkUpdate", model.CheckWebAuth, model.CheckAdminRole, checkUpdate)
+	// [检查更新功能已禁用]
+	// ginServer.Handle("POST", "/api/system/checkUpdate", model.CheckWebAuth, model.CheckAdminRole, checkUpdate)
 	ginServer.Handle("POST", "/api/system/exportLog", model.CheckWebAuth, model.CheckAdminRole, exportLog)
 	ginServer.Handle("POST", "/api/system/getChangelog", model.CheckWebAuth, getChangelog)
 	ginServer.Handle("POST", "/api/system/getNetwork", model.CheckWebAuth, model.CheckAdminRole, getNetwork)
@@ -358,8 +362,9 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/setting/setFlashcard", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setFlashcard)
 	ginServer.Handle("POST", "/api/setting/setAI", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setAI)
 	ginServer.Handle("POST", "/api/setting/setBazaar", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setBazaar)
-	ginServer.Handle("POST", "/api/setting/setPublish", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setPublish)
-	ginServer.Handle("POST", "/api/setting/getPublish", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, getPublish)
+	// [发布功能已禁用]
+	// ginServer.Handle("POST", "/api/setting/setPublish", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setPublish)
+	// ginServer.Handle("POST", "/api/setting/getPublish", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, getPublish)
 	ginServer.Handle("POST", "/api/setting/refreshVirtualBlockRef", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, refreshVirtualBlockRef)
 	ginServer.Handle("POST", "/api/setting/addVirtualBlockRefInclude", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, addVirtualBlockRefInclude)
 	ginServer.Handle("POST", "/api/setting/addVirtualBlockRefExclude", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, addVirtualBlockRefExclude)
@@ -386,12 +391,13 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/bazaar/getUpdatedPackage", model.CheckWebAuth, getUpdatedPackage)
 	ginServer.Handle("POST", "/api/bazaar/batchUpdatePackage", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, batchUpdatePackage)
 
-	ginServer.Handle("POST", "/api/repo/initRepoKey", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, initRepoKey)
-	ginServer.Handle("POST", "/api/repo/initRepoKeyFromPassphrase", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, initRepoKeyFromPassphrase)
-	ginServer.Handle("POST", "/api/repo/resetRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, resetRepo)
-	ginServer.Handle("POST", "/api/repo/purgeRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, purgeRepo)
-	ginServer.Handle("POST", "/api/repo/purgeCloudRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, purgeCloudRepo)
-	ginServer.Handle("POST", "/api/repo/importRepoKey", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, importRepoKey)
+	// [数据仓库密钥功能已禁用]
+	// ginServer.Handle("POST", "/api/repo/initRepoKey", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, initRepoKey)
+	// ginServer.Handle("POST", "/api/repo/initRepoKeyFromPassphrase", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, initRepoKeyFromPassphrase)
+	// ginServer.Handle("POST", "/api/repo/resetRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, resetRepo)
+	// ginServer.Handle("POST", "/api/repo/purgeRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, purgeRepo)
+	// ginServer.Handle("POST", "/api/repo/purgeCloudRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, purgeCloudRepo)
+	// ginServer.Handle("POST", "/api/repo/importRepoKey", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, importRepoKey)
 	ginServer.Handle("POST", "/api/repo/createSnapshot", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, createSnapshot)
 	ginServer.Handle("POST", "/api/repo/tagSnapshot", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, tagSnapshot)
 	ginServer.Handle("POST", "/api/repo/checkoutRepo", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, checkoutRepo)
@@ -489,8 +495,9 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/petal/loadPetals", model.CheckWebAuth, loadPetals)
 	ginServer.Handle("POST", "/api/petal/setPetalEnabled", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setPetalEnabled)
 
-	ginServer.Any("/api/network/echo", model.CheckWebAuth, model.CheckAdminRole, echo)
-	ginServer.Handle("POST", "/api/network/forwardProxy", model.CheckWebAuth, model.CheckAdminRole, forwardProxy)
+	// [网络代理功能已禁用]
+	// ginServer.Any("/api/network/echo", model.CheckWebAuth, model.CheckAdminRole, echo)
+	// ginServer.Handle("POST", "/api/network/forwardProxy", model.CheckWebAuth, model.CheckAdminRole, forwardProxy)
 
 	ginServer.Handle("GET", "/ws/broadcast", model.CheckWebAuth, model.CheckAdminRole, broadcast)
 	ginServer.Handle("GET", "/es/broadcast/subscribe", model.CheckWebAuth, model.CheckAdminRole, broadcastSubscribe)

@@ -229,7 +229,8 @@ func CheckWebAuth(c *gin.Context) {
 
 	// 创建 WorkspaceContext 并存储到 context
 	// 所有数据访问都通过 WorkspaceContext 进行，实现真正的多用户并发
-	workspaceCtx := NewWorkspaceContextWithUser(user.Workspace, user.ID, user.Username)
+	// 使用 username 作为 user_id（与数据库中存储的 user_id 保持一致）
+	workspaceCtx := NewWorkspaceContextWithUser(user.Workspace, user.Username, user.Username)
 	SetWorkspaceContext(c, workspaceCtx)
 
 	logging.LogInfof("[Web Mode] WorkspaceContext created for user: %s", user.Username)

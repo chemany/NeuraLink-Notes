@@ -1322,6 +1322,25 @@ func deleteBlocksByBoxTx(tx *sql.Tx, box string) (err error) {
 	return
 }
 
+// deleteBlocksByRootID 删除指定 root_id 的所有 blocks
+func deleteBlocksByRootID(tx *sql.Tx, rootID string) (err error) {
+	stmt := "DELETE FROM blocks WHERE root_id = ?"
+	if err = execStmtTx(tx, stmt, rootID); err != nil {
+		return
+	}
+	stmt = "DELETE FROM blocks_fts WHERE root_id = ?"
+	if err = execStmtTx(tx, stmt, rootID); err != nil {
+		return
+	}
+	if !caseSensitive {
+		stmt = "DELETE FROM blocks_fts_case_insensitive WHERE root_id = ?"
+		if err = execStmtTx(tx, stmt, rootID); err != nil {
+			return
+		}
+	}
+	return
+}
+
 func deleteSpansByRootID(tx *sql.Tx, rootID string) (err error) {
 	stmt := "DELETE FROM spans WHERE root_id =?"
 	err = execStmtTx(tx, stmt, rootID)

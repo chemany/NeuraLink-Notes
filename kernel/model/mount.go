@@ -281,11 +281,12 @@ func MountWithContext(ctx *WorkspaceContext, boxID string) (alreadyMount bool, e
 		}
 
 		task.AppendAsyncTaskWithDelay(task.PushMsg, 3*time.Second, util.PushErrMsg, Conf.Language(52), 7000)
-		go func() {
-			// 每次打开帮助文档时自动检查版本更新并提醒 https://github.com/siyuan-note/siyuan/issues/5057
-			time.Sleep(time.Second * 10)
-			CheckUpdate(true)
-		}()
+		// [检查更新功能已禁用]
+		// go func() {
+		// 	// 每次打开帮助文档时自动检查版本更新并提醒 https://github.com/siyuan-note/siyuan/issues/5057
+		// 	time.Sleep(time.Second * 10)
+		// 	CheckUpdate(true)
+		// }()
 	}
 
 	if !gulu.File.IsDir(localPath) {

@@ -270,11 +270,12 @@ func refreshUser() {
 func refreshCheckDownloadInstallPkg() {
 	defer logging.Recover()
 
-	time.Sleep(3 * time.Minute)
-	checkDownloadInstallPkg()
-	if "" != getNewVerInstallPkgPath() {
-		util.PushMsg(Conf.Language(62), 15*1000)
-	}
+	// [检查更新功能已禁用]
+	// time.Sleep(3 * time.Minute)
+	// checkDownloadInstallPkg()
+	// if "" != getNewVerInstallPkgPath() {
+	// 	util.PushMsg(Conf.Language(62), 15*1000)
+	// }
 }
 
 func refreshAnnouncement() {

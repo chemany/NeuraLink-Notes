@@ -164,6 +164,37 @@ func ClearQueue() {
 	operationQueue = nil
 }
 
+// ClearUserBlocks 删除指定用户的所有 blocks 数据
+// 用于重建索引时清空用户数据
+func ClearUserBlocks(userID string) error {
+	if "" == userID {
+		return fmt.Errorf("userID is empty")
+	}
+
+	if nil == db {
+		return fmt.Errorf("database is nil")
+	}
+
+	// 删除 blocks 表中的用户数据
+	sqlStmt := "DELETE FROM blocks WHERE user_id = ?"
+	_, err := db.Exec(sqlStmt, userID)
+	if err != nil {
+		logging.LogErrorf("delete blocks for user [%s] failed: %s", userID, err)
+		return err
+	}
+
+	// 删除 blocktrees 表中的用户数据
+	sqlStmt = "DELETE FROM blocktrees WHERE user_id = ?"
+	_, err = db.Exec(sqlStmt, userID)
+	if err != nil {
+		logging.LogErrorf("delete blocktrees for user [%s] failed: %s", userID, err)
+		return err
+	}
+
+	logging.LogInfof("cleared all data for user [%s]", userID)
+	return nil
+}
+
 var flushingTx = atomic.Bool{}
 
 func FlushQueue() {
