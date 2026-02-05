@@ -1205,11 +1205,15 @@ func FullTextSearchBlock(query string, boxes, paths []string, types map[string]b
 
 // fullTextSearchBlockInternal 内部实现，支持可选的 WorkspaceContext
 func fullTextSearchBlockInternal(ctx *WorkspaceContext, query string, boxes, paths []string, types map[string]bool, method, orderBy, groupBy, page, pageSize int) (ret []*Block, matchedBlockCount, matchedRootCount, pageCount int, docMode bool) {
+	logging.LogInfof("[Search] fullTextSearchBlockInternal called, query=%s, ctx=%v", query, ctx)
+	
 	// 如果提供了 Context，设置为当前 goroutine 的 Context
 	if nil != ctx {
 		// 设置数据库查询的 Context（传递指针）
 		sql.SetCurrentContext(ctx)
 		defer sql.ClearCurrentContext()
+		
+		logging.LogInfof("[Search] Context set, userID=%s", ctx.GetUserID())
 		
 		// 同时设置 DataDir（用于文件操作）
 		originalDataDir := util.DataDir
@@ -1217,10 +1221,13 @@ func fullTextSearchBlockInternal(ctx *WorkspaceContext, query string, boxes, pat
 			util.DataDir = originalDataDir
 		}()
 		util.DataDir = ctx.GetDataDir()
+	} else {
+		logging.LogWarnf("[Search] Context is nil!")
 	}
 	
 	ret = []*Block{}
 	if "" == query {
+		logging.LogWarnf("[Search] Query is empty!")
 		return
 	}
 
@@ -1575,7 +1582,7 @@ func fullTextSearchRefBlock(keyword string, beforeLen int, onlyDoc bool) (ret []
 		table = "blocks_fts_case_insensitive"
 	}
 
-	projections := "id, parent_id, root_id, hash, box, path, " +
+	projections := "id, user_id, parent_id, root_id, hash, box, path, " +
 		"snippet(" + table + ", 6, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 64) AS hpath, " +
 		"snippet(" + table + ", 7, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 64) AS name, " +
 		"snippet(" + table + ", 8, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 64) AS alias, " +
@@ -1680,7 +1687,7 @@ func fullTextSearchByFTS(query, boxFilter, pathFilter, typeFilter, ignoreFilter,
 	if !Conf.Search.CaseSensitive {
 		table = "blocks_fts_case_insensitive"
 	}
-	projections := "id, parent_id, root_id, hash, box, path, " +
+	projections := "id, user_id, parent_id, root_id, hash, box, path, " +
 		// Search result content snippet returns more text https://github.com/siyuan-note/siyuan/issues/10707
 		"snippet(" + table + ", 6, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 512) AS hpath, " +
 		"snippet(" + table + ", 7, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "', '...', 512) AS name, " +
@@ -1693,6 +1700,7 @@ func fullTextSearchByFTS(query, boxFilter, pathFilter, typeFilter, ignoreFilter,
 	stmt += ") AND type IN " + typeFilter + getUserIDFilter()
 	stmt += boxFilter + pathFilter + ignoreFilter + " " + orderBy
 	stmt += " LIMIT " + strconv.Itoa(pageSize) + " OFFSET " + strconv.Itoa((page-1)*pageSize)
+	logging.LogInfof("[Search] SQL: %s", stmt)
 	blocks := sql.SelectBlocksRawStmt(stmt, page, pageSize)
 	ret = fromSQLBlocks(&blocks, "", beforeLen)
 	if 1 > len(ret) {
@@ -1784,7 +1792,7 @@ func highlightByFTS(query, typeFilter, id string) (ret []string) {
 	if !Conf.Search.CaseSensitive {
 		table = "blocks_fts_case_insensitive"
 	}
-	projections := "id, parent_id, root_id, hash, box, path, " +
+	projections := "id, user_id, parent_id, root_id, hash, box, path, " +
 		"highlight(" + table + ", 6, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "') AS hpath, " +
 		"highlight(" + table + ", 7, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "') AS name, " +
 		"highlight(" + table + ", 8, '" + search.SearchMarkLeft + "', '" + search.SearchMarkRight + "') AS alias, " +

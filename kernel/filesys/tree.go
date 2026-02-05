@@ -304,12 +304,14 @@ func parseJSON2TreeWithDataDir(dataDir, boxID, p string, jsonData []byte, luteEn
 
 func DocIAL(absPath string) (ret map[string]string) {
 	filelock.Lock(absPath)
+	defer filelock.Unlock(absPath)
+
 	file, err := os.Open(absPath)
 	if err != nil {
 		logging.LogErrorf("open file [%s] failed: %s", absPath, err)
-		filelock.Unlock(absPath)
 		return nil
 	}
+	defer file.Close()
 
 	iter := jsoniter.Parse(jsoniter.ConfigCompatibleWithStandardLibrary, file, 512)
 	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
@@ -320,8 +322,6 @@ func DocIAL(absPath string) (ret map[string]string) {
 			iter.Skip()
 		}
 	}
-	file.Close()
-	filelock.Unlock(absPath)
 	return
 }
 

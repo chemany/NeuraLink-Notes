@@ -93,10 +93,14 @@ func GetCurrentContext() (util.WorkspaceContextInterface, bool) {
 }
 
 // getUserID 获取当前用户的 ID
+// 优先从 goroutine Context 获取，如果没有则返回空字符串
+// 调用者应确保在调用前通过 SetCurrentContext 设置了 Context
 func getUserID() string {
 	if ctx, ok := GetCurrentContext(); ok {
 		return ctx.GetUserID()
 	}
+	// 没有 Context 时返回空字符串
+	// 注意：这可能导致数据隔离问题，调用者应确保设置 Context
 	return ""
 }
 

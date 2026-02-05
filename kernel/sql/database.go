@@ -311,10 +311,10 @@ func initDBConnection() {
 	if err != nil {
 		logging.LogFatalf(logging.ExitCodeReadOnlyDatabase, "create database failed: %s", err)
 	}
-	// SQLite是单线程数据库，使用单连接更高效
-	// 多连接会导致锁竞争和性能下降
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// SQLite使用WAL模式，支持多个读取连接和一个写入连接
+	// 设置最大连接数为4，允许并发读取，写入仍然串行
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
 	db.SetConnMaxLifetime(0) // 0表示连接永不过期
 }
 

@@ -1960,9 +1960,11 @@ func createDocWithContext(ctx *WorkspaceContext, boxID, p, title, dom string) (t
 	// 写入文件
 	filesys.WriteTreeWithDataDir(tree, ctx.GetDataDir())
 
-	// 设置当前 goroutine 的 Context，确保 BlockTree 操作能获取到 user_id
+	// 设置当前 goroutine 的 Context，确保 BlockTree 和 SQL 操作能获取到 user_id
 	treenode.SetCurrentContext(ctx)
 	defer treenode.ClearCurrentContext()
+	sql.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
 
 	// 同步更新 BlockTree 索引到全局数据库，确保 GetBlock 能立即找到
 	// 所有用户共用同一个数据库，通过 user_id 隔离

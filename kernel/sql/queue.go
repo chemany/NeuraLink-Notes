@@ -39,10 +39,16 @@ var (
 	operationQueue []*dbQueueOperation
 	dbQueueLock    = sync.Mutex{}
 	txLock         = sync.Mutex{}
-	
+
 	// boxWorkspaceCache 缓存 Box ID 到 WorkspaceContext 的映射
 	boxWorkspaceCache = make(map[string]WorkspaceContext)
 	boxWorkspaceLock  = sync.RWMutex{}
+
+	// delayedUpsertOps 存储延迟的 upsert 操作
+	delayedUpsertOps     = make(map[string]*dbQueueOperation)
+	delayedUpsertTimers  = make(map[string]*time.Timer)
+	delayedUpsertLock    = sync.Mutex{}
+	delayedUpsertDelay   = 2 * time.Second // 延迟 2 秒后写入
 )
 
 // getWorkspaceContextForBox 从 Box ID 获取对应的 WorkspaceContext
@@ -458,8 +464,8 @@ func UpsertTreeQueue(tree *parse.Tree) {
 }
 
 func UpsertTreeQueueWithContext(tree *parse.Tree, ctx WorkspaceContext) {
-	dbQueueLock.Lock()
-	defer dbQueueLock.Unlock()
+	delayedUpsertLock.Lock()
+	defer delayedUpsertLock.Unlock()
 
 	newOp := &dbQueueOperation{
 		upsertTree:   tree,
@@ -468,13 +474,43 @@ func UpsertTreeQueueWithContext(tree *parse.Tree, ctx WorkspaceContext) {
 		boxID:        tree.Box,
 		workspaceCtx: ctx,
 	}
-	for i, op := range operationQueue {
-		if "upsert" == op.action && op.upsertTree.ID == tree.ID { // 相同树则覆盖
-			operationQueue[i] = newOp
+
+	treeID := tree.ID
+
+	// 存储或更新延迟操作
+	delayedUpsertOps[treeID] = newOp
+
+	// 取消之前的定时器（如果存在）
+	if timer, exists := delayedUpsertTimers[treeID]; exists {
+		timer.Stop()
+	}
+
+	// 创建新的定时器，延迟 2 秒后执行
+	delayedUpsertTimers[treeID] = time.AfterFunc(delayedUpsertDelay, func() {
+		delayedUpsertLock.Lock()
+		op, exists := delayedUpsertOps[treeID]
+		if !exists {
+			delayedUpsertLock.Unlock()
 			return
 		}
-	}
-	appendOperation(newOp)
+		// 从延迟队列中移除
+		delete(delayedUpsertOps, treeID)
+		delete(delayedUpsertTimers, treeID)
+		delayedUpsertLock.Unlock()
+
+		// 添加到实际的操作队列
+		dbQueueLock.Lock()
+		defer dbQueueLock.Unlock()
+
+		// 检查队列中是否已有相同树的操作，有则覆盖
+		for i, existingOp := range operationQueue {
+			if "upsert" == existingOp.action && existingOp.upsertTree.ID == treeID {
+				operationQueue[i] = op
+				return
+			}
+		}
+		appendOperation(op)
+	})
 }
 
 func RenameTreeQueue(tree *parse.Tree) {

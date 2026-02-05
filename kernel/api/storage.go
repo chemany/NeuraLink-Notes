@@ -58,7 +58,13 @@ func removeCriterion(c *gin.Context) {
 		return
 	}
 
-	name := arg["name"].(string)
+	nameArg := arg["name"]
+	if nameArg == nil {
+		ret.Code = -1
+		ret.Msg = "name is required"
+		return
+	}
+	name := nameArg.(string)
 	err := model.RemoveCriterion(name)
 	if err != nil {
 		ret.Code = -1
@@ -115,10 +121,24 @@ func removeLocalStorageVals(c *gin.Context) {
 		return
 	}
 
+	keysArg := arg["keys"]
+	if keysArg == nil {
+		ret.Code = -1
+		ret.Msg = "keys is required"
+		return
+	}
+
 	var keys []string
-	keysArg := arg["keys"].([]interface{})
-	for _, key := range keysArg {
-		keys = append(keys, key.(string))
+	keysSlice, ok := keysArg.([]interface{})
+	if !ok {
+		ret.Code = -1
+		ret.Msg = "keys must be an array"
+		return
+	}
+	for _, key := range keysSlice {
+		if key != nil {
+			keys = append(keys, key.(string))
+		}
 	}
 
 	err := model.RemoveLocalStorageVals(keys)
@@ -128,11 +148,14 @@ func removeLocalStorageVals(c *gin.Context) {
 		return
 	}
 
-	app := arg["app"].(string)
-	evt := util.NewCmdResult("removeLocalStorageVals", 0, util.PushModeBroadcastMainExcludeSelfApp)
-	evt.AppId = app
-	evt.Data = map[string]interface{}{"keys": keys}
-	util.PushEvent(evt)
+	appArg := arg["app"]
+	if appArg != nil {
+		app := appArg.(string)
+		evt := util.NewCmdResult("removeLocalStorageVals", 0, util.PushModeBroadcastMainExcludeSelfApp)
+		evt.AppId = app
+		evt.Data = map[string]interface{}{"keys": keys}
+		util.PushEvent(evt)
+	}
 }
 
 func setLocalStorageVal(c *gin.Context) {
@@ -144,8 +167,14 @@ func setLocalStorageVal(c *gin.Context) {
 		return
 	}
 
-	key := arg["key"].(string)
-	val := arg["val"].(interface{})
+	keyArg := arg["key"]
+	if keyArg == nil {
+		ret.Code = -1
+		ret.Msg = "key is required"
+		return
+	}
+	key := keyArg.(string)
+	val := arg["val"]
 	err := model.SetLocalStorageVal(key, val)
 	if err != nil {
 		ret.Code = -1
@@ -153,11 +182,14 @@ func setLocalStorageVal(c *gin.Context) {
 		return
 	}
 
-	app := arg["app"].(string)
-	evt := util.NewCmdResult("setLocalStorageVal", 0, util.PushModeBroadcastMainExcludeSelfApp)
-	evt.AppId = app
-	evt.Data = map[string]interface{}{"key": key, "val": val}
-	util.PushEvent(evt)
+	appArg := arg["app"]
+	if appArg != nil {
+		app := appArg.(string)
+		evt := util.NewCmdResult("setLocalStorageVal", 0, util.PushModeBroadcastMainExcludeSelfApp)
+		evt.AppId = app
+		evt.Data = map[string]interface{}{"key": key, "val": val}
+		util.PushEvent(evt)
+	}
 }
 
 func setLocalStorage(c *gin.Context) {
@@ -169,7 +201,7 @@ func setLocalStorage(c *gin.Context) {
 		return
 	}
 
-	val := arg["val"].(interface{})
+	val := arg["val"]
 	err := model.SetLocalStorage(val)
 	if err != nil {
 		ret.Code = -1
@@ -177,11 +209,14 @@ func setLocalStorage(c *gin.Context) {
 		return
 	}
 
-	app := arg["app"].(string)
-	evt := util.NewCmdResult("setLocalStorage", 0, util.PushModeBroadcastMainExcludeSelfApp)
-	evt.AppId = app
-	evt.Data = val
-	util.PushEvent(evt)
+	appArg := arg["app"]
+	if appArg != nil {
+		app := appArg.(string)
+		evt := util.NewCmdResult("setLocalStorage", 0, util.PushModeBroadcastMainExcludeSelfApp)
+		evt.AppId = app
+		evt.Data = val
+		util.PushEvent(evt)
+	}
 }
 
 func getLocalStorage(c *gin.Context) {
@@ -201,7 +236,13 @@ func getOutlineStorage(c *gin.Context) {
 		return
 	}
 
-	docID := arg["docID"].(string)
+	docIDArg := arg["docID"]
+	if docIDArg == nil {
+		ret.Code = -1
+		ret.Msg = "docID is required"
+		return
+	}
+	docID := docIDArg.(string)
 	data, err := model.GetOutlineStorage(docID)
 	if err != nil {
 		ret.Code = -1
@@ -220,8 +261,14 @@ func setOutlineStorage(c *gin.Context) {
 		return
 	}
 
-	docID := arg["docID"].(string)
-	val := arg["val"].(interface{})
+	docIDArg := arg["docID"]
+	if docIDArg == nil {
+		ret.Code = -1
+		ret.Msg = "docID is required"
+		return
+	}
+	docID := docIDArg.(string)
+	val := arg["val"]
 	err := model.SetOutlineStorage(docID, val)
 	if err != nil {
 		ret.Code = -1
@@ -239,7 +286,13 @@ func removeOutlineStorage(c *gin.Context) {
 		return
 	}
 
-	docID := arg["docID"].(string)
+	docIDArg := arg["docID"]
+	if docIDArg == nil {
+		ret.Code = -1
+		ret.Msg = "docID is required"
+		return
+	}
+	docID := docIDArg.(string)
 	err := model.RemoveOutlineStorage(docID)
 	if err != nil {
 		ret.Code = -1
@@ -257,7 +310,13 @@ func updateRecentDocViewTime(c *gin.Context) {
 		return
 	}
 
-	rootID := arg["rootID"].(string)
+	rootIDArg := arg["rootID"]
+	if rootIDArg == nil {
+		ret.Code = -1
+		ret.Msg = "rootID is required"
+		return
+	}
+	rootID := rootIDArg.(string)
 	err := model.UpdateRecentDocViewTime(rootID)
 	if err != nil {
 		ret.Code = -1
@@ -275,7 +334,13 @@ func updateRecentDocOpenTime(c *gin.Context) {
 		return
 	}
 
-	rootID := arg["rootID"].(string)
+	rootIDArg := arg["rootID"]
+	if rootIDArg == nil {
+		ret.Code = -1
+		ret.Msg = "rootID is required"
+		return
+	}
+	rootID := rootIDArg.(string)
 	err := model.UpdateRecentDocOpenTime(rootID)
 	if err != nil {
 		ret.Code = -1
