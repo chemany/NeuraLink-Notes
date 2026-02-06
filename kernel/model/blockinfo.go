@@ -59,6 +59,21 @@ func GetDocInfo(blockID string) (ret *BlockInfo) {
 
 // GetDocInfoWithContext 使用 WorkspaceContext 获取文档信息
 func GetDocInfoWithContext(ctx *WorkspaceContext, blockID string) (ret *BlockInfo) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
+	sql.SetCurrentContext(ctx)
+	treenode.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	defer treenode.ClearCurrentContext()
+
+	originalDataDir := util.DataDir
+	util.DataDir = ctx.GetDataDir()
+	defer func() {
+		util.DataDir = originalDataDir
+	}()
+
 	FlushTxQueue()
 
 	tree, err := LoadTreeByBlockIDWithContext(ctx, blockID)
@@ -162,6 +177,21 @@ func GetDocsInfo(blockIDs []string, queryRefCount bool, queryAv bool) (rets []*B
 
 // GetDocsInfoWithContext 使用 WorkspaceContext 获取文档信息
 func GetDocsInfoWithContext(ctx *WorkspaceContext, blockIDs []string, queryRefCount bool, queryAv bool) (rets []*BlockInfo) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
+	sql.SetCurrentContext(ctx)
+	treenode.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	defer treenode.ClearCurrentContext()
+
+	originalDataDir := util.DataDir
+	util.DataDir = ctx.GetDataDir()
+	defer func() {
+		util.DataDir = originalDataDir
+	}()
+
 	FlushTxQueue()
 
 	trees := LoadTreesWithContext(ctx, blockIDs)

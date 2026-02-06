@@ -801,15 +801,37 @@ export class AI extends Model {
         console.log("[AI] callAI被调用，准备依靠后端 RAG 增强");
         console.log("[AI] 发现附件:", activeAttachments.length, "个", activeAttachments);
 
-        // 1. 构建系统消息（简短提示，具体内容由后端RAG注入）
-        messages.push({
-            role: "system",
-            content: `你是文档分析助手。后端将自动注入当前文档正文和相关附件内容，请基于注入的上下文回答用户问题。`
-        });
-
         // 调试日志
         console.log("[AI] 附件列表:", activeAttachments);
         console.log("[AI] 文档内容长度:", docContent.length);
+
+        // 1. 构建系统消息，包含当前文档内容
+        let systemContent = `你是文档分析助手。请基于以下文档内容回答用户问题。`;
+
+        // 添加当前文档内容到系统消息
+        if (docContent && docContent.trim()) {
+            // 限制文档内容长度，避免超出 token 限制
+            const maxDocLength = 15000; // 约 5000 个汉字
+            let truncatedContent = docContent;
+            if (docContent.length > maxDocLength) {
+                truncatedContent = docContent.substring(0, maxDocLength) + "\n\n...(文档内容过长，已截断)";
+            }
+            systemContent += `\n\n【当前文档正文】\n${truncatedContent}`;
+        }
+
+        // 添加附件引用提示
+        if (activeAttachments && activeAttachments.length > 0) {
+            systemContent += `\n\n【文档包含的附件】\n文档中包含以下附件，后端 RAG 将自动注入附件内容：`;
+            activeAttachments.forEach((path, idx) => {
+                const fileName = path.split('/').pop() || path;
+                systemContent += `\n${idx + 1}. ${fileName}`;
+            });
+        }
+
+        messages.push({
+            role: "system",
+            content: systemContent
+        });
 
         // 2. 添加历史消息（只保留最近4轮对话，避免超出上下文限制）
         const history = this.messages.slice(0, -1).slice(-8); // 最多保留8条消息（4轮对话）

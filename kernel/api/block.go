@@ -728,10 +728,11 @@ func getBlockDOM(c *gin.Context) {
 	}
 
 	id := arg["id"].(string)
-	dom := model.GetBlockDOM(id)
+	ctx := model.GetWorkspaceContext(c)
+	doms := model.GetBlockDOMsWithContext(ctx, []string{id})
 	ret.Data = map[string]string{
 		"id":  id,
-		"dom": dom,
+		"dom": doms[id],
 	}
 }
 
@@ -764,10 +765,11 @@ func getBlockDOMWithEmbed(c *gin.Context) {
 	}
 
 	id := arg["id"].(string)
-	dom := model.GetBlockDOMWithEmbed(id)
+	ctx := model.GetWorkspaceContext(c)
+	doms := model.GetBlockDOMsWithEmbedWithContext(ctx, []string{id})
 	ret.Data = map[string]string{
 		"id":  id,
-		"dom": dom,
+		"dom": doms[id],
 	}
 }
 

@@ -233,6 +233,10 @@ func CheckWebAuth(c *gin.Context) {
 	workspaceCtx := NewWorkspaceContextWithUser(user.Workspace, user.Username, user.Username)
 	SetWorkspaceContext(c, workspaceCtx)
 
+	// Set thread-local context for calls that potentially don't pass context explicitly
+	SetCurrentExecutionContext(workspaceCtx)
+	defer ClearCurrentExecutionContext()
+
 	logging.LogInfof("[Web Mode] WorkspaceContext created for user: %s", user.Username)
 
 	c.Next()

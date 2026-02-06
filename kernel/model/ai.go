@@ -455,9 +455,16 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 }
 
 // enhanceWithPrebuiltVectors 在没有向量化服务时，直接读取已向量化的文件内容
+// 严格遵守文档隔离：只分析当前文档包含的附件，不跨文档搜索
 func enhanceWithPrebuiltVectors(ctx *WorkspaceContext, messages []openai.ChatCompletionMessage, allowedAssets []string, userQuery string) []openai.ChatCompletionMessage {
+	// 文档隔离：如果没有指定附件列表（当前文档无附件），则不加载任何向量文件
+	if len(allowedAssets) == 0 {
+		logging.LogInfof("RAG: 当前文档没有附件，跳过向量文件加载（文档隔离）")
+		return messages
+	}
+
 	dataDir := ctx.GetDataDir()
-	logging.LogInfof("RAG: enhanceWithPrebuiltVectors - dataDir=%s", dataDir)
+	logging.LogInfof("RAG: enhanceWithPrebuiltVectors - dataDir=%s, allowedAssets=%v", dataDir, allowedAssets)
 
 	assets, err := loadAllAssetVectors(dataDir)
 	if err != nil {
@@ -472,23 +479,21 @@ func enhanceWithPrebuiltVectors(ctx *WorkspaceContext, messages []openai.ChatCom
 
 	logging.LogInfof("RAG: 找到 %d 个向量化文件", len(assets))
 
-	// 过滤指定的附件
+	// 严格过滤：只加载当前文档包含的附件
 	var filteredAssets []*AssetVector
 	for _, asset := range assets {
-		if len(allowedAssets) > 0 {
-			found := false
-			for _, allowed := range allowedAssets {
-				matchFileName := asset.FileName == allowed
-				matchPath := strings.Contains(asset.AssetPath, allowed)
-				if matchFileName || matchPath {
-					logging.LogInfof("RAG: 匹配到文件 assetPath=%s (fileName匹配=%v, path匹配=%v)", asset.AssetPath, matchFileName, matchPath)
-					found = true
-					break
-				}
+		found := false
+		for _, allowed := range allowedAssets {
+			matchFileName := asset.FileName == allowed
+			matchPath := strings.Contains(asset.AssetPath, allowed)
+			if matchFileName || matchPath {
+				logging.LogInfof("RAG: 匹配到文件 assetPath=%s (fileName匹配=%v, path匹配=%v)", asset.AssetPath, matchFileName, matchPath)
+				found = true
+				break
 			}
-			if !found {
-				continue
-			}
+		}
+		if !found {
+			continue
 		}
 		filteredAssets = append(filteredAssets, asset)
 	}
@@ -537,6 +542,12 @@ func enhanceWithPrebuiltVectors(ctx *WorkspaceContext, messages []openai.ChatCom
 
 // enhanceWithPrebuiltVectorsFallback 降级函数：语义搜索失败时直接读取向量文件
 func enhanceWithPrebuiltVectorsFallback(ctx *WorkspaceContext, messages []openai.ChatCompletionMessage, allowedAssets []string, userQuery string) []openai.ChatCompletionMessage {
+	// 文档隔离：如果没有指定附件列表（当前文档无附件），则不加载任何向量文件
+	if len(allowedAssets) == 0 {
+		logging.LogInfof("RAG Fallback: 当前文档没有附件，跳过向量文件加载（文档隔离）")
+		return messages
+	}
+
 	dataDir := ctx.GetDataDir()
 	logging.LogInfof("RAG Fallback: dataDir=%s, allowedAssets=%v, userQuery=%s", dataDir, allowedAssets, userQuery)
 
@@ -553,23 +564,21 @@ func enhanceWithPrebuiltVectorsFallback(ctx *WorkspaceContext, messages []openai
 
 	logging.LogInfof("RAG Fallback: 找到 %d 个向量化文件", len(assets))
 
-	// 过滤指定的附件
+	// 严格过滤：只加载当前文档包含的附件
 	var filteredAssets []*AssetVector
 	for _, asset := range assets {
-		if len(allowedAssets) > 0 {
-			found := false
-			for _, allowed := range allowedAssets {
-				matchFileName := asset.FileName == allowed
-				matchPath := strings.Contains(asset.AssetPath, allowed)
-				if matchFileName || matchPath {
-					logging.LogInfof("RAG Fallback: 匹配到文件 %s", asset.AssetPath)
-					found = true
-					break
-				}
+		found := false
+		for _, allowed := range allowedAssets {
+			matchFileName := asset.FileName == allowed
+			matchPath := strings.Contains(asset.AssetPath, allowed)
+			if matchFileName || matchPath {
+				logging.LogInfof("RAG Fallback: 匹配到文件 %s", asset.AssetPath)
+				found = true
+				break
 			}
-			if !found {
-				continue
-			}
+		}
+		if !found {
+			continue
 		}
 		filteredAssets = append(filteredAssets, asset)
 	}
@@ -670,17 +679,20 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 	var ragContext strings.Builder
 	if isSummaryRequest {
 		logging.LogInfof("RAG: 检测到总结请求，执行全量注入模式")
-		// 全量模式：从所有向量化资产中提取所有内容
-		assets, err := GetVectorizedAssetsWithContext(ctx)
-		if err == nil && len(assets) > 0 {
-			ragContext.WriteString("以下是所有相关附件的完整内容总结参考（请以此为准，严禁强行关联不同来源的技术）：\n\n")
-			totalLen := 0
-			// 适配 72k Token 模型：将总结上限提升至 100,000 字符 (约 30k+ Token)
-			const maxTotalLen = 100000 
-			for _, asset := range assets {
-				if totalLen > maxTotalLen { break }
-				// 跨笔记本隔离：如果指定了允许的附件列表，则只包含列表中的文件
-				if len(allowedAssets) > 0 {
+		// 文档隔离：如果没有附件，不加载任何向量文件
+		if len(allowedAssets) == 0 {
+			logging.LogInfof("RAG: 当前文档没有附件，跳过总结模式下的向量加载（文档隔离）")
+		} else {
+			// 全量模式：从当前文档包含的向量化资产中提取所有内容
+			assets, err := GetVectorizedAssetsWithContext(ctx)
+			if err == nil && len(assets) > 0 {
+				ragContext.WriteString("以下是所有相关附件的完整内容总结参考（请以此为准，严禁强行关联不同来源的技术）：\n\n")
+				totalLen := 0
+				// 适配 72k Token 模型：将总结上限提升至 100,000 字符 (约 30k+ Token)
+				const maxTotalLen = 100000
+				for _, asset := range assets {
+					if totalLen > maxTotalLen { break }
+					// 严格文档隔离：只包含当前文档中的附件
 					found := false
 					for _, allowed := range allowedAssets {
 						if asset.FileName == allowed || strings.Contains(asset.AssetPath, allowed) {
@@ -689,19 +701,19 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 						}
 					}
 					if !found { continue }
-				}
-				ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
-				for _, chunk := range asset.Chunks {
-					if totalLen+len(chunk.Content) > maxTotalLen {
-						ragContext.WriteString("...(由于长度限制，后续内容已截断)\n")
-						totalLen = maxTotalLen + 1
-						break
+					ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
+					for _, chunk := range asset.Chunks {
+						if totalLen+len(chunk.Content) > maxTotalLen {
+							ragContext.WriteString("...(由于长度限制，后续内容已截断)\n")
+							totalLen = maxTotalLen + 1
+							break
+						}
+						ragContext.WriteString(chunk.Content)
+						ragContext.WriteString("\n")
+						totalLen += len(chunk.Content)
 					}
-					ragContext.WriteString(chunk.Content)
 					ragContext.WriteString("\n")
-					totalLen += len(chunk.Content)
 				}
-				ragContext.WriteString("\n")
 			}
 		}
 	} else {
@@ -1813,6 +1825,12 @@ func SemanticSearchAssetChunks(dataDir, query string, limit int, allowedAssets [
 		return nil, fmt.Errorf("向量化查询失败: %v", err)
 	}
 
+	// 文档隔离：如果没有指定附件列表（当前文档无附件），则不搜索任何向量
+	if len(allowedAssets) == 0 {
+		logging.LogInfof("RAG: 当前文档没有附件，跳过语义搜索（文档隔离）")
+		return nil, nil
+	}
+
 	// 加载工作空间下所有资源向量
 	assets, err := loadAllAssetVectors(dataDir)
 	if err != nil {
@@ -1821,17 +1839,15 @@ func SemanticSearchAssetChunks(dataDir, query string, limit int, allowedAssets [
 
 	var results []assetSearchResult
 	for _, asset := range assets {
-		// 跨笔记本隔离
-		if len(allowedAssets) > 0 {
-			found := false
-			for _, allowed := range allowedAssets {
-				if asset.FileName == allowed || strings.Contains(asset.AssetPath, allowed) {
-					found = true
-					break
-				}
+		// 严格文档隔离：只搜索当前文档包含的附件
+		found := false
+		for _, allowed := range allowedAssets {
+			if asset.FileName == allowed || strings.Contains(asset.AssetPath, allowed) {
+				found = true
+				break
 			}
-			if !found { continue }
 		}
+		if !found { continue }
 
 		for _, chunk := range asset.Chunks {
 			sim := cosineSimilarity(queryVector, chunk.Vector)

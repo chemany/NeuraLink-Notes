@@ -213,7 +213,11 @@ func LoadTreeByBlockIDWithReindexAndContext(ctx *WorkspaceContext, id string) (r
 
 	luteEngine := util.NewLute()
 	dataDir := ctx.GetDataDir()
+	logging.LogInfof("DEBUG: LoadTree Reindex: id=%s, dataDir=%s, box=%s, path=%s", id, dataDir, bt.BoxID, bt.Path)
 	ret, err = filesys.LoadTreeWithDataDir(dataDir, bt.BoxID, bt.Path, luteEngine)
+	if err != nil {
+		logging.LogErrorf("DEBUG: LoadTree Reindex Failed: %v", err)
+	}
 	return
 }
 
@@ -274,7 +278,11 @@ func loadTreeByBlockTreeWithContext(ctx *WorkspaceContext, bt *treenode.BlockTre
 	
 	// 所有用户共用同一个全局 BlockTree 数据库
 	// 直接从全局数据库读取（BlockTree 不区分用户，通过文件路径区分）
+	logging.LogInfof("DEBUG: loadTreeCtx: dataDir=%s, box=%s, path=%s", ctx.GetDataDir(), bt.BoxID, bt.Path)
 	ret, err = filesys.LoadTreeWithDataDir(ctx.GetDataDir(), bt.BoxID, bt.Path, luteEngine)
+	if err != nil {
+		logging.LogErrorf("DEBUG: loadTreeCtx Failed: %v", err)
+	}
 	return
 }
 

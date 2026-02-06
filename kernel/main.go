@@ -47,6 +47,9 @@ func main() {
 	if err := model.InitUserStore(); err != nil {
 		logging.LogErrorf("Failed to initialize user store: %s", err)
 	}
+
+	// 修复用户数据（设置正确的 user_id）
+	model.InitUserDataRepair()
 	model.InitWebAuthService()
 
 	// 初始化统一注册服务连接

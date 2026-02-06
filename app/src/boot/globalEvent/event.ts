@@ -13,6 +13,7 @@ import {
     hasClosestByClassName,
     isInEmbedBlock
 } from "../../protyle/util/hasClosest";
+import {matchHotKey} from "../../protyle/util/hotKey";
 import {initTabMenu} from "../../menus/tab";
 import {getInstanceById} from "../../layout/util";
 import {Tab} from "../../layout/Tab";
@@ -20,6 +21,7 @@ import {hideTooltip} from "../../dialog/tooltip";
 import {openFileById} from "../../editor/util";
 import {checkFold} from "../../util/noRelyPCFunction";
 import {hideAllElements} from "../../protyle/ui/hideElements";
+import {isBrowser} from "../../util/functions";
 
 export const initWindowEvent = (app: App) => {
     document.body.addEventListener("mouseleave", () => {
@@ -68,6 +70,17 @@ export const initWindowEvent = (app: App) => {
     window.addEventListener("keyup", (event) => {
         windowKeyUp(app, event);
     });
+
+    if (isBrowser()) {
+        window.addEventListener("keydown", (event) => {
+            if (!hasClosestByClassName(event.target as Element, "pdf__outer") &&
+                matchHotKey(window.siyuan.config.keymap.general.search.custom, event)) {
+                windowKeyDown(app, event);
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        }, true);
+    }
 
     window.addEventListener("keydown", (event) => {
         windowKeyDown(app, event);

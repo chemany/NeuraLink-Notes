@@ -303,13 +303,13 @@ func serveAppearance(ginServer *gin.Engine) {
 	siyuan.GET("/appearance/*filepath", func(c *gin.Context) {
 		// 获取用户的 WorkspaceContext
 		ctx := model.GetWorkspaceContext(c)
-		
+
 		// 根据请求路径确定使用哪个 appearance 目录
 		// 主题和图标从全局目录读取（所有用户共享）
 		// 语言文件从用户目录读取（用户特定，需要认证）
 		var appearancePath string
 		requestPath := c.Request.URL.Path
-		
+
 		if strings.Contains(requestPath, "/langs/") {
 			// 语言文件从用户的 conf/appearance 目录读取
 			// 注意：此路径需要认证，所以 ctx 一定是用户特定的
@@ -321,7 +321,7 @@ func serveAppearance(ginServer *gin.Engine) {
 			// 其他文件（如 boot、fonts、emojis 等）从应用程序目录读取
 			appearancePath = filepath.Join(util.WorkingDir, "appearance")
 		}
-		
+
 		filePath := filepath.Join(appearancePath, strings.TrimPrefix(c.Request.URL.Path, "/appearance/"))
 		if strings.HasSuffix(c.Request.URL.Path, "/theme.js") {
 			if !gulu.File.IsExist(filePath) {
@@ -720,11 +720,11 @@ func serveWebSocket(ginServer *gin.Engine) {
 						logging.LogInfof("[WebSocket] Unified auth token detected, allowing connection")
 					}
 				}
-				
+
 				// ✅ 从 token 中提取用户信息并创建 WorkspaceContext
 				if authOk {
 					claims := model.GetTokenClaims(token)
-					
+
 					// 尝试从 claims 中提取 workspace（灵枢笔记 token）
 					if workspace, ok := claims["workspace"].(string); ok && workspace != "" {
 						if uid, ok := claims["user_id"].(string); ok {
@@ -733,7 +733,11 @@ func serveWebSocket(ginServer *gin.Engine) {
 						if uname, ok := claims["username"].(string); ok {
 							username = uname
 						}
-						workspaceCtx = model.NewWorkspaceContextWithUser(workspace, userID, username)
+						effectiveUserID := username
+						if effectiveUserID == "" {
+							effectiveUserID = userID
+						}
+						workspaceCtx = model.NewWorkspaceContextWithUser(workspace, effectiveUserID, username)
 						logging.LogInfof("[WebSocket] Connected with SiYuan token - user: %s, workspace: %s", username, workspace)
 					} else {
 						// 如果没有 workspace，说明是统一认证 token，需要验证并获取用户信息
@@ -749,7 +753,7 @@ func serveWebSocket(ginServer *gin.Engine) {
 								// 从 URL 参数获取
 								tokenStr = s.Request.URL.Query().Get("token")
 							}
-							
+
 							if tokenStr != "" {
 								unifiedUser, err := unifiedService.VerifyToken(tokenStr)
 								if err == nil && unifiedUser != nil {
@@ -758,7 +762,11 @@ func serveWebSocket(ginServer *gin.Engine) {
 									if err == nil && localUser != nil {
 										userID = localUser.ID
 										username = localUser.Username
-										workspaceCtx = model.NewWorkspaceContextWithUser(localUser.Workspace, userID, username)
+										effectiveUserID := username
+										if effectiveUserID == "" {
+											effectiveUserID = userID
+										}
+										workspaceCtx = model.NewWorkspaceContextWithUser(localUser.Workspace, effectiveUserID, username)
 										logging.LogInfof("[WebSocket] Connected with unified token - user: %s, workspace: %s", username, localUser.Workspace)
 									} else {
 										logging.LogErrorf("[WebSocket] Failed to ensure local user: %s", err)
@@ -804,7 +812,7 @@ func serveWebSocket(ginServer *gin.Engine) {
 						model.RoleEditor,
 						model.RoleReader,
 					})
-					
+
 					// ✅ 从 token 中提取用户信息
 					if authOk {
 						claims := model.GetTokenClaims(token)
@@ -815,7 +823,11 @@ func serveWebSocket(ginServer *gin.Engine) {
 							if uname, ok := claims["username"].(string); ok {
 								username = uname
 							}
-							workspaceCtx = model.NewWorkspaceContextWithUser(workspace, userID, username)
+							effectiveUserID := username
+							if effectiveUserID == "" {
+								effectiveUserID = userID
+							}
+							workspaceCtx = model.NewWorkspaceContextWithUser(workspace, effectiveUserID, username)
 							logging.LogInfof("[WebSocket] Connected with token - user: %s, workspace: %s", username, workspace)
 						}
 					}
@@ -840,7 +852,7 @@ func serveWebSocket(ginServer *gin.Engine) {
 			s.Set("web_user_id", userID)
 			s.Set("web_username", username)
 			s.Set("web_workspace", workspaceCtx.DataDir)
-			
+
 			// 设置为当前用户的 Context
 			model.SetCurrentUserContext(username, workspaceCtx)
 			logging.LogInfof("[WebSocket] Set current user context for user: %s", username)
@@ -965,7 +977,6 @@ func serveWebDAV(ginServer *gin.Engine) {
 		handler.ServeHTTP(c.Writer, c.Request)
 	})
 }
-
 
 func shortReqMsg(msg []byte) []byte {
 	s := gulu.Str.FromBytes(msg)

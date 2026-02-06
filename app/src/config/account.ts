@@ -340,13 +340,13 @@ ${renewHTML}<div class="fn__hr--b"></div>`;
             </p>
             
             <!-- 登录按钮 -->
-            <button class="b3-button b3-button--big" onclick="window.location.href='/stage/login.html'" style="width: 100%; padding: 14px 32px; border-radius: 12px; font-size: 16px; font-weight: 500; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);">
+            <button class="b3-button b3-button--big" id="gotoLoginBtn" style="width: 100%; padding: 14px 32px; border-radius: 12px; font-size: 16px; font-weight: 500; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);">
                 <svg style="width: 18px; height: 18px; margin-right: 8px;"><use xlink:href="#iconAccount"></use></svg>
                 立即登录
             </button>
-            
+
             <p style="margin: 16px 0 0 0; font-size: 13px; color: var(--b3-theme-on-surface-light);">
-                还没有账户？<a href="/stage/register.html" style="color: var(--b3-theme-primary); text-decoration: none; font-weight: 500;">立即注册</a>
+                还没有账户？<a href="#" id="gotoRegisterLink" style="color: var(--b3-theme-primary); text-decoration: none; font-weight: 500;">立即注册</a>
             </p>
         </div>
     </div>
@@ -386,6 +386,33 @@ ${renewHTML}<div class="fn__hr--b"></div>`;
 </div>`;
     },
     bindEvent: (element: Element) => {
+        // 计算基础路径（支持子目录部署）
+        const getBasePath = () => {
+            const currentPath = window.location.pathname;
+            const stageIndex = currentPath.indexOf('/stage/');
+            if (stageIndex > 0) {
+                return currentPath.substring(0, stageIndex);
+            }
+            return '';
+        };
+
+        // 未登录状态下的登录按钮跳转
+        const gotoLoginBtn = element.querySelector("#gotoLoginBtn");
+        if (gotoLoginBtn) {
+            gotoLoginBtn.addEventListener("click", () => {
+                window.location.href = getBasePath() + '/stage/login.html';
+            });
+        }
+
+        // 未登录状态下的注册链接跳转
+        const gotoRegisterLink = element.querySelector("#gotoRegisterLink");
+        if (gotoRegisterLink) {
+            gotoRegisterLink.addEventListener("click", (e) => {
+                e.preventDefault();
+                window.location.href = getBasePath() + '/stage/register.html';
+            });
+        }
+
         // Web模式下的登出按钮处理
         const logoutWebButton = element.querySelector("#logoutWeb");
         if (logoutWebButton) {
@@ -405,9 +432,9 @@ ${renewHTML}<div class="fn__hr--b"></div>`;
 
                         showMessage('已退出登录', 3000);
 
-                        // 跳转到登录页
+                        // 跳转到登录页（支持子目录部署）
                         setTimeout(() => {
-                            window.location.href = '/stage/login.html';
+                            window.location.href = getBasePath() + '/stage/login.html';
                         }, 1000);
                     });
                 }

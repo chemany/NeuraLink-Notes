@@ -427,3 +427,46 @@ const (
 	EvtSQLHistoryRebuild      = "sql.history.rebuild"
 	EvtSQLAssetContentRebuild = "sql.assetContent.rebuild"
 )
+
+// StartupTask 启动任务
+type StartupTask struct {
+	Name string
+	Func func() error
+}
+
+var (
+	startupTasks   []StartupTask
+	startupTaskLock sync.Mutex
+)
+
+// RegisterStartupTask 注册一个启动任务
+// 任务将在系统初始化完成后执行
+func RegisterStartupTask(name string, task func() error) {
+	startupTaskLock.Lock()
+	defer startupTaskLock.Unlock()
+	startupTasks = append(startupTasks, StartupTask{Name: name, Func: task})
+	logging.LogInfof("Registered startup task: %s", name)
+}
+
+// ExecuteStartupTasks 执行所有注册的启动任务
+func ExecuteStartupTasks() error {
+	startupTaskLock.Lock()
+	tasks := make([]StartupTask, len(startupTasks))
+	copy(tasks, startupTasks)
+	startupTaskLock.Unlock()
+
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	logging.LogInfof("Executing %d startup tasks...", len(tasks))
+	for _, task := range tasks {
+		logging.LogInfof("Executing startup task: %s", task.Name)
+		if err := task.Func(); err != nil {
+			logging.LogErrorf("Startup task %s failed: %s", task.Name, err)
+			// 继续执行其他任务，不要中断
+		}
+	}
+	logging.LogInfof("Startup tasks completed")
+	return nil
+}

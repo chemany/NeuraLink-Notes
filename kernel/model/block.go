@@ -361,6 +361,18 @@ func RecentUpdatedBlocks() (ret []*Block) {
 func RecentUpdatedBlocksWithContext(ctx *WorkspaceContext) (ret []*Block) {
 	ret = []*Block{}
 
+	if nil != ctx {
+		// Ensure user_id filtering and per-user searchignore are applied.
+		sql.SetCurrentContext(ctx)
+		defer sql.ClearCurrentContext()
+
+		originalDataDir := util.DataDir
+		util.DataDir = ctx.GetDataDir()
+		defer func() {
+			util.DataDir = originalDataDir
+		}()
+	}
+
 	sqlStmt := "SELECT * FROM blocks WHERE type = 'p' AND length > 1"
 	if util.ContainerIOS == util.Container || util.ContainerAndroid == util.Container || util.ContainerHarmony == util.Container {
 		sqlStmt = "SELECT * FROM blocks WHERE type = 'd'"
