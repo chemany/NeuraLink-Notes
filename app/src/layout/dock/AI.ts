@@ -508,26 +508,55 @@ export class AI extends Model {
 
             const editor = this.getBestEditor();
             if (editor && editor.editor?.protyle) {
-                // 使用 insertHTML 插入内容
                 const protyle = editor.editor.protyle;
-
-                // 先聚焦到编辑器最后一个块，确保 insertHTML 能获取到有效的 range
-                // 否则焦点在会议面板按钮上，getEditorRange 找不到有效 range，
-                // 导致后端 doInsert 找不到 block tree 触发 ReloadUI
                 const lastBlock = protyle.wysiwyg.element.lastElementChild;
-                if (lastBlock) {
-                    focusBlock(lastBlock, undefined, false);
-                }
+                const lastBlockId = lastBlock?.getAttribute("data-node-id");
 
+                // 使用 transaction 直接在最后一个顶层块之后插入，
+                // 而不是 insertHTML（依赖光标位置）。
+                // 因为会议纪要是引用块，如果用 focusBlock + insertHTML，
+                // 光标会落在引用块内部的子段落中，hasClosestBlock 找到的是子段落，
+                // 导致新纪要被插入到引用块内部形成嵌套。
                 const htmlContent = protyle.lute.Md2BlockDOM(content);
-                insertHTML(htmlContent, protyle, true);
+                const tempElement = document.createElement("template");
+                tempElement.innerHTML = htmlContent;
+                const newBlocks = Array.from(tempElement.content.children);
 
-                // 聚焦并滚动到底部
+                const doOps: IOperation[] = [];
+                const undoOps: IOperation[] = [];
+                let previousID = lastBlockId;
+
+                newBlocks.forEach((item) => {
+                    const id = item.getAttribute("data-node-id");
+                    if (!id) return;
+                    doOps.push({
+                        action: "insert",
+                        data: item.outerHTML,
+                        id,
+                        previousID,
+                    });
+                    undoOps.push({
+                        action: "delete",
+                        id,
+                    });
+                    previousID = id;
+                });
+
+                // 插入 DOM
+                let insertAfter = lastBlock as Element;
+                newBlocks.forEach((item) => {
+                    insertAfter.after(item);
+                    insertAfter = item;
+                });
+
+                transaction(protyle, doOps, undoOps);
+
+                // 聚焦并滚动到新插入的最后一个块
                 setTimeout(() => {
-                    const lastBlock = protyle.wysiwyg.element.lastElementChild;
-                    if (lastBlock) {
-                        focusBlock(lastBlock);
-                        lastBlock.scrollIntoView({ behavior: "smooth", block: "end" });
+                    const newLastBlock = protyle.wysiwyg.element.lastElementChild;
+                    if (newLastBlock) {
+                        focusBlock(newLastBlock, undefined, false);
+                        newLastBlock.scrollIntoView({ behavior: "smooth", block: "end" });
                     }
                 }, 200);
             } else {
