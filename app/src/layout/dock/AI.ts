@@ -510,6 +510,15 @@ export class AI extends Model {
             if (editor && editor.editor?.protyle) {
                 // 使用 insertHTML 插入内容
                 const protyle = editor.editor.protyle;
+
+                // 先聚焦到编辑器最后一个块，确保 insertHTML 能获取到有效的 range
+                // 否则焦点在会议面板按钮上，getEditorRange 找不到有效 range，
+                // 导致后端 doInsert 找不到 block tree 触发 ReloadUI
+                const lastBlock = protyle.wysiwyg.element.lastElementChild;
+                if (lastBlock) {
+                    focusBlock(lastBlock, undefined, false);
+                }
+
                 const htmlContent = protyle.lute.Md2BlockDOM(content);
                 insertHTML(htmlContent, protyle, true);
 
@@ -1112,6 +1121,11 @@ export class AI extends Model {
 
                 // 准备要插入的内容
                 const insertContent = `\n\n---\n\n## 🤖 AI 分析结果\n\n${cleanContent}\n\n*生成时间：${new Date(lastAIMessage.timestamp).toLocaleString()}*\n`;
+
+                // 先聚焦到编辑器最后一个块，确保 insertHTML 能获取到有效的 range
+                // 否则焦点在 AI 面板按钮上，getEditorRange 找不到有效 range，
+                // 导致后端 doInsert 找不到 block tree 触发 ReloadUI
+                focusBlock(lastBlock, undefined, false);
 
                 // 使用 insertHTML 插入内容
                 const htmlContent = protyle.lute.Md2BlockDOM(insertContent);
