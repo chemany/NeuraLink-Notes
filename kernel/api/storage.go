@@ -141,7 +141,8 @@ func removeLocalStorageVals(c *gin.Context) {
 		}
 	}
 
-	err := model.RemoveLocalStorageVals(keys)
+	ctx := model.GetWorkspaceContext(c)
+	err := model.RemoveLocalStorageValsWithContext(ctx, keys)
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
@@ -175,7 +176,8 @@ func setLocalStorageVal(c *gin.Context) {
 	}
 	key := keyArg.(string)
 	val := arg["val"]
-	err := model.SetLocalStorageVal(key, val)
+	ctx := model.GetWorkspaceContext(c)
+	err := model.SetLocalStorageValWithContext(ctx, key, val)
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
@@ -202,7 +204,8 @@ func setLocalStorage(c *gin.Context) {
 	}
 
 	val := arg["val"]
-	err := model.SetLocalStorage(val)
+	ctx := model.GetWorkspaceContext(c)
+	err := model.SetLocalStorageWithContext(ctx, val)
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
@@ -223,7 +226,8 @@ func getLocalStorage(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
 
-	data := model.GetLocalStorage()
+	ctx := model.GetWorkspaceContext(c)
+	data := model.GetLocalStorageWithContext(ctx)
 	ret.Data = data
 }
 

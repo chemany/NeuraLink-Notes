@@ -57,7 +57,7 @@ const (
 // logSlowQuery 记录慢查询
 func logSlowQuery(operation string, duration time.Duration, details string) {
 	if duration.Milliseconds() > SlowQueryThreshold {
-		logging.LogWarnf("[BlockTree] Slow query detected: operation=%s, duration=%dms, details=%s", 
+		logging.LogWarnf("[BlockTree] Slow query detected: operation=%s, duration=%dms, details=%s",
 			operation, duration.Milliseconds(), details)
 	}
 }
@@ -69,6 +69,9 @@ var (
 
 	// goroutine-local Context 存储，用于多用户架构
 	contextMap = sync.Map{} // goroutineID -> util.WorkspaceContextInterface
+
+	// GetUserIDFallback 用于在未显式设置 treenode Context 时回退获取用户 ID。
+	GetUserIDFallback func() string
 )
 
 // SetCurrentContext 设置当前 goroutine 的 WorkspaceContext
@@ -97,13 +100,16 @@ func GetCurrentContext() (util.WorkspaceContextInterface, bool) {
 // 调用者应确保在调用前通过 SetCurrentContext 设置了 Context
 func getUserID() string {
 	if ctx, ok := GetCurrentContext(); ok {
-		return ctx.GetUserID()
+		if userID := ctx.GetUserID(); "" != userID {
+			return userID
+		}
 	}
-	// 没有 Context 时返回空字符串
-	// 注意：这可能导致数据隔离问题，调用者应确保设置 Context
+
+	if nil != GetUserIDFallback {
+		return GetUserIDFallback()
+	}
 	return ""
 }
-
 
 func initDatabase(forceRebuild bool) (err error) {
 	// 数据库连接由 sql 包通过 SetDB 设置
@@ -253,11 +259,11 @@ func GetBlockTreeRootByPathWithDB(boxID, path string, database *sql.DB) (ret *Bl
 		duration := time.Since(start)
 		logSlowQuery("GetBlockTreeRootByPathWithDB", duration, fmt.Sprintf("boxID=%s, path=%s", boxID, path))
 	}()
-	
+
 	if nil == database {
 		return nil
 	}
-	
+
 	ret = &BlockTree{}
 	sqlStmt := "SELECT * FROM blocktrees WHERE user_id = ? AND box_id = ? AND path = ? AND type = 'd'"
 	err := database.QueryRow(sqlStmt, getUserID(), boxID, path).Scan(&ret.ID, &ret.UserID, &ret.RootID, &ret.ParentID, &ret.BoxID, &ret.Path, &ret.HPath, &ret.Updated, &ret.Type)
@@ -310,11 +316,11 @@ func GetBlockTreeRootByHPathWithDB(boxID, hPath string, database *sql.DB) (ret *
 		duration := time.Since(start)
 		logSlowQuery("GetBlockTreeRootByHPathWithDB", duration, fmt.Sprintf("boxID=%s, hPath=%s", boxID, hPath))
 	}()
-	
+
 	if nil == database {
 		return nil
 	}
-	
+
 	ret = &BlockTree{}
 	hPath = gulu.Str.RemoveInvisible(hPath)
 	sqlStmt := "SELECT * FROM blocktrees WHERE user_id = ? AND box_id = ? AND hpath = ? AND type = 'd'"
@@ -369,9 +375,9 @@ func GetBlockTreeByHPathPreferredParentID(boxID, hPath, preferredParentID string
 //   - BlockTree 对象，优先返回指定父文档下的文档，如果未找到或数据库为 nil 则返回 nil
 //
 // 查询逻辑：
-//   1. 首先查询所有匹配 HPath 的文档
-//   2. 如果存在父 ID 匹配 preferredParentID 的文档，返回该文档
-//   3. 否则返回第一个匹配的文档
+//  1. 首先查询所有匹配 HPath 的文档
+//  2. 如果存在父 ID 匹配 preferredParentID 的文档，返回该文档
+//  3. 否则返回第一个匹配的文档
 //
 // 示例：
 //
@@ -384,7 +390,7 @@ func GetBlockTreeByHPathPreferredParentIDWithDB(boxID, hPath, preferredParentID 
 	if nil == database {
 		return nil
 	}
-	
+
 	hPath = gulu.Str.RemoveInvisible(hPath)
 	var roots []*BlockTree
 	sqlStmt := "SELECT * FROM blocktrees WHERE user_id = ? AND box_id = ? AND hpath = ? AND parent_id = ? LIMIT 1"
@@ -539,7 +545,7 @@ func GetBlockTreeWithDB(id string, database *sql.DB) (ret *BlockTree) {
 		duration := time.Since(start)
 		logSlowQuery("GetBlockTreeWithDB", duration, fmt.Sprintf("id=%s", id))
 	}()
-	
+
 	if "" == id {
 		return
 	}
@@ -761,10 +767,10 @@ func UpsertBlockTree(tree *parse.Tree) {
 //   - database: 数据库连接，如果为 nil 则记录警告并返回
 //
 // 更新逻辑：
-//   1. 查询数据库中该文档的所有现有块
-//   2. 遍历解析树，找出变化的节点（新增、修改、删除）
-//   3. 批量删除旧的块记录
-//   4. 批量插入新的块记录
+//  1. 查询数据库中该文档的所有现有块
+//  2. 遍历解析树，找出变化的节点（新增、修改、删除）
+//  3. 批量删除旧的块记录
+//  4. 批量插入新的块记录
 //
 // 检测变化的条件：
 //   - 块的更新时间（updated）改变
@@ -791,7 +797,7 @@ func UpsertBlockTreeWithDB(tree *parse.Tree, database *sql.DB) {
 		logging.LogWarnf("database is nil, cannot upsert block tree")
 		return
 	}
-	
+
 	oldBts := map[string]*BlockTree{}
 	bts := GetBlockTreesByRootIDWithDB(tree.ID, database)
 	for _, bt := range bts {
@@ -897,12 +903,12 @@ func CeilBlockCount(count int) int {
 func SwitchBlockTreeDB(dbPath string) error {
 	dbMutex.Lock()
 	defer dbMutex.Unlock()
-	
+
 	if currentDBPath == dbPath && db != nil {
 		// 已经是当前数据库,无需切换
 		return nil
 	}
-	
+
 	// 关闭当前数据库连接
 	if db != nil {
 		if err := db.Close(); err != nil {
@@ -910,13 +916,13 @@ func SwitchBlockTreeDB(dbPath string) error {
 		}
 		db = nil
 	}
-	
+
 	// 确保目录存在
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	
+
 	// 构建 DSN (与 initDBConnection 保持一致)
 	dsn := dbPath + "?_journal_mode=WAL" +
 		"&_synchronous=OFF" +
@@ -928,7 +934,7 @@ func SwitchBlockTreeDB(dbPath string) error {
 		"&_ignore_check_constraints=ON" +
 		"&_temp_store=MEMORY" +
 		"&_case_sensitive_like=OFF"
-	
+
 	// 打开新数据库
 	var err error
 	db, err = sql.Open("sqlite3_extended", dsn)
@@ -936,19 +942,19 @@ func SwitchBlockTreeDB(dbPath string) error {
 		logging.LogErrorf("open BlockTree database [%s] failed: %s", dbPath, err)
 		return err
 	}
-	
+
 	// 设置连接池参数
 	db.SetMaxIdleConns(7)
 	db.SetMaxOpenConns(7)
 	db.SetConnMaxLifetime(365 * 24 * time.Hour)
-	
+
 	// 初始化表结构(如果需要)
 	if err := ensureDBTables(); err != nil {
 		db.Close()
 		db = nil
 		return err
 	}
-	
+
 	currentDBPath = dbPath
 	logging.LogInfof("switched BlockTree database to [%s]", dbPath)
 	return nil
@@ -963,14 +969,14 @@ func ensureDBTables() error {
 		// 表已存在
 		return nil
 	}
-	
+
 	// 创建表
 	_, err = db.Exec("CREATE TABLE blocktrees (id, user_id, root_id, parent_id, box_id, path, hpath, updated, type)")
 	if err != nil {
 		logging.LogErrorf("create table [blocktrees] failed: %s", err)
 		return err
 	}
-	
+
 	// 创建索引
 	_, err = db.Exec("CREATE INDEX idx_blocktrees_id ON blocktrees(id)")
 	if err != nil {
@@ -983,7 +989,7 @@ func ensureDBTables() error {
 		logging.LogErrorf("create index [idx_blocktrees_user_id] failed: %s", err)
 		return err
 	}
-	
+
 	logging.LogInfof("initialized BlockTree database tables")
 	return nil
 }
@@ -1028,7 +1034,7 @@ func GetBlockTreesByRootIDWithDB(rootID string, database *sql.DB) (ret []*BlockT
 	if nil == database {
 		return
 	}
-	
+
 	sqlStmt := "SELECT * FROM blocktrees WHERE user_id = ? AND root_id = ?"
 	rows, err := database.Query(sqlStmt, getUserID(), rootID)
 	if err != nil {

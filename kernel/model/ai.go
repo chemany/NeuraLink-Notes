@@ -17,9 +17,11 @@
 package model
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -212,7 +214,49 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 		contextMsgs = contextMsgs[len(contextMsgs)-Conf.AI.OpenAI.APIMaxContexts:]
 	}
 
-	apiKey, apiBaseURL, apiModel, _, _ := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, _, provider := getEffectiveAIConfig()
+
+	// Gemini provider: 使用非流式 API 直接获取完整响应
+	if !cloud && provider == "gemini" {
+		// 构建 openai 格式的消息用于 geminiChat
+		var msgs []openai.ChatCompletionMessage
+		for _, ctxMsg := range contextMsgs {
+			msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: ctxMsg})
+		}
+		msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: msg})
+
+		result, chatErr := geminiChat(apiKey, apiBaseURL, apiModel, maxTokens, 0.7, msgs)
+		if chatErr != nil {
+			err = chatErr
+			return
+		}
+		ret = strings.TrimSpace(result)
+		if ret != "" {
+			retContextMsgs = append(retContextMsgs, msg, ret)
+		}
+		return
+	}
+
+	// Anthropic provider: 使用非流式 API 直接获取完整响应
+	if !cloud && provider == "anthropic" {
+		// 构建 openai 格式的消息用于 anthropicChat
+		var msgs []openai.ChatCompletionMessage
+		for _, ctxMsg := range contextMsgs {
+			msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: ctxMsg})
+		}
+		msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: msg})
+
+		result, chatErr := anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, 0.7, msgs)
+		if chatErr != nil {
+			err = chatErr
+			return
+		}
+		ret = strings.TrimSpace(result)
+		if ret != "" {
+			retContextMsgs = append(retContextMsgs, msg, ret)
+		}
+		return
+	}
 
 	var gpt GPT
 	if cloud {
@@ -250,12 +294,13 @@ type DefaultModelConfig struct {
 	MaxTokens   int     `json:"max_tokens"`
 }
 
-func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64) {
+func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64, provider string) {
 	apiKey = Conf.AI.OpenAI.APIKey
 	apiBaseURL = Conf.AI.OpenAI.APIBaseURL
 	apiModel = Conf.AI.OpenAI.APIModel
 	maxTokens = Conf.AI.OpenAI.APIMaxTokens
 	temperature = Conf.AI.OpenAI.APITemperature
+	provider = "openai" // 默认 provider
 
 	// 当APIKey为空、为USE_DEFAULT_CONFIG，或者APIProvider为builtin时，读取默认配置
 	needDefaultConfig := apiKey == "" || apiKey == "USE_DEFAULT_CONFIG" || apiModel == "USE_DEFAULT_CONFIG" || Conf.AI.OpenAI.APIProvider == "builtin"
@@ -281,6 +326,9 @@ func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int,
 					apiKey = targetConfig.APIKey
 					apiBaseURL = targetConfig.BaseURL
 					apiModel = targetConfig.ModelName
+					if targetConfig.Provider != "" {
+						provider = targetConfig.Provider
+					}
 					if targetConfig.MaxTokens > 0 {
 						maxTokens = targetConfig.MaxTokens
 					}
@@ -303,7 +351,36 @@ func ChatWithContext(ctx *WorkspaceContext, messages []openai.ChatCompletionMess
 	// RAG 增强：从用户消息中提取查询，搜索相关文档
 	messages = EnhanceMessagesWithRAGContext(ctx, messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+
+	if provider == "gemini" {
+		// 如果有附件，读取文件并转换为 Base64
+		var fileBase64Data []string
+		var fileMIMETypes []string
+
+		if len(allowedAssets) > 0 {
+			logging.LogInfof("Gemini: 检测到 %d 个附件，开始读取", len(allowedAssets))
+			for _, assetPath := range allowedAssets {
+				base64Data, mimeType, readErr := uploadFileToGemini(ctx, apiKey, apiBaseURL, assetPath)
+				if readErr != nil {
+					logging.LogWarnf("Gemini: 读取文件失败 %s: %v", assetPath, readErr)
+					continue
+				}
+				fileBase64Data = append(fileBase64Data, base64Data)
+				fileMIMETypes = append(fileMIMETypes, mimeType)
+				logging.LogInfof("Gemini: 文件读取成功 %s (mime: %s)", assetPath, mimeType)
+			}
+		}
+
+		if len(fileBase64Data) > 0 {
+			return geminiChatWithFiles(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, fileBase64Data, fileMIMETypes)
+		}
+		return geminiChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
+
+	if provider == "anthropic" {
+		return anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
 
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
@@ -334,7 +411,15 @@ func Chat(messages []openai.ChatCompletionMessage, allowedAssets []string) (ret 
 	// RAG 增强：从用户消息中提取查询，搜索相关文档
 	messages = EnhanceMessagesWithRAG(messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+
+	if provider == "gemini" {
+		return geminiChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
+
+	if provider == "anthropic" {
+		return anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
 
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
@@ -365,7 +450,36 @@ func ChatStreamWithContext(ctx *WorkspaceContext, messages []openai.ChatCompleti
 	// RAG 增强
 	messages = EnhanceMessagesWithRAGContext(ctx, messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+
+	if provider == "gemini" {
+		// 如果有附件，读取文件并转换为 Base64
+		var fileBase64Data []string
+		var fileMIMETypes []string
+
+		if len(allowedAssets) > 0 {
+			logging.LogInfof("Gemini Stream: 检测到 %d 个附件，开始读取", len(allowedAssets))
+			for _, assetPath := range allowedAssets {
+				base64Data, mimeType, readErr := uploadFileToGemini(ctx, apiKey, apiBaseURL, assetPath)
+				if readErr != nil {
+					logging.LogWarnf("Gemini Stream: 读取文件失败 %s: %v", assetPath, readErr)
+					continue
+				}
+				fileBase64Data = append(fileBase64Data, base64Data)
+				fileMIMETypes = append(fileMIMETypes, mimeType)
+				logging.LogInfof("Gemini Stream: 文件读取成功 %s (mime: %s)", assetPath, mimeType)
+			}
+		}
+
+		if len(fileBase64Data) > 0 {
+			return geminiStreamChatWithFiles(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, fileBase64Data, fileMIMETypes, onToken)
+		}
+		return geminiStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
+
+	if provider == "anthropic" {
+		return anthropicStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
 
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
@@ -414,7 +528,15 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 	// RAG 增强
 	messages = EnhanceMessagesWithRAG(messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+
+	if provider == "gemini" {
+		return geminiStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
+
+	if provider == "anthropic" {
+		return anthropicStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
 
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
@@ -449,6 +571,504 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+// ===== Anthropic Messages API 直连实现 =====
+
+// anthropicMessage Anthropic Messages API 的消息格式
+type anthropicMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// anthropicRequest Anthropic Messages API 请求体
+type anthropicRequest struct {
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	Messages    []anthropicMessage `json:"messages"`
+	System      string             `json:"system,omitempty"`
+	Stream      bool               `json:"stream"`
+	Temperature float64            `json:"temperature,omitempty"`
+}
+
+// convertToAnthropicMessages 将 openai.ChatCompletionMessage 转换为 Anthropic 格式
+// Anthropic API 要求 system 消息通过顶层 system 字段传递，messages 只包含 user/assistant
+func convertToAnthropicMessages(messages []openai.ChatCompletionMessage) (systemPrompt string, anthropicMsgs []anthropicMessage) {
+	var systemParts []string
+	for _, msg := range messages {
+		switch msg.Role {
+		case "system":
+			systemParts = append(systemParts, msg.Content)
+		case "user", "assistant":
+			anthropicMsgs = append(anthropicMsgs, anthropicMessage{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+	}
+	if len(systemParts) > 0 {
+		systemPrompt = strings.Join(systemParts, "\n\n")
+	}
+	// Anthropic 要求 messages 不能为空，且第一条必须是 user
+	if len(anthropicMsgs) == 0 {
+		anthropicMsgs = append(anthropicMsgs, anthropicMessage{Role: "user", Content: "hello"})
+	}
+	return
+}
+
+// anthropicStreamChat 使用 Anthropic Messages API 进行流式聊天
+func anthropicStreamChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage, onToken func(token string) error) error {
+	systemPrompt, anthropicMsgs := convertToAnthropicMessages(messages)
+
+	reqBody := anthropicRequest{
+		Model:       model,
+		MaxTokens:   maxTokens,
+		Messages:    anthropicMsgs,
+		System:      systemPrompt,
+		Stream:      true,
+		Temperature: temperature,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("序列化 Anthropic 请求失败: %v", err)
+	}
+
+	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("创建 Anthropic 请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Anthropic API 请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Anthropic API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	// 解析 SSE 流
+	scanner := bufio.NewScanner(resp.Body)
+	// 增大 buffer 以处理大的 SSE 事件
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// SSE 格式: "data: {...}"
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+
+		// 解析 JSON
+		var event struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"delta"`
+		}
+
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		// 只处理 content_block_delta 事件中的 text_delta
+		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" && event.Delta.Text != "" {
+			if err := onToken(event.Delta.Text); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 Anthropic SSE 流失败: %v", err)
+	}
+
+	return nil
+}
+
+// anthropicChat 使用 Anthropic Messages API 进行非流式聊天
+func anthropicChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage) (string, error) {
+	systemPrompt, anthropicMsgs := convertToAnthropicMessages(messages)
+
+	reqBody := anthropicRequest{
+		Model:       model,
+		MaxTokens:   maxTokens,
+		Messages:    anthropicMsgs,
+		System:      systemPrompt,
+		Stream:      false,
+		Temperature: temperature,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("序列化 Anthropic 请求失败: %v", err)
+	}
+
+	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("创建 Anthropic 请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Anthropic API 请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取 Anthropic 响应失败: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Anthropic API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析 Anthropic 响应失败: %v", err)
+	}
+
+	if len(result.Content) > 0 && result.Content[0].Type == "text" {
+		return result.Content[0].Text, nil
+	}
+
+	return "", fmt.Errorf("Anthropic 返回空内容")
+}
+
+// ===== Gemini API 直连实现 =====
+
+// geminiMessage Gemini API 的消息格式
+type geminiMessage struct {
+	Role  string                   `json:"role"`
+	Parts []map[string]interface{} `json:"parts"`
+}
+
+// geminiRequest Gemini API 请求体
+type geminiRequest struct {
+	Contents []geminiMessage `json:"contents"`
+}
+
+// geminiResponse Gemini API 响应体
+type geminiResponse struct {
+	Candidates []struct {
+		Content struct {
+			Parts []struct {
+				Text string `json:"text"`
+			} `json:"parts"`
+		} `json:"content"`
+	} `json:"candidates"`
+}
+
+// geminiFileUploadResponse Gemini 文件上传响应
+type geminiFileUploadResponse struct {
+	File struct {
+		Name     string `json:"name"`
+		URI      string `json:"uri"`
+		MIMEType string `json:"mimeType"`
+		State    string `json:"state"`
+	} `json:"file"`
+}
+
+// convertToGeminiMessages 将 openai.ChatCompletionMessage 转换为 Gemini 格式
+func convertToGeminiMessages(messages []openai.ChatCompletionMessage) []geminiMessage {
+	var geminiMsgs []geminiMessage
+
+	for _, msg := range messages {
+		role := msg.Role
+		// Gemini 只支持 user 和 model 角色
+		if role == "assistant" {
+			role = "model"
+		} else if role == "system" {
+			// system 消息转换为 user 消息
+			role = "user"
+		}
+
+		geminiMsgs = append(geminiMsgs, geminiMessage{
+			Role: role,
+			Parts: []map[string]interface{}{
+				{"text": msg.Content},
+			},
+		})
+	}
+
+	return geminiMsgs
+}
+
+// uploadFileToGemini 读取文件并返回 Base64 编码的内容和 MIME 类型
+// 注意：不再使用 Files API 上传，而是直接返回 Base64 数据用于 inline_data
+func uploadFileToGemini(ctx *WorkspaceContext, apiKey, baseURL, assetPath string) (string, string, error) {
+	// 构建完整文件路径
+	var fullPath string
+	if filepath.IsAbs(assetPath) {
+		fullPath = assetPath
+	} else {
+		// 自动补全 assets/ 前缀（与 ParseAttachment 保持一致）
+		if !strings.HasPrefix(assetPath, "assets/") {
+			assetPath = "assets/" + assetPath
+		}
+
+		if ctx != nil {
+			fullPath = filepath.Join(ctx.GetDataDir(), assetPath)
+		} else {
+			fullPath = filepath.Join(util.DataDir, assetPath)
+		}
+	}
+
+	// 检查文件是否存在
+	if !gulu.File.IsExist(fullPath) {
+		return "", "", fmt.Errorf("文件不存在: %s", fullPath)
+	}
+
+	// 读取文件内容
+	fileData, err := os.ReadFile(fullPath)
+	if err != nil {
+		return "", "", fmt.Errorf("读取文件失败: %v", err)
+	}
+
+	// 检测 MIME 类型
+	mimeType := "application/pdf"
+	ext := strings.ToLower(filepath.Ext(fullPath))
+	switch ext {
+	case ".pdf":
+		mimeType = "application/pdf"
+	case ".png":
+		mimeType = "image/png"
+	case ".jpg", ".jpeg":
+		mimeType = "image/jpeg"
+	case ".gif":
+		mimeType = "image/gif"
+	case ".webp":
+		mimeType = "image/webp"
+	}
+
+	// 将文件内容编码为 Base64
+	base64Data := base64.StdEncoding.EncodeToString(fileData)
+
+	logging.LogInfof("Gemini: 文件读取成功 %s (size: %d bytes, mime: %s)", fullPath, len(fileData), mimeType)
+
+	return base64Data, mimeType, nil
+}
+
+// convertToGeminiMessagesWithFiles 将消息转换为 Gemini 格式，并支持 Base64 inline data
+func convertToGeminiMessagesWithFiles(messages []openai.ChatCompletionMessage, fileBase64Data []string, fileMIMETypes []string) []geminiMessage {
+	var geminiMsgs []geminiMessage
+	firstUserMsgProcessed := false
+
+	for _, msg := range messages {
+		role := msg.Role
+		// Gemini 只支持 user 和 model 角色
+		if role == "assistant" {
+			role = "model"
+		} else if role == "system" {
+			role = "user"
+		}
+
+		parts := []map[string]interface{}{}
+
+		// 在第一条 user 消息插入文件数据（而非最后一条）
+		if !firstUserMsgProcessed && role == "user" && len(fileBase64Data) > 0 {
+			for j, base64Data := range fileBase64Data {
+				mimeType := "application/pdf"
+				if j < len(fileMIMETypes) {
+					mimeType = fileMIMETypes[j]
+				}
+
+				// 使用 inline_data 而不是 file_data
+				filePart := map[string]interface{}{
+					"inline_data": map[string]interface{}{
+						"mime_type": mimeType,
+						"data":      base64Data,
+					},
+				}
+				parts = append(parts, filePart)
+			}
+			firstUserMsgProcessed = true
+		}
+
+		// 添加文本内容
+		parts = append(parts, map[string]interface{}{"text": msg.Content})
+
+		geminiMsgs = append(geminiMsgs, geminiMessage{
+			Role:  role,
+			Parts: parts,
+		})
+	}
+
+	return geminiMsgs
+}
+
+// geminiChat 使用 Gemini API 进行非流式聊天
+func geminiChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage) (string, error) {
+	return geminiChatWithFiles(apiKey, baseURL, model, maxTokens, temperature, messages, nil, nil)
+}
+
+// geminiChatWithFiles 使用 Gemini API 进行非流式聊天（支持 Base64 inline data）
+func geminiChatWithFiles(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage, fileBase64Data []string, fileMIMETypes []string) (string, error) {
+	var geminiMsgs []geminiMessage
+	if len(fileBase64Data) > 0 {
+		geminiMsgs = convertToGeminiMessagesWithFiles(messages, fileBase64Data, fileMIMETypes)
+	} else {
+		geminiMsgs = convertToGeminiMessages(messages)
+	}
+
+	reqBody := geminiRequest{
+		Contents: geminiMsgs,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("序列化 Gemini 请求失败: %v", err)
+	}
+
+	// Gemini API URL 格式: /v1beta/models/{model}:generateContent
+	apiURL := strings.TrimRight(baseURL, "/") + "/v1beta/models/" + model + ":generateContent"
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("创建 Gemini 请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Gemini API 请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取 Gemini 响应失败: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Gemini API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result geminiResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("解析 Gemini 响应失败: %v", err)
+	}
+
+	if len(result.Candidates) > 0 && len(result.Candidates[0].Content.Parts) > 0 {
+		return result.Candidates[0].Content.Parts[0].Text, nil
+	}
+
+	return "", fmt.Errorf("Gemini 返回空内容")
+}
+
+// geminiStreamChat 使用 Gemini API 进行流式聊天
+func geminiStreamChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage, onToken func(token string) error) error {
+	return geminiStreamChatWithFiles(apiKey, baseURL, model, maxTokens, temperature, messages, nil, nil, onToken)
+}
+
+// geminiStreamChatWithFiles 使用 Gemini API 进行流式聊天（支持 Base64 inline data）
+func geminiStreamChatWithFiles(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage, fileBase64Data []string, fileMIMETypes []string, onToken func(token string) error) error {
+	var geminiMsgs []geminiMessage
+	if len(fileBase64Data) > 0 {
+		geminiMsgs = convertToGeminiMessagesWithFiles(messages, fileBase64Data, fileMIMETypes)
+	} else {
+		geminiMsgs = convertToGeminiMessages(messages)
+	}
+
+	reqBody := geminiRequest{
+		Contents: geminiMsgs,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("序列化 Gemini 请求失败: %v", err)
+	}
+
+	// Gemini 流式 API URL 格式: /v1beta/models/{model}:streamGenerateContent?alt=sse
+	apiURL := strings.TrimRight(baseURL, "/") + "/v1beta/models/" + model + ":streamGenerateContent?alt=sse"
+
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("创建 Gemini 请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Gemini API 请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Gemini API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	// 解析 SSE 流
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// SSE 格式: "data: {...}"
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+
+		// 解析 JSON
+		var event geminiResponse
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		// 提取文本内容
+		if len(event.Candidates) > 0 && len(event.Candidates[0].Content.Parts) > 0 {
+			text := event.Candidates[0].Content.Parts[0].Text
+			if text != "" {
+				if err := onToken(text); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 Gemini SSE 流失败: %v", err)
 	}
 
 	return nil
@@ -691,7 +1311,9 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 				// 适配 72k Token 模型：将总结上限提升至 100,000 字符 (约 30k+ Token)
 				const maxTotalLen = 100000
 				for _, asset := range assets {
-					if totalLen > maxTotalLen { break }
+					if totalLen > maxTotalLen {
+						break
+					}
 					// 严格文档隔离：只包含当前文档中的附件
 					found := false
 					for _, allowed := range allowedAssets {
@@ -700,7 +1322,9 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 							break
 						}
 					}
-					if !found { continue }
+					if !found {
+						continue
+					}
 					ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
 					for _, chunk := range asset.Chunks {
 						if totalLen+len(chunk.Content) > maxTotalLen {
@@ -745,13 +1369,13 @@ func EnhanceMessagesWithRAGContext(ctx *WorkspaceContext, messages []openai.Chat
 
 	// 将 RAG 上下文添加到 system 消息中
 	ragSystemMsg := openai.ChatCompletionMessage{
-		Role:    "system",
+		Role: "system",
 		Content: "你是一个严谨的文档分析专家。请分别参考以下不同来源的文档内容回答。\n" +
-				"**绝对规则：**\n" +
-				"1. 严禁在没有明确文档支持的情况下，强行关联或合并不同文档或不同领域的技术逻辑。\n" +
-				"2. 如果不同文档讨论的是不相关的领域（如某种化学工艺 vs 另一种无关中间体），请分段分别陈述，严禁进行逻辑拼凑。\n" +
-				"3. 必须在回答中明确提到信息来源（如\"根据XXX文档...\"）。\n\n" +
-				ragContext.String(),
+			"**绝对规则：**\n" +
+			"1. 严禁在没有明确文档支持的情况下，强行关联或合并不同文档或不同领域的技术逻辑。\n" +
+			"2. 如果不同文档讨论的是不相关的领域（如某种化学工艺 vs 另一种无关中间体），请分段分别陈述，严禁进行逻辑拼凑。\n" +
+			"3. 必须在回答中明确提到信息来源（如\"根据XXX文档...\"）。\n\n" +
+			ragContext.String(),
 	}
 
 	// 在消息列表开头插入 RAG 上下文
@@ -808,9 +1432,11 @@ func EnhanceMessagesWithRAG(messages []openai.ChatCompletionMessage, allowedAsse
 			ragContext.WriteString("以下是所有相关附件的完整内容总结参考（请以此为准，严禁强行关联不同来源的技术）：\n\n")
 			totalLen := 0
 			// 适配 72k Token 模型：将总结上限提升至 100,000 字符 (约 30k+ Token)
-			const maxTotalLen = 100000 
+			const maxTotalLen = 100000
 			for _, asset := range assets {
-				if totalLen > maxTotalLen { break }
+				if totalLen > maxTotalLen {
+					break
+				}
 				// 跨笔记本隔离：如果指定了允许的附件列表，则只包含列表中的文件
 				if len(allowedAssets) > 0 {
 					found := false
@@ -820,7 +1446,9 @@ func EnhanceMessagesWithRAG(messages []openai.ChatCompletionMessage, allowedAsse
 							break
 						}
 					}
-					if !found { continue }
+					if !found {
+						continue
+					}
 				}
 				ragContext.WriteString(fmt.Sprintf("--- 文档来源: %s ---\n", asset.FileName))
 				for _, chunk := range asset.Chunks {
@@ -862,13 +1490,13 @@ func EnhanceMessagesWithRAG(messages []openai.ChatCompletionMessage, allowedAsse
 
 	// 将 RAG 上下文添加到 system 消息中
 	ragSystemMsg := openai.ChatCompletionMessage{
-		Role:    "system",
+		Role: "system",
 		Content: "你是一个严谨的文档分析专家。请分别参考以下不同来源的文档内容回答。\n" +
-				"**绝对规则：**\n" +
-				"1. 严禁在没有明确文档支持的情况下，强行关联或合并不同文档或不同领域的技术逻辑。\n" +
-				"2. 如果不同文档讨论的是不相关的领域（如某种化学工艺 vs 另一种无关中间体），请分段分别陈述，严禁进行逻辑拼凑。\n" +
-				"3. 必须在回答中明确提到信息来源（如“根据XXX文档...”）。\n\n" +
-				ragContext.String(),
+			"**绝对规则：**\n" +
+			"1. 严禁在没有明确文档支持的情况下，强行关联或合并不同文档或不同领域的技术逻辑。\n" +
+			"2. 如果不同文档讨论的是不相关的领域（如某种化学工艺 vs 另一种无关中间体），请分段分别陈述，严禁进行逻辑拼凑。\n" +
+			"3. 必须在回答中明确提到信息来源（如“根据XXX文档...”）。\n\n" +
+			ragContext.String(),
 	}
 
 	// 在消息列表开头插入 RAG 上下文
@@ -1409,7 +2037,7 @@ func VectorizeBlock(blockID string) error {
 // VectorChunk 单个内容块及其向量
 type VectorChunk struct {
 	ID      string    `json:"id"`
-	Source  string    `json:"source"`  // 片段来源文件名
+	Source  string    `json:"source"` // 片段来源文件名
 	Content string    `json:"content"`
 	Vector  []float64 `json:"vector"`
 }
@@ -1450,7 +2078,7 @@ func VectorizeAsset(assetPath string) (*AssetVector, error) {
 	const overlap = 200
 	var chunks []*VectorChunk
 	runes := []rune(content)
-	
+
 	logging.LogInfof("开始分块向量化资源文件: %s, 总长度: %d", filepath.Base(assetPath), len(runes))
 
 	for i := 0; i < len(runes); i += (chunkSize - overlap) {
@@ -1458,10 +2086,12 @@ func VectorizeAsset(assetPath string) (*AssetVector, error) {
 		if end > len(runes) {
 			end = len(runes)
 		}
-		
+
 		chunkText := string(runes[i:end])
 		if len(strings.TrimSpace(chunkText)) < 10 {
-			if end == len(runes) { break }
+			if end == len(runes) {
+				break
+			}
 			continue
 		}
 
@@ -1478,7 +2108,7 @@ func VectorizeAsset(assetPath string) (*AssetVector, error) {
 			Content: chunkText,
 			Vector:  vector,
 		})
-		
+
 		if end == len(runes) {
 			break
 		}
@@ -1682,9 +2312,9 @@ func GetVectorizedAssets(dataDir string) ([]*AssetVector, error) {
 }
 
 type assetSearchResult struct {
-	chunk      *VectorChunk
-	similarity float64
-	rerankerScore float64  // 重排序分数
+	chunk         *VectorChunk
+	similarity    float64
+	rerankerScore float64 // 重排序分数
 }
 
 // RerankerService 重排序服务
@@ -1720,8 +2350,8 @@ func (s *RerankerService) IsEnabled() bool {
 
 // RerankRequest 重排序请求
 type RerankRequest struct {
-	Model string   `json:"model"`
-	Query string   `json:"query"`
+	Model     string   `json:"model"`
+	Query     string   `json:"query"`
 	Documents []string `json:"documents"`
 }
 
@@ -1847,14 +2477,16 @@ func SemanticSearchAssetChunks(dataDir, query string, limit int, allowedAssets [
 				break
 			}
 		}
-		if !found { continue }
+		if !found {
+			continue
+		}
 
 		for _, chunk := range asset.Chunks {
 			sim := cosineSimilarity(queryVector, chunk.Vector)
 			if sim > 0.4 {
 				results = append(results, assetSearchResult{
-					chunk:      chunk,
-					similarity: sim,
+					chunk:         chunk,
+					similarity:    sim,
 					rerankerScore: 0, // 初始化为 0
 				})
 			}
@@ -1879,7 +2511,7 @@ func SemanticSearchAssetChunks(dataDir, query string, limit int, allowedAssets [
 	rerankerService := NewRerankerService()
 	if rerankerService != nil && rerankerService.IsEnabled() && len(results) > 0 {
 		logging.LogInfof("RAG: 使用重排序模型优化检索结果，候选数: %d", len(results))
-		
+
 		// 准备文档列表
 		documents := make([]string, len(results))
 		for i, r := range results {
@@ -1903,7 +2535,7 @@ func SemanticSearchAssetChunks(dataDir, query string, limit int, allowedAssets [
 				return results[i].rerankerScore > results[j].rerankerScore
 			})
 
-			logging.LogInfof("RAG: 重排序完成，Top-3 分数: %.4f, %.4f, %.4f", 
+			logging.LogInfof("RAG: 重排序完成，Top-3 分数: %.4f, %.4f, %.4f",
 				results[0].rerankerScore,
 				getScoreOrZero(results, 1),
 				getScoreOrZero(results, 2))
@@ -2033,7 +2665,7 @@ func ParseAttachmentWithContext(ctx *WorkspaceContext, assetPath string) (string
 	if ctx == nil {
 		return "", fmt.Errorf("用户上下文不能为空")
 	}
-	
+
 	// 处理assets路径
 	var fullPath string
 	if strings.HasPrefix(assetPath, "assets/") {
@@ -2156,7 +2788,7 @@ func parsePDF(filePath string) (string, error) {
 				}
 				content = strings.Join(contentLines, "\n")
 			}
-			
+
 			content = strings.TrimSpace(content)
 			if len(content) > 100 {
 				logging.LogInfof("使用 Markdown 文件内容，长度: %d 字符", len(content))
@@ -2164,7 +2796,7 @@ func parsePDF(filePath string) (string, error) {
 			}
 		}
 	}
-	
+
 	// 2. 使用 pdftotext 命令行工具
 	cmd := exec.Command("pdftotext", "-enc", "UTF-8", "-layout", filePath, "-")
 	output, err := cmd.Output()
@@ -2441,18 +3073,17 @@ func parseCsv(filePath string) (string, error) {
 	return content, nil
 }
 
-
 // 批量向量化进度跟踪
 type VectorizeProgress struct {
-	IsRunning       bool      `json:"isRunning"`
-	TotalFiles      int       `json:"totalFiles"`
-	ProcessedFiles  int       `json:"processedFiles"`
-	SuccessCount    int       `json:"successCount"`
-	FailedCount     int       `json:"failedCount"`
-	CurrentFile     string    `json:"currentFile"`
-	StartTime       time.Time `json:"startTime"`
-	LastUpdateTime  time.Time `json:"lastUpdateTime"`
-	EstimatedTimeLeft string  `json:"estimatedTimeLeft"`
+	IsRunning         bool      `json:"isRunning"`
+	TotalFiles        int       `json:"totalFiles"`
+	ProcessedFiles    int       `json:"processedFiles"`
+	SuccessCount      int       `json:"successCount"`
+	FailedCount       int       `json:"failedCount"`
+	CurrentFile       string    `json:"currentFile"`
+	StartTime         time.Time `json:"startTime"`
+	LastUpdateTime    time.Time `json:"lastUpdateTime"`
+	EstimatedTimeLeft string    `json:"estimatedTimeLeft"`
 }
 
 var (
@@ -2464,16 +3095,16 @@ var (
 func GetVectorizeProgress() VectorizeProgress {
 	vectorizeProgressLock.RLock()
 	defer vectorizeProgressLock.RUnlock()
-	
+
 	progress := vectorizeProgress
-	
+
 	// 计算预计剩余时间
 	if progress.IsRunning && progress.ProcessedFiles > 0 {
 		elapsed := time.Since(progress.StartTime)
 		avgTimePerFile := elapsed / time.Duration(progress.ProcessedFiles)
 		remaining := progress.TotalFiles - progress.ProcessedFiles
 		estimatedTime := avgTimePerFile * time.Duration(remaining)
-		
+
 		if estimatedTime < time.Minute {
 			progress.EstimatedTimeLeft = fmt.Sprintf("%d 秒", int(estimatedTime.Seconds()))
 		} else if estimatedTime < time.Hour {
@@ -2482,7 +3113,7 @@ func GetVectorizeProgress() VectorizeProgress {
 			progress.EstimatedTimeLeft = fmt.Sprintf("%.1f 小时", estimatedTime.Hours())
 		}
 	}
-	
+
 	return progress
 }
 
@@ -2490,7 +3121,7 @@ func GetVectorizeProgress() VectorizeProgress {
 func updateVectorizeProgress(currentFile string, success bool) {
 	vectorizeProgressLock.Lock()
 	defer vectorizeProgressLock.Unlock()
-	
+
 	vectorizeProgress.ProcessedFiles++
 	if success {
 		vectorizeProgress.SuccessCount++
@@ -2510,7 +3141,7 @@ func BatchVectorizeAllAssets(dataDir string) {
 		logging.LogWarnf("批量向量化任务已在运行中")
 		return
 	}
-	
+
 	// 初始化进度
 	vectorizeProgress = VectorizeProgress{
 		IsRunning:      true,
@@ -2518,9 +3149,9 @@ func BatchVectorizeAllAssets(dataDir string) {
 		LastUpdateTime: time.Now(),
 	}
 	vectorizeProgressLock.Unlock()
-	
+
 	logging.LogInfof("开始批量向量化所有资源文件...")
-	
+
 	// 检查向量化服务是否启用
 	embeddingService := NewEmbeddingService()
 	if embeddingService == nil || !embeddingService.IsEnabled() {
@@ -2530,67 +3161,114 @@ func BatchVectorizeAllAssets(dataDir string) {
 		vectorizeProgressLock.Unlock()
 		return
 	}
-	
+
 	// 支持的文档格式
 	supportedExts := []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md", ".txt"}
-	
-	// 扫描 assets 目录
-	assetsDir := filepath.Join(dataDir, "assets")
-	if !gulu.File.IsDir(assetsDir) {
-		logging.LogWarnf("Assets 目录不存在: %s", assetsDir)
+
+	// 扫描 assets 目录（支持多用户模式）
+	var assetsDirs []string
+
+	// 1. 扫描全局 assets 目录
+	globalAssetsDir := filepath.Join(dataDir, "assets")
+	if gulu.File.IsDir(globalAssetsDir) {
+		assetsDirs = append(assetsDirs, globalAssetsDir)
+	}
+
+	// 2. 扫描所有用户的 assets 目录
+	// 如果 dataDir 是单个用户目录（如 /path/to/notes/data），则扫描父目录
+	parentDir := filepath.Dir(dataDir)
+	if strings.HasSuffix(dataDir, "/data") || strings.HasSuffix(dataDir, "\\data") {
+		// 当前是单个用户目录，扫描父目录下的所有用户
+		logging.LogInfof("检测到单用户模式 dataDir: %s, 扫描父目录: %s", dataDir, parentDir)
+		entries, err := os.ReadDir(parentDir)
+		if err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					userAssetsDir := filepath.Join(parentDir, entry.Name(), "assets")
+					if gulu.File.IsDir(userAssetsDir) {
+						assetsDirs = append(assetsDirs, userAssetsDir)
+						logging.LogInfof("发现用户 assets 目录: %s", userAssetsDir)
+					}
+				}
+			}
+		}
+	} else {
+		// 多用户模式，直接扫描当前目录
+		entries, err := os.ReadDir(dataDir)
+		logging.LogInfof("扫描 dataDir: %s, err=%v", dataDir, err)
+		if err == nil {
+			logging.LogInfof("发现 %d 个条目", len(entries))
+			for _, entry := range entries {
+				if entry.IsDir() {
+					userAssetsDir := filepath.Join(dataDir, entry.Name(), "assets")
+					logging.LogInfof("检查用户目录: %s, 是否存在: %v", userAssetsDir, gulu.File.IsDir(userAssetsDir))
+					if gulu.File.IsDir(userAssetsDir) {
+						assetsDirs = append(assetsDirs, userAssetsDir)
+					}
+				}
+			}
+		}
+	}
+
+	if len(assetsDirs) == 0 {
+		logging.LogWarnf("未找到任何 assets 目录")
 		vectorizeProgressLock.Lock()
 		vectorizeProgress.IsRunning = false
 		vectorizeProgressLock.Unlock()
 		return
 	}
-	
+
+	logging.LogInfof("发现 %d 个 assets 目录: %v", len(assetsDirs), assetsDirs)
+
 	// 收集需要向量化的文件
 	var filesToVectorize []string
-	
-	err := filepath.Walk(assetsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // 忽略错误，继续扫描
-		}
-		
-		if info.IsDir() {
-			return nil
-		}
-		
-		// 检查文件扩展名
-		ext := strings.ToLower(filepath.Ext(path))
-		isSupported := false
-		for _, supportedExt := range supportedExts {
-			if ext == supportedExt {
-				isSupported = true
-				break
+
+	for _, assetsDir := range assetsDirs {
+		err := filepath.Walk(assetsDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil // 忽略错误，继续扫描
 			}
-		}
-		
-		if !isSupported {
+
+			if info.IsDir() {
+				return nil
+			}
+
+			// 检查文件扩展名
+			ext := strings.ToLower(filepath.Ext(path))
+			isSupported := false
+			for _, supportedExt := range supportedExts {
+				if ext == supportedExt {
+					isSupported = true
+					break
+				}
+			}
+
+			if !isSupported {
+				return nil
+			}
+
+			// 检查是否已有向量文件
+			vectorFile := path + ".vectors.json"
+			if gulu.File.IsExist(vectorFile) {
+				return nil // 已向量化，跳过
+			}
+
+			filesToVectorize = append(filesToVectorize, path)
 			return nil
+		})
+
+		if err != nil {
+			logging.LogErrorf("扫描 assets 目录失败 [%s]: %v", assetsDir, err)
 		}
-		
-		// 检查是否已有向量文件
-		vectorFile := path + ".vectors.json"
-		if gulu.File.IsExist(vectorFile) {
-			return nil // 已向量化，跳过
-		}
-		
-		filesToVectorize = append(filesToVectorize, path)
-		return nil
-	})
-	
-	if err != nil {
-		logging.LogErrorf("扫描 assets 目录失败: %v", err)
 	}
-	
+
 	// 更新总文件数
 	vectorizeProgressLock.Lock()
 	vectorizeProgress.TotalFiles = len(filesToVectorize)
 	vectorizeProgressLock.Unlock()
-	
+
 	logging.LogInfof("发现 %d 个需要向量化的文件", len(filesToVectorize))
-	
+
 	if len(filesToVectorize) == 0 {
 		logging.LogInfof("没有需要向量化的文件")
 		vectorizeProgressLock.Lock()
@@ -2598,41 +3276,40 @@ func BatchVectorizeAllAssets(dataDir string) {
 		vectorizeProgressLock.Unlock()
 		return
 	}
-	
+
 	// 开始向量化
 	for _, filePath := range filesToVectorize {
 		fileName := filepath.Base(filePath)
 		logging.LogInfof("正在向量化: %s", fileName)
-		
+
 		// 执行向量化
 		_, err := VectorizeAsset(filePath)
 		success := err == nil
-		
+
 		if success {
 			logging.LogInfof("✓ 向量化成功: %s", fileName)
 		} else {
 			logging.LogErrorf("✗ 向量化失败: %s, 错误: %v", fileName, err)
 		}
-		
+
 		// 更新进度
 		updateVectorizeProgress(fileName, success)
-		
+
 		// 避免请求过快，每个文件间隔 2 秒
 		time.Sleep(2 * time.Second)
 	}
-	
+
 	// 完成
 	vectorizeProgressLock.Lock()
 	vectorizeProgress.IsRunning = false
 	vectorizeProgress.CurrentFile = ""
 	vectorizeProgressLock.Unlock()
-	
+
 	logging.LogInfof("批量向量化完成: 总计 %d 个文件, 成功 %d 个, 失败 %d 个",
 		vectorizeProgress.TotalFiles,
 		vectorizeProgress.SuccessCount,
 		vectorizeProgress.FailedCount)
 }
-
 
 // 全局速率限制器
 var (
@@ -2650,29 +3327,29 @@ func StartGlobalVectorizeService() {
 		logging.LogWarnf("向量化服务未启用，跳过全局向量化服务")
 		return
 	}
-	
+
 	logging.LogInfof("启动全局向量化服务（高性能模式）...")
 	logging.LogInfof("API 配额: RPM 2000, TPM 500,000")
-	
+
 	// 初始化速率限制器
 	// 目标：每分钟 1800 次请求（留 10% 余量）
 	// 每秒约 30 次请求
 	vectorizeRateLimiter = time.NewTicker(33 * time.Millisecond) // 约 30 req/s
-	
+
 	// 初始化并发控制（同时处理 20 个文档）
 	vectorizeSemaphore = make(chan struct{}, 20)
-	
+
 	go func() {
 		// 启动后等待 30 秒，让系统完全启动
 		time.Sleep(30 * time.Second)
-		
+
 		// 定期扫描间隔：每 10 分钟（更频繁的扫描）
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
-		
+
 		// 立即执行一次
 		scanAndVectorizeAllUsers()
-		
+
 		// 定期执行
 		for range ticker.C {
 			scanAndVectorizeAllUsers()
@@ -2685,50 +3362,50 @@ func StartGlobalVectorizeService() {
 func scanAndVectorizeAllUsers() {
 	startTime := time.Now()
 	logging.LogInfof("[全局向量化] 开始扫描所有用户的文档（高性能模式）...")
-	
+
 	// 获取用户数据根目录
 	userDataRoot := "/root/code/MindOcean/user-data/notes"
-	
+
 	if !gulu.File.IsDir(userDataRoot) {
 		logging.LogWarnf("[全局向量化] 用户数据目录不存在: %s", userDataRoot)
 		return
 	}
-	
+
 	// 扫描所有用户目录
 	userDirs, err := os.ReadDir(userDataRoot)
 	if err != nil {
 		logging.LogErrorf("[全局向量化] 读取用户目录失败: %v", err)
 		return
 	}
-	
+
 	// 收集所有需要处理的文件
 	type FileTask struct {
 		Path     string
 		Username string
 		FileName string
 	}
-	
+
 	var allTasks []FileTask
 	supportedExts := []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".pptx", ".md", ".txt"}
-	
+
 	for _, userDir := range userDirs {
 		if !userDir.IsDir() {
 			continue
 		}
-		
+
 		username := userDir.Name()
 		userAssetsDir := filepath.Join(userDataRoot, username, "assets")
-		
+
 		if !gulu.File.IsDir(userAssetsDir) {
 			continue
 		}
-		
+
 		// 扫描该用户的文档
 		filepath.Walk(userAssetsDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
 			}
-			
+
 			// 检查文件扩展名
 			ext := strings.ToLower(filepath.Ext(path))
 			isSupported := false
@@ -2738,57 +3415,57 @@ func scanAndVectorizeAllUsers() {
 					break
 				}
 			}
-			
+
 			if !isSupported {
 				return nil
 			}
-			
+
 			// 检查是否已有向量文件
 			vectorFile := path + ".vectors.json"
 			if gulu.File.IsExist(vectorFile) {
 				return nil // 已向量化，跳过
 			}
-			
+
 			allTasks = append(allTasks, FileTask{
 				Path:     path,
 				Username: username,
 				FileName: filepath.Base(path),
 			})
-			
+
 			return nil
 		})
 	}
-	
+
 	totalFiles := len(allTasks)
 	if totalFiles == 0 {
 		logging.LogInfof("[全局向量化] 本轮扫描完成: 没有需要向量化的文档")
 		return
 	}
-	
+
 	logging.LogInfof("[全局向量化] 发现 %d 个待处理文档，开始并发处理...", totalFiles)
-	
+
 	// 并发处理所有文件
 	var wg sync.WaitGroup
 	successCount := 0
 	failedCount := 0
 	var countMutex sync.Mutex
-	
+
 	for i, task := range allTasks {
 		wg.Add(1)
-		
+
 		go func(task FileTask, index int) {
 			defer wg.Done()
-			
+
 			// 获取信号量（限制并发数）
 			vectorizeSemaphore <- struct{}{}
 			defer func() { <-vectorizeSemaphore }()
-			
+
 			// 速率限制
 			<-vectorizeRateLimiter.C
-			
+
 			// 执行向量化
 			_, err := VectorizeAsset(task.Path)
-			
+
 			countMutex.Lock()
 			if err == nil {
 				successCount++
@@ -2802,17 +3479,17 @@ func scanAndVectorizeAllUsers() {
 					task.Username, task.FileName, err)
 			}
 			countMutex.Unlock()
-			
+
 		}(task, i)
 	}
-	
+
 	// 等待所有任务完成
 	wg.Wait()
-	
+
 	elapsed := time.Since(startTime)
 	logging.LogInfof("[全局向量化] 本轮扫描完成: 总计 %d 个文档, 成功 %d 个, 失败 %d 个, 耗时 %.1f 分钟",
 		totalFiles, successCount, failedCount, elapsed.Minutes())
-	
+
 	if successCount > 0 {
 		avgTime := elapsed.Seconds() / float64(successCount)
 		logging.LogInfof("[全局向量化] 平均处理速度: %.2f 秒/文档, 约 %.1f 文档/分钟",
@@ -2825,21 +3502,21 @@ func scanAndVectorizeAllUsers() {
 func vectorizeUserAssets(assetsDir string, username string) (int, int, int) {
 	// 支持的文档格式
 	supportedExts := []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md", ".txt"}
-	
+
 	processed := 0
 	success := 0
 	failed := 0
-	
+
 	// 扫描文档
 	err := filepath.Walk(assetsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // 忽略错误，继续扫描
 		}
-		
+
 		if info.IsDir() {
 			return nil
 		}
-		
+
 		// 检查文件扩展名
 		ext := strings.ToLower(filepath.Ext(path))
 		isSupported := false
@@ -2849,29 +3526,29 @@ func vectorizeUserAssets(assetsDir string, username string) (int, int, int) {
 				break
 			}
 		}
-		
+
 		if !isSupported {
 			return nil
 		}
-		
+
 		// 检查是否已有向量文件
 		vectorFile := path + ".vectors.json"
 		if gulu.File.IsExist(vectorFile) {
 			return nil // 已向量化，跳过
 		}
-		
+
 		// 限制每轮最多处理 10 个文档（避免占用太多资源）
 		if processed >= 10 {
 			return filepath.SkipDir
 		}
-		
+
 		fileName := filepath.Base(path)
 		logging.LogInfof("[全局向量化] [%s] 正在向量化: %s", username, fileName)
-		
+
 		// 执行向量化
 		_, err = VectorizeAsset(path)
 		processed++
-		
+
 		if err == nil {
 			success++
 			logging.LogInfof("[全局向量化] [%s] ✓ 向量化成功: %s", username, fileName)
@@ -2879,16 +3556,16 @@ func vectorizeUserAssets(assetsDir string, username string) (int, int, int) {
 			failed++
 			logging.LogErrorf("[全局向量化] [%s] ✗ 向量化失败: %s, 错误: %v", username, fileName, err)
 		}
-		
+
 		// 每个文档间隔 3 秒
 		time.Sleep(3 * time.Second)
-		
+
 		return nil
 	})
-	
+
 	if err != nil {
 		logging.LogErrorf("[全局向量化] [%s] 扫描目录失败: %v", username, err)
 	}
-	
+
 	return processed, success, failed
 }

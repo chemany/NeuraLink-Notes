@@ -305,43 +305,58 @@ export class MeetingManager {
             actions: "未提取到后续"
         };
 
-        if (!summary) return result;
+        if (!summary) {
+            console.warn("parseMeetingSummary: summary is empty");
+            return result;
+        }
+
+        console.log("parseMeetingSummary: raw summary:", JSON.stringify(summary));
 
         // 按行分割并清理
         const lines = summary.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-        // 解析每一行，移除 markdown 标记
-        for (const line of lines) {
-            const cleanLine = line
-                .replace(/^\s*[-*>]+\s*/g, '')  // 移除列表标记和引号
-                .replace(/^\*\*[^*]+\*\*[:：]?\s*/g, '')  // 移除 **主题：** 这样的前缀
+        // 提取"关键词：内容"格式的值
+        const extractValue = (line: string): string => {
+            // 移除 markdown 标记: > ** 前缀、列表标记等
+            let cleaned = line
+                .replace(/^\s*>+\s*/g, '')           // 移除引用标记 >
+                .replace(/^\s*[-*]+\s*/g, '')         // 移除列表标记
+                .replace(/\*\*/g, '')                 // 移除所有 ** 加粗标记
                 .trim();
+            // 提取冒号后的内容
+            const colonIdx = cleaned.search(/[:：]/);
+            if (colonIdx >= 0) {
+                return cleaned.substring(colonIdx + 1).trim();
+            }
+            return cleaned;
+        };
 
-            // 匹配第一行（主题/会议主题）
+        // 解析每一行
+        for (const line of lines) {
             if (line.includes('主题') || line.includes('会议主题')) {
-                result.theme = cleanLine || result.theme;
-            }
-            // 匹配第二行（要点/讨论/关键讨论）
-            else if (line.includes('要点') || line.includes('讨论') || line.includes('关键讨论')) {
-                result.discussion = cleanLine || result.discussion;
-            }
-            // 匹配第三行（后续/行动/行动项/决议）
-            else if (line.includes('后续') || line.includes('行动') || line.includes('行动项') || line.includes('决议') || line.includes('结论')) {
-                result.actions = cleanLine || result.actions;
+                const val = extractValue(line);
+                if (val) result.theme = val;
+            } else if (line.includes('要点') || line.includes('讨论') || line.includes('关键讨论')) {
+                const val = extractValue(line);
+                if (val) result.discussion = val;
+            } else if (line.includes('后续') || line.includes('行动') || line.includes('行动项') || line.includes('决议') || line.includes('结论')) {
+                const val = extractValue(line);
+                if (val) result.actions = val;
             }
         }
 
         // 如果没有匹配到特定格式，按顺序分配
         if (result.theme === "未提取到主题" && lines.length > 0) {
-            result.theme = lines[0].replace(/^\s*[-*>]+\s*/g, '').replace(/^\*\*[^*]+\*\*[:：]?\s*/g, '').trim() || lines[0];
+            result.theme = extractValue(lines[0]) || lines[0];
         }
         if (result.discussion === "未提取到要点" && lines.length > 1) {
-            result.discussion = lines[1].replace(/^\s*[-*>]+\s*/g, '').replace(/^\*\*[^*]+\*\*[:：]?\s*/g, '').trim() || lines[1];
+            result.discussion = extractValue(lines[1]) || lines[1];
         }
         if (result.actions === "未提取到后续" && lines.length > 2) {
-            result.actions = lines[2].replace(/^\s*[-*>]+\s*/g, '').replace(/^\*\*[^*]+\*\*[:：]?\s*/g, '').trim() || lines[2];
+            result.actions = extractValue(lines[2]) || lines[2];
         }
 
+        console.log("parseMeetingSummary: parsed result:", result);
         return result;
     }
 }

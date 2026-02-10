@@ -218,3 +218,4 @@ reload-*.sh
 
 # 排除清理计划文档（临时）
 CLEANUP_PLAN.md
+switch-ai-model.sh

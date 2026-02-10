@@ -187,6 +187,15 @@ func LoadTreeByBlockIDWithReindex(id string) (ret *parse.Tree, err error) {
 
 // LoadTreeByBlockIDWithReindexAndContext 使用 WorkspaceContext 加载树并在需要时重建索引
 func LoadTreeByBlockIDWithReindexAndContext(ctx *WorkspaceContext, id string) (ret *parse.Tree, err error) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
+	sql.SetCurrentContext(ctx)
+	treenode.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	defer treenode.ClearCurrentContext()
+
 	if "" == id {
 		logging.LogWarnf("block id is empty")
 		return nil, ErrTreeNotFound
@@ -228,6 +237,15 @@ func LoadTreeByBlockID(id string) (ret *parse.Tree, err error) {
 // LoadTreeByBlockIDWithContext 使用 WorkspaceContext 加载树
 // 所有用户共用同一个全局数据库，通过 user_id 隔离
 func LoadTreeByBlockIDWithContext(ctx *WorkspaceContext, id string) (ret *parse.Tree, err error) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
+	sql.SetCurrentContext(ctx)
+	treenode.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	defer treenode.ClearCurrentContext()
+
 	if !ast.IsNodeIDPattern(id) {
 		stack := logging.ShortStack()
 		logging.LogErrorf("block id is invalid [id=%s], stack: [%s]", id, stack)
@@ -246,7 +264,7 @@ func LoadTreeByBlockIDWithContext(ctx *WorkspaceContext, id string) (ret *parse.
 		// 尝试从文件系统加载（最后的兜底）
 		// 注意：这里的 indexTreeInFilesystemWithContext 受限流器影响
 		indexTreeInFilesystemWithContext(ctx, id)
-		
+
 		// 再次尝试获取
 		bt = treenode.GetBlockTree(id)
 
@@ -266,16 +284,18 @@ func LoadTreeByBlockIDWithContext(ctx *WorkspaceContext, id string) (ret *parse.
 }
 
 func loadTreeByBlockTree(bt *treenode.BlockTree) (ret *parse.Tree, err error) {
-	// 使用当前用户的 workspace context
-	ctx := GetCurrentUserContext()
+	ctx := GetDefaultWorkspaceContext()
 	return loadTreeByBlockTreeWithContext(ctx, bt)
 }
 
 // loadTreeByBlockTreeWithContext 使用 WorkspaceContext 加载树
 // 所有用户共用同一个全局数据库，通过 user_id 隔离
 func loadTreeByBlockTreeWithContext(ctx *WorkspaceContext, bt *treenode.BlockTree) (ret *parse.Tree, err error) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
 	luteEngine := util.NewLute()
-	
+
 	// 所有用户共用同一个全局 BlockTree 数据库
 	// 直接从全局数据库读取（BlockTree 不区分用户，通过文件路径区分）
 	logging.LogInfof("DEBUG: loadTreeCtx: dataDir=%s, box=%s, path=%s", ctx.GetDataDir(), bt.BoxID, bt.Path)
@@ -294,6 +314,10 @@ func indexTreeInFilesystem(rootID string) {
 }
 
 func indexTreeInFilesystemWithContext(ctx *WorkspaceContext, rootID string) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
 	if !searchTreeLimiter.Allow() {
 		return
 	}
@@ -337,11 +361,11 @@ func indexTreeInFilesystemWithContext(ctx *WorkspaceContext, rootID string) {
 	treePath = strings.TrimPrefix(treePath, string(os.PathSeparator))
 	treePath = strings.TrimPrefix(treePath, boxID)
 	treePath = filepath.ToSlash(treePath)
-	
+
 	// 不检查笔记本是否存在，直接尝试加载树
 	// 因为新创建的笔记本可能还没有被加载到内存中
 	// 参考: https://github.com/siyuan-note/siyuan/issues/11149
-	
+
 	tree, err := filesys.LoadTreeWithDataDir(dataDir, boxID, treePath, util.NewLute())
 	if err != nil {
 		logging.LogErrorf("load tree [%s] failed: %s", treePath, err)
@@ -354,8 +378,7 @@ func indexTreeInFilesystemWithContext(ctx *WorkspaceContext, rootID string) {
 }
 
 func loadParentTree(tree *parse.Tree) (ret *parse.Tree) {
-	// 使用当前用户的 workspace context
-	ctx := GetCurrentUserContext()
+	ctx := GetDefaultWorkspaceContext()
 	boxDir := filepath.Join(ctx.GetDataDir(), tree.Box)
 	parentDir := path.Dir(tree.Path)
 	if parentDir == boxDir || parentDir == "/" {

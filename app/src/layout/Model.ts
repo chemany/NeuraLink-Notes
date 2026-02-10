@@ -6,6 +6,13 @@ import { processMessage } from "../util/processMessage";
 import { kernelError, reloadSync } from "../dialog/processSystem";
 import { App } from "../index";
 
+interface IModelConnectOptions {
+    id: string,
+    type?: TWS,
+    callback?: () => void,
+    msgCallback?: (data: IWebSocketData) => void
+}
+
 export class Model {
     public ws: WebSocket;
     public reqId: number;
@@ -16,6 +23,10 @@ export class Model {
     public parent: any;
     /// #endif
     public app: App;
+    private reconnectTimer?: number;
+    private reconnectDelay = 3000;
+    private reconnectResumeHandler?: () => void;
+    private pendingReconnectOptions?: IModelConnectOptions;
 
     constructor(options: {
         app: App,
@@ -30,12 +41,71 @@ export class Model {
         }
     }
 
-    private connect(options: {
-        id: string,
-        type?: TWS,
-        callback?: () => void,
-        msgCallback?: (data: IWebSocketData) => void
-    }) {
+    private shouldPauseReconnect(): boolean {
+        if (typeof document !== "undefined" && document.hidden) {
+            return true;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+            return true;
+        }
+        return false;
+    }
+
+    private clearReconnectTimer() {
+        if (typeof this.reconnectTimer === "number") {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = undefined;
+        }
+    }
+
+    private clearReconnectResumeHandler() {
+        if (this.reconnectResumeHandler) {
+            if (typeof document !== "undefined") {
+                document.removeEventListener("visibilitychange", this.reconnectResumeHandler);
+            }
+            if (typeof window !== "undefined") {
+                window.removeEventListener("online", this.reconnectResumeHandler);
+            }
+            this.reconnectResumeHandler = undefined;
+        }
+    }
+
+    private scheduleReconnect(options: IModelConnectOptions, delay = this.reconnectDelay) {
+        this.clearReconnectTimer();
+        this.reconnectTimer = window.setTimeout(() => {
+            this.reconnectTimer = undefined;
+            this.connect(options);
+        }, delay);
+
+        if (delay > 0) {
+            this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+        }
+    }
+
+    private pauseReconnectUntilActive(options: IModelConnectOptions) {
+        this.pendingReconnectOptions = options;
+        if (this.reconnectResumeHandler) {
+            return;
+        }
+        this.reconnectResumeHandler = () => {
+            if (!this.pendingReconnectOptions || this.shouldPauseReconnect()) {
+                return;
+            }
+            const pending = this.pendingReconnectOptions;
+            this.pendingReconnectOptions = undefined;
+            this.clearReconnectResumeHandler();
+            this.scheduleReconnect(pending, 0);
+        };
+
+        if (typeof document !== "undefined") {
+            document.addEventListener("visibilitychange", this.reconnectResumeHandler);
+        }
+        if (typeof window !== "undefined") {
+            window.addEventListener("online", this.reconnectResumeHandler);
+        }
+    }
+
+    private connect(options: IModelConnectOptions) {
         const websocketURL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
         // 获取认证token
         const getCookie = (name: string): string | null => {
@@ -46,13 +116,18 @@ export class Model {
             }
             return null;
         };
-        const token = localStorage.getItem('siyuan_token') || getCookie('siyuan_token');
+        const token = localStorage.getItem("siyuan_token") || getCookie("siyuan_token");
         let url = `${websocketURL}?app=${Constants.SIYUAN_APPID}&id=${options.id}${options.type ? "&type=" + options.type : ""}`;
         if (token) {
             url += `&token=${encodeURIComponent(token)}`;
         }
         const ws = new WebSocket(url);
         ws.onopen = () => {
+            this.reconnectDelay = 3000;
+            this.clearReconnectTimer();
+            this.pendingReconnectOptions = undefined;
+            this.clearReconnectResumeHandler();
+
             if (options.callback) {
                 options.callback.call(this);
             }
@@ -81,18 +156,24 @@ export class Model {
             }
 
             if (0 > ev.reason.indexOf("close websocket")) {
-                console.warn("WebSocket is closed. Reconnect will be attempted in 3 second.", ev);
-                setTimeout(() => {
-                    this.connect({
-                        id: options.id,
-                        type: options.type,
-                        msgCallback: options.msgCallback
-                    });
-                }, 3000);
+                const reconnectOptions = {
+                    id: options.id,
+                    type: options.type,
+                    msgCallback: options.msgCallback
+                };
+
+                if (this.shouldPauseReconnect()) {
+                    console.debug("WebSocket is closed while page is hidden/offline. Reconnect is paused.", ev);
+                    this.pauseReconnectUntilActive(reconnectOptions);
+                    return;
+                }
+
+                console.warn(`WebSocket is closed. Reconnect will be attempted in ${Math.floor(this.reconnectDelay / 1000)} second.`, ev);
+                this.scheduleReconnect(reconnectOptions);
             }
         };
         ws.onerror = (err: Event & { target: { url: string, readyState: number } }) => {
-            if (err.target.url.endsWith("&type=main") && err.target.readyState === 3) {
+            if (err.target.url.endsWith("&type=main") && err.target.readyState === 3 && !this.shouldPauseReconnect()) {
                 kernelError();
             }
         };

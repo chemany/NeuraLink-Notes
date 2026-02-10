@@ -18,15 +18,15 @@ package model
 
 import (
 	"fmt"
-	"os"
-	"sync"
-	"unsafe"
-
 	"github.com/gin-gonic/gin"
+	"github.com/petermattis/goid"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/filesys"
+	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
 	"github.com/siyuan-note/siyuan/kernel/util"
+	"os"
+	"sync"
 )
 
 // currentExecutionContext 存储当前正在执行的 goroutine 的上下文
@@ -39,7 +39,7 @@ func SetCurrentExecutionContext(ctx *WorkspaceContext) {
 	if ctx == nil {
 		return
 	}
-	// 使用栈指针的哈希作为 key（区分不同 goroutine）
+	// 使用 goroutine ID 作为 key，避免并发请求间上下文冲突
 	key := getGoroutineKey()
 	currentExecutionContext.Store(key, ctx)
 }
@@ -61,13 +61,9 @@ func GetCurrentExecutionContext() *WorkspaceContext {
 }
 
 // getGoroutineKey 获取当前 goroutine 的 key
-// 使用指针地址区分不同的 goroutine
+// 使用 goid 获取当前 goroutine 的唯一标识
 func getGoroutineKey() string {
-	// 使用栈上变量的地址来区分不同的 goroutine
-	// 每个 goroutine 有自己的栈，地址范围不同
-	var x int
-	ptr := uintptr(unsafe.Pointer(&x))
-	return fmt.Sprintf("g-%d", ptr>>20) // 取高位，避免栈扩容的影响
+	return fmt.Sprintf("g-%d", goid.Get())
 }
 
 // init 初始化 filesys 和 treenode 包的 GetDataDirFunc
@@ -85,6 +81,12 @@ func init() {
 
 	filesys.GetDataDirFunc = getDataDir
 	treenode.GetDataDirFunc = getDataDir
+
+	getUserID := func() string {
+		return GetDefaultWorkspaceContext().GetUserID()
+	}
+	sql.GetUserIDFallback = getUserID
+	treenode.GetUserIDFallback = getUserID
 }
 
 // WorkspaceContext 包含用户的 workspace 信息

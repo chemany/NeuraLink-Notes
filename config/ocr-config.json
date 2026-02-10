@@ -1,5 +1,5 @@
 {
-  "baseUrl": "http://127.0.0.1:8081",
+  "baseUrl": "http://127.0.0.1:8082",
   "enabled": true,
-  "description": "PaddleOCR API 配置，用于扫描版 PDF 和图片的文字识别"
+  "description": "GLM-OCR API 配置，用于扫描版 PDF 和图片的文字识别"
 }

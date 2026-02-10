@@ -25,6 +25,78 @@ var llmModelName = "tclf90/Qwen3-32B-GPTQ-Int4"
 var llmTemperature = 0.3
 var llmMaxTokens = 200
 
+// LLM 配置文件路径
+var llmConfigPath = "/root/code/unified-settings-service/config/default-models.json"
+
+// meetingLLMConfig 会议纪要 LLM 配置（每次调用时动态加载）
+type meetingLLMConfig struct {
+	Endpoint    string
+	APIKey      string
+	ModelName   string
+	Temperature float64
+	MaxTokens   int
+}
+
+// loadMeetingLLMConfig 动态加载会议纪要 LLM 配置，避免需要重启内核
+func loadMeetingLLMConfig() meetingLLMConfig {
+	// 默认值（使用全局变量）
+	cfg := meetingLLMConfig{
+		Endpoint:    llmEndpoint,
+		APIKey:      llmAPIKey,
+		ModelName:   llmModelName,
+		Temperature: llmTemperature,
+		MaxTokens:   llmMaxTokens,
+	}
+
+	data, err := os.ReadFile(llmConfigPath)
+	if err != nil {
+		logging.LogWarnf("会议 LLM 配置文件读取失败，使用缓存配置: %v", err)
+		return cfg
+	}
+
+	var models map[string]struct {
+		BaseURL     string  `json:"base_url"`
+		APIKey      string  `json:"api_key"`
+		ModelName   string  `json:"model_name"`
+		Temperature float64 `json:"temperature"`
+		MaxTokens   int     `json:"max_tokens"`
+	}
+	if json.Unmarshal(data, &models) != nil {
+		logging.LogWarnf("会议 LLM 配置文件解析失败，使用缓存配置")
+		return cfg
+	}
+
+	// 优先使用 meeting 专用模型，其次是 siyuan 模型
+	var model struct {
+		BaseURL     string  `json:"base_url"`
+		APIKey      string  `json:"api_key"`
+		ModelName   string  `json:"model_name"`
+		Temperature float64 `json:"temperature"`
+		MaxTokens   int     `json:"max_tokens"`
+	}
+	var found bool
+	if m, ok := models["builtin_free_meeting"]; ok {
+		model = m
+		found = true
+	} else if m, ok := models["builtin_free_siyuan"]; ok {
+		model = m
+		found = true
+	}
+
+	if found {
+		cfg.Endpoint = model.BaseURL
+		if !strings.HasSuffix(cfg.Endpoint, "/") {
+			cfg.Endpoint += "/"
+		}
+		cfg.APIKey = model.APIKey
+		cfg.ModelName = model.ModelName
+		cfg.Temperature = model.Temperature
+		cfg.MaxTokens = model.MaxTokens
+	}
+
+	return cfg
+}
+
 func init() {
 	// 加载 ASR 配置
 	asrConfigPath := "/root/code/unified-settings-service/config/asr-config.json"
@@ -624,18 +696,19 @@ func (s *MeetingService) callASR(audioData []byte) (string, error) {
 
 // GenerateSummary 生成摘要
 func (s *MeetingService) GenerateSummary(text string) (string, error) {
-	// 使用配置中的 LLM 设置
-	baseURL := strings.TrimSuffix(llmEndpoint, "/")
+	// 动态加载配置（无需重启内核即可生效）
+	cfg := loadMeetingLLMConfig()
+	baseURL := strings.TrimSuffix(cfg.Endpoint, "/")
 	llmURL := baseURL + "/chat/completions"
-	apiKey := llmAPIKey
-	modelName := llmModelName
+
+	logging.LogInfof("GenerateSummary: 使用模型 %s, endpoint %s, max_tokens %d", cfg.ModelName, baseURL, cfg.MaxTokens)
 
 	prompt := fmt.Sprintf(`请将以下内容整理成简洁的三点摘要。
 
 ### 输出格式（必须严格遵循）：
-> **主题**：[一句话概括核心主题]
-> **要点**：[2-3句话概述关键内容]
-> **后续**：[建议的下一步行动或结论]
+主题：[一句话概括核心主题]
+要点：[2-3句话概述关键内容]
+后续：[建议的下一步行动或结论]
 
 ### 待整理内容：
 %s
@@ -644,17 +717,21 @@ func (s *MeetingService) GenerateSummary(text string) (string, error) {
 1. 直接输出三行，不要任何开场白或解释
 2. 禁止输出思考过程、分析步骤、标签等内容
 3. 即使内容不是会议形式，也要提取关键信息整理成这三点
-4. 每行必须以 "> **" 开头`, text)
+4. 每行必须以"主题："、"要点："、"后续："开头`, text)
 
 	payload := map[string]interface{}{
-		"model": modelName,
+		"model": cfg.ModelName,
 		"messages": []map[string]string{
-			{"role": "system", "content": "You are a professional meeting minutes generator. STRICT RULES:\n1. OUTPUT ONLY the three required lines\n2. NEVER use <think> tags or show thinking process\n3. NO explanations, NO analysis steps, NO preamble\n4. Start each line with '> **'\n5. Action items must be concrete and assignable"},
+			{"role": "system", "content": "你是专业的会议纪要生成器。严格规则：\n1. 只输出三行：主题、要点、后续\n2. 禁止使用<think>标签或展示思考过程\n3. 不要解释、不要分析步骤、不要开场白\n4. 每行格式：主题：xxx / 要点：xxx / 后续：xxx"},
 			{"role": "user", "content": prompt},
 		},
 		"stream":      false,
-		"temperature": llmTemperature,
-		"max_tokens":  llmMaxTokens,
+		"temperature": cfg.Temperature,
+		"max_tokens":  cfg.MaxTokens,
+		// 禁用 Qwen3/DeepSeek-R1 模型的思考模式，避免浪费 token
+		"chat_template_kwargs": map[string]interface{}{
+			"enable_thinking": false,
+		},
 	}
 
 	jsonPayload, _ := json.Marshal(payload)
@@ -663,8 +740,8 @@ func (s *MeetingService) GenerateSummary(text string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+	if cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	}
 
 	client := &http.Client{Timeout: 60 * time.Second}
@@ -677,8 +754,8 @@ func (s *MeetingService) GenerateSummary(text string) (string, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logging.LogErrorf("LLM service returned error status %d: %s", resp.StatusCode, string(bodyBytes))
-		return "", fmt.Errorf("LLM service returned status %d", resp.StatusCode)
+		logging.LogErrorf("LLM service returned error status %d: %s (model=%s)", resp.StatusCode, string(bodyBytes), cfg.ModelName)
+		return "", fmt.Errorf("LLM service returned status %d (model=%s)", resp.StatusCode, cfg.ModelName)
 	}
 
 	var result struct {
@@ -693,9 +770,14 @@ func (s *MeetingService) GenerateSummary(text string) (string, error) {
 	}
 
 	if len(result.Choices) > 0 {
-		summary := result.Choices[0].Message.Content
+		rawSummary := result.Choices[0].Message.Content
+		logging.LogInfof("GenerateSummary: LLM 原始响应 (len=%d): %s", len(rawSummary), rawSummary)
 		// 严格过滤思考过程标签（包括未闭合的标签）
-		summary = filterThinkTags(summary)
+		summary := filterThinkTags(rawSummary)
+		if summary == "" && rawSummary != "" {
+			logging.LogWarnf("GenerateSummary: 过滤思考标签后内容为空，原始长度=%d", len(rawSummary))
+		}
+		logging.LogInfof("GenerateSummary: 过滤后摘要 (len=%d): %s", len(summary), summary)
 		return summary, nil
 	}
 	return "", fmt.Errorf("no summary generated")

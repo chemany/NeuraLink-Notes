@@ -6,6 +6,9 @@ import (
 	"github.com/xwb1989/sqlparser"
 )
 
+// GetUserIDFallback 用于在 SQL 包未显式设置 Context 时回退获取当前用户 ID。
+var GetUserIDFallback func() string
+
 // GetUserIDFilter 获取用户 ID 过滤条件
 func GetUserIDFilter() string {
 	if ctx, ok := GetCurrentContext(); ok {
@@ -20,7 +23,13 @@ func GetUserIDFilter() string {
 // GetUserID 获取用户 ID
 func GetUserID() string {
 	if ctx, ok := GetCurrentContext(); ok {
-		return ctx.GetUserID()
+		if userID := ctx.GetUserID(); "" != userID {
+			return userID
+		}
+	}
+
+	if nil != GetUserIDFallback {
+		return GetUserIDFallback()
 	}
 	return ""
 }
@@ -40,7 +49,7 @@ func InjectUserIDFilter(stmt string) string {
 		if strings.Contains(lowerStmt, "user_id =") || strings.Contains(lowerStmt, "user_id=") {
 			return stmt
 		}
-		
+
 		if strings.Contains(lowerStmt, " where ") {
 			idx := strings.Index(lowerStmt, " where ")
 			if idx != -1 {

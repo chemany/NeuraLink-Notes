@@ -740,7 +740,7 @@ func ocrAsset(c *gin.Context) {
 		"fileType":  result.FileType,
 		"fullText":  result.FullText,
 		"pageCount": result.PageCount,
-		"ocrFile":   fullPath + ".ocr.json",
+		"ocrFile":   fullPath + ".md",
 		"updatedAt": result.UpdatedAt,
 		"message":   fmt.Sprintf("OCR 识别完成: %s, 共 %d 页", result.FileName, result.PageCount),
 	}
@@ -804,6 +804,6 @@ func getOCRResult(c *gin.Context) {
 	ret.Data = map[string]interface{}{
 		"assetPath": assetPath,
 		"fullText":  text,
-		"ocrFile":   fullPath + ".ocr.json",
+		"ocrFile":   fullPath + ".md",
 	}
 }

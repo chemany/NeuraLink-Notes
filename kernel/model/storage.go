@@ -471,39 +471,70 @@ func getCriteria() (ret []*Criterion, err error) {
 var localStorageLock = sync.Mutex{}
 
 func RemoveLocalStorageVals(keys []string) (err error) {
+	return RemoveLocalStorageValsWithContext(GetDefaultWorkspaceContext(), keys)
+}
+
+func RemoveLocalStorageValsWithContext(ctx *WorkspaceContext, keys []string) (err error) {
 	localStorageLock.Lock()
 	defer localStorageLock.Unlock()
 
-	localStorage := getLocalStorage()
+	dataDir := localStorageDataDir(ctx)
+	localStorage := getLocalStorageByDataDir(dataDir)
 	for _, key := range keys {
 		delete(localStorage, key)
 	}
-	return setLocalStorage(localStorage)
+	return setLocalStorageByDataDir(dataDir, localStorage)
 }
 
 func SetLocalStorageVal(key string, val interface{}) (err error) {
+	return SetLocalStorageValWithContext(GetDefaultWorkspaceContext(), key, val)
+}
+
+func SetLocalStorageValWithContext(ctx *WorkspaceContext, key string, val interface{}) (err error) {
 	localStorageLock.Lock()
 	defer localStorageLock.Unlock()
 
-	localStorage := getLocalStorage()
+	dataDir := localStorageDataDir(ctx)
+	localStorage := getLocalStorageByDataDir(dataDir)
 	localStorage[key] = val
-	return setLocalStorage(localStorage)
+	return setLocalStorageByDataDir(dataDir, localStorage)
 }
 
 func SetLocalStorage(val interface{}) (err error) {
+	return SetLocalStorageWithContext(GetDefaultWorkspaceContext(), val)
+}
+
+func SetLocalStorageWithContext(ctx *WorkspaceContext, val interface{}) (err error) {
 	localStorageLock.Lock()
 	defer localStorageLock.Unlock()
-	return setLocalStorage(val)
+	return setLocalStorageByDataDir(localStorageDataDir(ctx), val)
 }
 
 func GetLocalStorage() (ret map[string]interface{}) {
+	return GetLocalStorageWithContext(GetDefaultWorkspaceContext())
+}
+
+func GetLocalStorageWithContext(ctx *WorkspaceContext) (ret map[string]interface{}) {
 	localStorageLock.Lock()
 	defer localStorageLock.Unlock()
-	return getLocalStorage()
+	return getLocalStorageByDataDir(localStorageDataDir(ctx))
+}
+
+func localStorageDataDir(ctx *WorkspaceContext) string {
+	if nil != ctx {
+		if dataDir := ctx.GetDataDir(); "" != dataDir {
+			return dataDir
+		}
+	}
+	return util.DataDir
 }
 
 func setLocalStorage(val interface{}) (err error) {
-	dirPath := filepath.Join(util.DataDir, "storage")
+	return setLocalStorageByDataDir(util.DataDir, val)
+}
+
+func setLocalStorageByDataDir(dataDir string, val interface{}) (err error) {
+	dirPath := filepath.Join(dataDir, "storage")
 	if err = os.MkdirAll(dirPath, 0755); err != nil {
 		logging.LogErrorf("create storage [local] dir failed: %s", err)
 		return
@@ -525,9 +556,13 @@ func setLocalStorage(val interface{}) (err error) {
 }
 
 func getLocalStorage() (ret map[string]interface{}) {
+	return getLocalStorageByDataDir(util.DataDir)
+}
+
+func getLocalStorageByDataDir(dataDir string) (ret map[string]interface{}) {
 	// When local.json is corrupted, clear the file to avoid being unable to enter the main interface https://github.com/siyuan-note/siyuan/issues/7911
 	ret = map[string]interface{}{}
-	lsPath := filepath.Join(util.DataDir, "storage/local.json")
+	lsPath := filepath.Join(dataDir, "storage/local.json")
 	if !filelock.IsExist(lsPath) {
 		return
 	}

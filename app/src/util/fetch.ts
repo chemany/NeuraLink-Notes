@@ -5,6 +5,12 @@ import { ipcRenderer } from "electron";
 import { processMessage } from "./processMessage";
 import { kernelError } from "../dialog/processSystem";
 
+export interface IFetchPostOptions {
+    headers?: IObject;
+    onError?: (error: Error) => void;
+    silentNetworkError?: boolean;
+}
+
 // 获取cookie值的辅助函数
 const getCookie = (name: string): string | null => {
     const value = `; ${document.cookie}`;
@@ -15,21 +21,43 @@ const getCookie = (name: string): string | null => {
     return null;
 };
 
-export const fetchPost = (url: string, data?: any, cb?: (response: IWebSocketData) => void, headers?: IObject) => {
+const normalizeFetchPostOptions = (optionsOrHeaders?: IObject | IFetchPostOptions): IFetchPostOptions => {
+    if (!optionsOrHeaders) {
+        return {};
+    }
+    const candidate = optionsOrHeaders as IFetchPostOptions;
+    if (typeof candidate.onError === "function" || typeof candidate.silentNetworkError === "boolean") {
+        return candidate;
+    }
+    if (candidate.headers && typeof candidate.headers === "object") {
+        return candidate;
+    }
+    return {
+        headers: optionsOrHeaders as IObject,
+    };
+};
+
+export const fetchPost = (
+    url: string,
+    data?: any,
+    cb?: (response: IWebSocketData) => void,
+    optionsOrHeaders?: IObject | IFetchPostOptions,
+) => {
+    const options = normalizeFetchPostOptions(optionsOrHeaders);
     const init: RequestInit = {
         method: "POST",
         headers: {
-            'Content-Type': 'application/json',
-            ...headers
+            "Content-Type": "application/json",
+            ...(options.headers || {})
         }
     };
 
     // 添加认证token（如果存在）
-    const token = localStorage.getItem('siyuan_token') || getCookie('siyuan_token');
+    const token = localStorage.getItem("siyuan_token") || getCookie("siyuan_token");
     if (token) {
         init.headers = {
             ...init.headers,
-            'Authorization': `Bearer ${token}`
+            Authorization: `Bearer ${token}`
         };
     }
     if (data) {
@@ -48,20 +76,13 @@ export const fetchPost = (url: string, data?: any, cb?: (response: IWebSocketDat
         }
         if (data instanceof FormData) {
             // FormData不需要Content-Type，让浏览器自动设置
-            delete init.headers['Content-Type'];
+            delete init.headers["Content-Type"];
             init.body = data;
         } else {
             init.body = JSON.stringify(data);
         }
     }
 
-    // 如果传入headers，合并到现有headers中
-    if (headers) {
-        init.headers = {
-            ...init.headers,
-            ...headers
-        };
-    }
     fetch(url, init).then((response) => {
         switch (response.status) {
             case 403:
@@ -75,13 +96,13 @@ export const fetchPost = (url: string, data?: any, cb?: (response: IWebSocketDat
                 if (401 == response.status) {
                     // 返回鉴权失败的话跳转到登录页，避免用户在当前页面操作 https://github.com/siyuan-note/siyuan/issues/15163
                     // 清除过期的token和用户信息
-                    localStorage.removeItem('siyuan_token');
-                    localStorage.removeItem('siyuan_user');
-                    document.cookie = 'siyuan_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                    localStorage.removeItem("siyuan_token");
+                    localStorage.removeItem("siyuan_user");
+                    document.cookie = "siyuan_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
                     // 重定向到应用根路径，会自动跳转到登录页
                     setTimeout(() => {
-                        window.location.href = window.location.origin + '/';
+                        window.location.href = `${window.location.origin}/`;
                     }, 1000);
                 }
 
@@ -111,9 +132,13 @@ export const fetchPost = (url: string, data?: any, cb?: (response: IWebSocketDat
         } else if (cb) {
             cb(response);
         }
-    }).catch((e) => {
-        console.warn("fetch post failed [" + e + "], url [" + url + "]");
-        if (url === "/api/transactions" && (e.message === "Failed to fetch" || e.message === "Unexpected end of JSON input")) {
+    }).catch((e: unknown) => {
+        const error = e instanceof Error ? e : new Error(String(e));
+        if (!options.silentNetworkError) {
+            console.warn(`fetch post failed [${error}], url [${url}]`);
+        }
+        options.onError?.(error);
+        if (url === "/api/transactions" && (error.message === "Failed to fetch" || error.message === "Unexpected end of JSON input")) {
             kernelError();
             return;
         }
@@ -131,22 +156,22 @@ export const fetchSyncPost = async (url: string, data?: any, process: boolean = 
     const init: RequestInit = {
         method: "POST",
         headers: {
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json"
         }
     };
 
     // 添加认证token（如果存在）
-    const token = localStorage.getItem('siyuan_token') || getCookie('siyuan_token');
+    const token = localStorage.getItem("siyuan_token") || getCookie("siyuan_token");
     if (token) {
         init.headers = {
             ...init.headers,
-            'Authorization': `Bearer ${token}`
+            Authorization: `Bearer ${token}`
         };
     }
     if (data) {
         if (data instanceof FormData) {
             // FormData不需要Content-Type，让浏览器自动设置
-            delete init.headers['Content-Type'];
+            delete init.headers["Content-Type"];
             init.body = data;
         } else {
             init.body = JSON.stringify(data);
@@ -165,10 +190,10 @@ export const fetchGet = (url: string, cb: (response: IWebSocketData | IObject | 
         method: "GET",
         headers: {}
     };
-    const token = localStorage.getItem('siyuan_token') || getCookie('siyuan_token');
+    const token = localStorage.getItem("siyuan_token") || getCookie("siyuan_token");
     if (token) {
         init.headers = {
-            'Authorization': `Bearer ${token}`
+            Authorization: `Bearer ${token}`
         };
     }
     fetch(url, init).then((response) => {

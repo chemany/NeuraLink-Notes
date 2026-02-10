@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,10 +22,17 @@ import (
 	"github.com/siyuan-note/logging"
 )
 
+// NewMultipartWriter 创建 multipart writer 的包装函数
+func NewMultipartWriter(w io.Writer) *multipart.Writer {
+	return multipart.NewWriter(w)
+}
+
 // PaddleOCR 配置
 const (
-	DefaultPaddleOCRBaseURL = "http://127.0.0.1:8081"
-	PaddleOCRTimeout        = 60 * time.Second
+	DefaultPaddleOCRBaseURL = "http://127.0.0.1:8082"
+	PaddleOCRTimeout        = 120 * time.Second
+	// GLM-OCR 配置
+	GLMOCRModel = "glm-ocr"
 )
 
 // PaddleOCRConfig OCR 服务配置
@@ -111,15 +120,37 @@ func PaddleOCRHealthCheck() (bool, string) {
 	return false, fmt.Sprintf("OCR 服务状态异常: %d", resp.StatusCode)
 }
 
-// PaddleOCRFromBase64 使用 base64 图片进行 OCR
+// PaddleOCRFromBase64 使用 base64 图片进行 OCR (适配 GLM-OCR)
 func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 	config := getPaddleOCRConfig()
 	if !config.Enabled {
 		return nil, fmt.Errorf("OCR 服务未启用")
 	}
 
-	// 构建 JSON 请求
-	reqBody := PaddleOCRRequest{Base64: base64Image}
+	// 构建 GLM-OCR 请求 (OpenAI 格式)
+	reqBody := map[string]interface{}{
+		"model": GLMOCRModel,
+		"messages": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{
+						"type": "image_url",
+						"image_url": map[string]string{
+							"url": fmt.Sprintf("data:image/png;base64,%s", base64Image),
+						},
+					},
+					{
+						"type": "text",
+						"text": "Text Recognition:",
+					},
+				},
+			},
+		},
+		"max_tokens":  4096,
+		"temperature": 0.0,
+	}
+
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("序列化请求失败: %v", err)
@@ -127,7 +158,7 @@ func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 
 	client := &http.Client{Timeout: PaddleOCRTimeout}
 	resp, err := client.Post(
-		config.BaseURL+"/api/ocr",
+		config.BaseURL+"/v1/chat/completions",
 		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
@@ -141,21 +172,42 @@ func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 		return nil, fmt.Errorf("读取响应失败: %v", err)
 	}
 
-	var ocrResp PaddleOCRResponse
-	if err := json.Unmarshal(body, &ocrResp); err != nil {
+	// 检查 HTTP 状态码
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OCR 请求返回 HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	// 解析 GLM-OCR 响应 (OpenAI 格式)
+	var glmResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.Unmarshal(body, &glmResp); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %v, body: %s", err, string(body))
 	}
 
-	// Umi-OCR 状态码: 100 成功, 101 无文字
-	if ocrResp.Code != 100 {
-		if ocrResp.Code == 101 {
-			// 返回空结果而不是错误，因为“无文字”是正常情况
-			return &ocrResp, nil
-		}
-		return nil, fmt.Errorf("OCR 识别失败: %s (code: %d)", ocrResp.Message, ocrResp.Code)
+	if len(glmResp.Choices) == 0 {
+		return nil, fmt.Errorf("OCR 返回空结果, body: %s", string(body[:min(len(body), 500)]))
 	}
 
-	return &ocrResp, nil
+	// 将 GLM-OCR 响应转换为 PaddleOCR 格式
+	ocrResp := &PaddleOCRResponse{
+		Code:    100,
+		Message: "成功",
+		Data: []PaddleOCRResult{
+			{
+				Text:       glmResp.Choices[0].Message.Content,
+				Confidence: 0.95,
+				Position:   [][]float64{},
+			},
+		},
+	}
+
+	return ocrResp, nil
 }
 
 // PaddleOCRFromFile 从文件进行 OCR
@@ -182,7 +234,7 @@ func saveOCRResult(result *OCRAssetResult) error {
 	if err := saveOCRAsMarkdown(result); err != nil {
 		return fmt.Errorf("生成 Markdown 文档失败: %v", err)
 	}
-	
+
 	logging.LogInfof("已保存 OCR 结果为 Markdown: %s.md", result.AssetPath)
 	return nil
 }
@@ -191,19 +243,19 @@ func saveOCRResult(result *OCRAssetResult) error {
 func saveOCRAsMarkdown(result *OCRAssetResult) error {
 	// 生成 Markdown 文件路径：源文件名 + .md
 	mdPath := result.AssetPath + ".md"
-	
+
 	// 清理文件名用于标题
 	cleanName := result.FileName
 	cleanName = strings.ReplaceAll(cleanName, "amp;40;", "(")
 	cleanName = strings.ReplaceAll(cleanName, "amp;41;", ")")
-	
+
 	var content strings.Builder
-	
+
 	// 添加文档头部
 	content.WriteString(fmt.Sprintf("# %s\n\n", cleanName))
 	content.WriteString("> 本文档由 OCR 识别结果自动生成\n\n")
 	content.WriteString("---\n\n")
-	
+
 	// 处理文本内容
 	texts := make([]string, 0, len(result.OCRResults))
 	for _, item := range result.OCRResults {
@@ -212,15 +264,15 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 			texts = append(texts, text)
 		}
 	}
-	
+
 	// 格式化文本为 Markdown
 	currentParagraph := make([]string, 0)
-	
+
 	for i, text := range texts {
 		// 判断是否为标题
 		isTitle := false
 		titleLevel := 0
-		
+
 		if len(text) < 50 {
 			// 检查章节标题（如 1.1、1.2.3 等）
 			if len(text) > 0 && text[0] >= '0' && text[0] <= '9' {
@@ -244,7 +296,7 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 					}
 				}
 			}
-			
+
 			// 关键词标题
 			keywords := []string{"项目", "编制", "评价", "概况", "分析", "措施", "结论", "依据", "目的", "等级", "范围", "保护", "因子"}
 			for _, keyword := range keywords {
@@ -257,7 +309,7 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 				}
 			}
 		}
-		
+
 		// 检查是否为列表项
 		isListItem := false
 		if strings.HasPrefix(text, "(") || strings.HasPrefix(text, "（") ||
@@ -268,7 +320,7 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 			strings.HasPrefix(text, "⑨") || strings.HasPrefix(text, "⑩") {
 			isListItem = true
 		}
-		
+
 		if isTitle {
 			// 输出之前的段落
 			if len(currentParagraph) > 0 {
@@ -276,7 +328,7 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 				content.WriteString("\n\n")
 				currentParagraph = currentParagraph[:0]
 			}
-			
+
 			// 添加标题
 			switch titleLevel {
 			case 1:
@@ -295,13 +347,13 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 				content.WriteString("\n\n")
 				currentParagraph = currentParagraph[:0]
 			}
-			
+
 			// 添加列表项
 			content.WriteString(fmt.Sprintf("- %s\n", text))
 		} else {
 			// 普通文本
 			currentParagraph = append(currentParagraph, text)
-			
+
 			// 如果文本以句号、分号结尾，或者下一个是标题，则结束段落
 			if strings.HasSuffix(text, "。") || strings.HasSuffix(text, "；") ||
 				(i < len(texts)-1 && len(texts[i+1]) < 30) {
@@ -311,18 +363,18 @@ func saveOCRAsMarkdown(result *OCRAssetResult) error {
 			}
 		}
 	}
-	
+
 	// 输出最后的段落
 	if len(currentParagraph) > 0 {
 		content.WriteString(strings.Join(currentParagraph, ""))
 		content.WriteString("\n")
 	}
-	
+
 	// 写入 Markdown 文件
 	if err := os.WriteFile(mdPath, []byte(content.String()), 0644); err != nil {
 		return fmt.Errorf("写入 Markdown 文件失败: %v", err)
 	}
-	
+
 	logging.LogInfof("已生成 Markdown 文档: %s", mdPath)
 	return nil
 }
@@ -342,15 +394,15 @@ func loadOCRResult(assetPath string) (*OCRAssetResult, error) {
 
 	// 从 Markdown 提取文本内容
 	content := string(data)
-	
+
 	// 移除 Markdown 标记,提取纯文本
 	lines := strings.Split(content, "\n")
 	var textLines []string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		// 跳过标题行、分隔线、引用等
-		if line == "" || strings.HasPrefix(line, "#") || 
-		   strings.HasPrefix(line, ">") || strings.HasPrefix(line, "---") {
+		if line == "" || strings.HasPrefix(line, "#") ||
+			strings.HasPrefix(line, ">") || strings.HasPrefix(line, "---") {
 			continue
 		}
 		// 移除列表标记
@@ -359,10 +411,10 @@ func loadOCRResult(assetPath string) (*OCRAssetResult, error) {
 			textLines = append(textLines, line)
 		}
 	}
-	
+
 	fullText := strings.Join(textLines, "\n")
 	fileName := filepath.Base(assetPath)
-	
+
 	result := &OCRAssetResult{
 		ID:        gulu.Rand.String(16),
 		AssetPath: assetPath,
@@ -441,86 +493,82 @@ func OCRAsset(assetPath string) (*OCRAssetResult, error) {
 }
 
 // ocrPDFFile 对 PDF 文件进行 OCR
-// 使用 pdftoppm 将 PDF 转换为图片，然后逐页 OCR
+// 将 PDF 转换为图片后使用 GLM-OCR 识别
 func ocrPDFFile(pdfPath string) ([]PaddleOCRResult, string, int, error) {
-	// 创建临时目录
-	tmpDir := filepath.Join(os.TempDir(), "paddle_ocr_pdf", gulu.Rand.String(8))
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
+	config := getPaddleOCRConfig()
+	if !config.Enabled {
+		return nil, "", 0, fmt.Errorf("OCR 服务未启用")
+	}
+
+	logging.LogInfof("开始 OCR PDF 文件 (GLM-OCR): %s", pdfPath)
+
+	// 使用 pdftoppm 将 PDF 转换为图片
+	tempDir, err := os.MkdirTemp("", "pdf2img-*")
+	if err != nil {
 		return nil, "", 0, fmt.Errorf("创建临时目录失败: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tempDir)
 
-	// 使用 pdftoppm 将 PDF 转换为 PNG 图片
-	// pdftoppm -png -r 150 input.pdf output_prefix
-	outputPrefix := filepath.Join(tmpDir, "page")
-	cmd := fmt.Sprintf("pdftoppm -png -r 150 \"%s\" \"%s\"", pdfPath, outputPrefix)
-
-	logging.LogInfof("执行 PDF 转图片: %s", cmd)
-
-	// 执行命令
-	var stdout, stderr bytes.Buffer
-	execCmd := newCommand(cmd)
-	execCmd.Stdout = &stdout
-	execCmd.Stderr = &stderr
-	if err := execCmd.Run(); err != nil {
-		return nil, "", 0, fmt.Errorf("PDF 转图片失败: %v, stderr: %s", err, stderr.String())
+	// 转换 PDF 为图片 (150 DPI，适配 GLM-OCR 编码器缓存限制 3721 tokens)
+	cmd := exec.Command("pdftoppm", "-png", "-r", "150", pdfPath, filepath.Join(tempDir, "page"))
+	if err := cmd.Run(); err != nil {
+		return nil, "", 0, fmt.Errorf("PDF 转换失败: %v", err)
 	}
 
-	// 查找生成的图片文件
-	files, err := filepath.Glob(filepath.Join(tmpDir, "page-*.png"))
+	// 获取生成的图片文件
+	entries, err := os.ReadDir(tempDir)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf("查找图片文件失败: %v", err)
+		return nil, "", 0, fmt.Errorf("读取临时目录失败: %v", err)
 	}
 
-	if len(files) == 0 {
-		// 尝试其他命名格式
-		files, _ = filepath.Glob(filepath.Join(tmpDir, "page*.png"))
-	}
-
-	if len(files) == 0 {
-		return nil, "", 0, fmt.Errorf("PDF 转换后未生成图片文件")
-	}
-
-	logging.LogInfof("PDF 转换完成，共 %d 页", len(files))
-
-	// 对每页图片进行 OCR
-	var allResults []PaddleOCRResult
-	var fullTextBuilder strings.Builder
-	pageCount := len(files)
-
-	// 按文件名排序确保页面顺序
-	sortedFiles := make([]string, len(files))
-	copy(sortedFiles, files)
-	// 简单排序
-	for i := 0; i < len(sortedFiles)-1; i++ {
-		for j := i + 1; j < len(sortedFiles); j++ {
-			if sortedFiles[i] > sortedFiles[j] {
-				sortedFiles[i], sortedFiles[j] = sortedFiles[j], sortedFiles[i]
-			}
+	var imageFiles []string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".png") {
+			imageFiles = append(imageFiles, filepath.Join(tempDir, entry.Name()))
 		}
 	}
 
-	for i, imgFile := range sortedFiles {
-		logging.LogInfof("OCR 第 %d/%d 页: %s", i+1, pageCount, filepath.Base(imgFile))
+	if len(imageFiles) == 0 {
+		return nil, "", 0, fmt.Errorf("PDF 转换后未生成图片")
+	}
 
-		resp, err := PaddleOCRFromFile(imgFile)
+	logging.LogInfof("PDF 共 %d 页，开始逐页 OCR", len(imageFiles))
+
+	// 逐页 OCR
+	var allResults []PaddleOCRResult
+	var fullTextBuilder strings.Builder
+
+	for i, imgPath := range imageFiles {
+		logging.LogInfof("OCR 第 %d/%d 页...", i+1, len(imageFiles))
+
+		resp, err := PaddleOCRFromFile(imgPath)
 		if err != nil {
 			logging.LogWarnf("第 %d 页 OCR 失败: %v", i+1, err)
 			continue
 		}
 
-		// 添加页码标记
-		fullTextBuilder.WriteString(fmt.Sprintf("\n--- 第 %d 页 ---\n", i+1))
-
-		for _, r := range resp.Data {
-			allResults = append(allResults, r)
-			fullTextBuilder.WriteString(r.Text)
+		if len(resp.Data) > 0 {
+			text := resp.Data[0].Text
+			allResults = append(allResults, PaddleOCRResult{
+				Text:       text,
+				Confidence: 0.95,
+			})
+			fullTextBuilder.WriteString(fmt.Sprintf("\n## 第%d页\n\n", i+1))
+			fullTextBuilder.WriteString(text)
 			fullTextBuilder.WriteString("\n")
 		}
 	}
 
-	return allResults, fullTextBuilder.String(), pageCount, nil
+	logging.LogInfof("PDF OCR 完成，共 %d 页", len(imageFiles))
+
+	return allResults, fullTextBuilder.String(), len(imageFiles), nil
 }
+
+// uploadPDFToUmiOCR 上传 PDF 文件到 Umi-OCR
+
+// queryUmiOCRResult 查询 Umi-OCR 任务结果
+
+// clearUmiOCRTask 清理 Umi-OCR 任务
 
 // newCommand 创建命令（跨平台兼容）
 func newCommand(cmd string) *exec.Cmd {

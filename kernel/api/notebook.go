@@ -253,9 +253,14 @@ func openNotebook(c *gin.Context) {
 	// 获取 WorkspaceContext
 	ctx := model.GetWorkspaceContext(c)
 
-	msgId := util.PushMsg(model.Conf.Language(45), 1000*60*15)
+	// 仅向发起请求的客户端推送提示，避免多用户环境下广播给所有用户
+	app := ""
+	if nil != arg["app"] {
+		app = arg["app"].(string)
+	}
+	msgId := util.PushMsgWithApp(app, model.Conf.Language(45), 1000*60*15)
 	defer util.PushClearMsg(msgId)
-	
+
 	// 使用带 Context 的版本
 	existed, err := model.MountWithContext(ctx, notebook)
 	if err != nil {

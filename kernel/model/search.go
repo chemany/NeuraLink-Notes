@@ -17,8 +17,8 @@
 package model
 
 import (
-	sql2 "database/sql"
 	"bytes"
+	sql2 "database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -318,6 +318,21 @@ func SearchRefBlock(id, rootID, keyword string, beforeLen int, isSquareBrackets,
 }
 
 func searchRefBlockWithContext(ctx *WorkspaceContext, id, rootID, keyword string, beforeLen int, isSquareBrackets, isDatabase bool) (ret []*Block, newDoc bool) {
+	if nil == ctx {
+		ctx = GetDefaultWorkspaceContext()
+	}
+
+	sql.SetCurrentContext(ctx)
+	treenode.SetCurrentContext(ctx)
+	defer sql.ClearCurrentContext()
+	defer treenode.ClearCurrentContext()
+
+	originalDataDir := util.DataDir
+	defer func() {
+		util.DataDir = originalDataDir
+	}()
+	util.DataDir = ctx.GetDataDir()
+
 	cachedTrees := map[string]*parse.Tree{}
 	nodeTrees := map[string]*parse.Tree{}
 	var nodeIDs []string
@@ -1206,16 +1221,16 @@ func FullTextSearchBlock(query string, boxes, paths []string, types map[string]b
 // fullTextSearchBlockInternal 内部实现，支持可选的 WorkspaceContext
 func fullTextSearchBlockInternal(ctx *WorkspaceContext, query string, boxes, paths []string, types map[string]bool, method, orderBy, groupBy, page, pageSize int) (ret []*Block, matchedBlockCount, matchedRootCount, pageCount int, docMode bool) {
 	logging.LogInfof("[Search] fullTextSearchBlockInternal called, query=%s, ctx=%v", query, ctx)
-	
-	// 如果提供了 Context，设置为当前 goroutine 的 Context
+
 	if nil != ctx {
-		// 设置数据库查询的 Context（传递指针）
+		// 搜索结果后续会访问 treenode（如按文档分组、预览加载），必须一起设置。
 		sql.SetCurrentContext(ctx)
+		treenode.SetCurrentContext(ctx)
 		defer sql.ClearCurrentContext()
-		
+		defer treenode.ClearCurrentContext()
+
 		logging.LogInfof("[Search] Context set, userID=%s", ctx.GetUserID())
-		
-		// 同时设置 DataDir（用于文件操作）
+
 		originalDataDir := util.DataDir
 		defer func() {
 			util.DataDir = originalDataDir
@@ -1224,7 +1239,7 @@ func fullTextSearchBlockInternal(ctx *WorkspaceContext, query string, boxes, pat
 	} else {
 		logging.LogWarnf("[Search] Context is nil!")
 	}
-	
+
 	ret = []*Block{}
 	if "" == query {
 		logging.LogWarnf("[Search] Query is empty!")
@@ -2351,10 +2366,10 @@ func ListInvalidBlockRefsWithContext(ctx *WorkspaceContext, page, pageSize int) 
 	defer func() {
 		util.DataDir = originalDataDir
 	}()
-	
+
 	// 临时设置为用户的 DataDir
 	util.DataDir = ctx.GetDataDir()
-	
+
 	return ListInvalidBlockRefs(page, pageSize)
 }
 
@@ -2375,10 +2390,10 @@ func SearchEmbedBlockWithContext(ctx *WorkspaceContext, embedBlockID, stmt strin
 	defer func() {
 		util.DataDir = originalDataDir
 	}()
-	
+
 	// 临时设置为用户的 DataDir
 	util.DataDir = ctx.GetDataDir()
-	
+
 	return SearchEmbedBlock(embedBlockID, stmt, excludeIDs, headingMode, breadcrumb)
 }
 
@@ -2389,9 +2404,9 @@ func FindReplaceWithContext(ctx *WorkspaceContext, keyword, replacement string, 
 	defer func() {
 		util.DataDir = originalDataDir
 	}()
-	
+
 	// 临时设置为用户的 DataDir
 	util.DataDir = ctx.GetDataDir()
-	
+
 	return FindReplace(keyword, replacement, replaceTypes, ids, paths, boxes, types, method, orderBy, groupBy)
 }
