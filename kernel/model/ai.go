@@ -856,6 +856,13 @@ func uploadFileToGemini(ctx *WorkspaceContext, apiKey, baseURL, assetPath string
 		return "", "", fmt.Errorf("读取文件失败: %v", err)
 	}
 
+	// 检查文件大小，避免 Base64 编码后超过代理服务器的请求体限制
+	// api.with7.cn 的 nginx 有 body size 限制，Base64 编码会增大约 33%
+	const maxInlineFileSize = 3 * 1024 * 1024 // 3MB 原始文件（Base64 后约 4MB）
+	if len(fileData) > maxInlineFileSize {
+		return "", "", fmt.Errorf("文件过大 (%d bytes > %d bytes)，将使用 RAG 文本模式分析", len(fileData), maxInlineFileSize)
+	}
+
 	// 检测 MIME 类型
 	mimeType := "application/pdf"
 	ext := strings.ToLower(filepath.Ext(fullPath))
@@ -951,6 +958,21 @@ func geminiChatWithFiles(apiKey, baseURL, model string, maxTokens int, temperatu
 		return "", fmt.Errorf("序列化 Gemini 请求失败: %v", err)
 	}
 
+	// 检查请求体大小，避免超过代理服务器限制
+	const maxRequestBodySize = 10 * 1024 * 1024 // 10MB
+	if len(jsonData) > maxRequestBodySize {
+		logging.LogWarnf("Gemini: 请求体过大 (%d bytes > %d bytes)，将移除 inline 文件数据，仅使用 RAG 文本", len(jsonData), maxRequestBodySize)
+		// 降级：移除文件数据，仅使用文本消息
+		textOnlyMsgs := convertToGeminiMessages(messages)
+		reqBody = geminiRequest{Contents: textOnlyMsgs}
+		jsonData, err = json.Marshal(reqBody)
+		if err != nil {
+			return "", fmt.Errorf("序列化 Gemini 降级请求失败: %v", err)
+		}
+	}
+
+	logging.LogInfof("Gemini: 请求体大小 %d bytes (%.2f MB)", len(jsonData), float64(len(jsonData))/1024/1024)
+
 	// Gemini API URL 格式: /v1beta/models/{model}:generateContent
 	apiURL := strings.TrimRight(baseURL, "/") + "/v1beta/models/" + model + ":generateContent"
 
@@ -1012,6 +1034,20 @@ func geminiStreamChatWithFiles(apiKey, baseURL, model string, maxTokens int, tem
 	if err != nil {
 		return fmt.Errorf("序列化 Gemini 请求失败: %v", err)
 	}
+
+	// 检查请求体大小，避免超过代理服务器限制
+	const maxRequestBodySize = 10 * 1024 * 1024 // 10MB
+	if len(jsonData) > maxRequestBodySize {
+		logging.LogWarnf("Gemini Stream: 请求体过大 (%d bytes > %d bytes)，将移除 inline 文件数据，仅使用 RAG 文本", len(jsonData), maxRequestBodySize)
+		textOnlyMsgs := convertToGeminiMessages(messages)
+		reqBody = geminiRequest{Contents: textOnlyMsgs}
+		jsonData, err = json.Marshal(reqBody)
+		if err != nil {
+			return fmt.Errorf("序列化 Gemini 降级请求失败: %v", err)
+		}
+	}
+
+	logging.LogInfof("Gemini Stream: 请求体大小 %d bytes (%.2f MB)", len(jsonData), float64(len(jsonData))/1024/1024)
 
 	// Gemini 流式 API URL 格式: /v1beta/models/{model}:streamGenerateContent?alt=sse
 	apiURL := strings.TrimRight(baseURL, "/") + "/v1beta/models/" + model + ":streamGenerateContent?alt=sse"
