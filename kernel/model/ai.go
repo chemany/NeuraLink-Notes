@@ -27,6 +27,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -214,7 +215,7 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 		contextMsgs = contextMsgs[len(contextMsgs)-Conf.AI.OpenAI.APIMaxContexts:]
 	}
 
-	apiKey, apiBaseURL, apiModel, maxTokens, _, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
 
 	// Gemini provider: 使用非流式 API 直接获取完整响应
 	if !cloud && provider == "gemini" {
@@ -247,6 +248,26 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 		msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: msg})
 
 		result, chatErr := anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, 0.7, msgs)
+		if chatErr != nil {
+			err = chatErr
+			return
+		}
+		ret = strings.TrimSpace(result)
+		if ret != "" {
+			retContextMsgs = append(retContextMsgs, msg, ret)
+		}
+		return
+	}
+
+	// OpenAI Responses API provider: 使用非流式 API 直接获取完整响应
+	if !cloud && shouldUseResponsesAPI(apiBaseURL, provider) {
+		var msgs []openai.ChatCompletionMessage
+		for _, ctxMsg := range contextMsgs {
+			msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: ctxMsg})
+		}
+		msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: msg})
+
+		result, chatErr := openAIResponsesChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, msgs)
 		if chatErr != nil {
 			err = chatErr
 			return
@@ -382,13 +403,17 @@ func ChatWithContext(ctx *WorkspaceContext, messages []openai.ChatCompletionMess
 		return anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
 	}
 
+	if shouldUseResponsesAPI(apiBaseURL, provider) {
+		return openAIResponsesChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
+
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
 	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:       apiModel,
-		Messages:    messages,
-		MaxTokens:   maxTokens,
-		Temperature: float32(temperature),
+		Model:               apiModel,
+		Messages:            messages,
+		MaxCompletionTokens: maxTokens,
+		Temperature:         float32(temperature),
 	})
 
 	if err != nil {
@@ -421,13 +446,17 @@ func Chat(messages []openai.ChatCompletionMessage, allowedAssets []string) (ret 
 		return anthropicChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
 	}
 
+	if shouldUseResponsesAPI(apiBaseURL, provider) {
+		return openAIResponsesChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
+	}
+
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
 	resp, err := client.CreateChatCompletion(context.Background(), openai.ChatCompletionRequest{
-		Model:       apiModel,
-		Messages:    messages,
-		MaxTokens:   maxTokens,
-		Temperature: float32(temperature),
+		Model:               apiModel,
+		Messages:            messages,
+		MaxCompletionTokens: maxTokens,
+		Temperature:         float32(temperature),
 	})
 
 	if err != nil {
@@ -481,14 +510,18 @@ func ChatStreamWithContext(ctx *WorkspaceContext, messages []openai.ChatCompleti
 		return anthropicStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
 	}
 
+	if shouldUseResponsesAPI(apiBaseURL, provider) {
+		return openAIResponsesStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
+
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
 	req := openai.ChatCompletionRequest{
-		Model:       apiModel,
-		Messages:    messages,
-		MaxTokens:   maxTokens,
-		Temperature: float32(temperature),
-		Stream:      true,
+		Model:               apiModel,
+		Messages:            messages,
+		MaxCompletionTokens: maxTokens,
+		Temperature:         float32(temperature),
+		Stream:              true,
 	}
 
 	stream, err := client.CreateChatCompletionStream(context.Background(), req)
@@ -538,14 +571,18 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 		return anthropicStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
 	}
 
+	if shouldUseResponsesAPI(apiBaseURL, provider) {
+		return openAIResponsesStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
+	}
+
 	client := util.NewOpenAIClient(apiKey, Conf.AI.OpenAI.APIProxy, apiBaseURL, Conf.AI.OpenAI.APIUserAgent, Conf.AI.OpenAI.APIVersion, Conf.AI.OpenAI.APIProvider)
 
 	req := openai.ChatCompletionRequest{
-		Model:       apiModel,
-		Messages:    messages,
-		MaxTokens:   maxTokens,
-		Temperature: float32(temperature),
-		Stream:      true,
+		Model:               apiModel,
+		Messages:            messages,
+		MaxCompletionTokens: maxTokens,
+		Temperature:         float32(temperature),
+		Stream:              true,
 	}
 
 	stream, err := client.CreateChatCompletionStream(context.Background(), req)
@@ -573,6 +610,240 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 		}
 	}
 
+	return nil
+}
+
+type openAIResponsesInputMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openAIResponsesRequest struct {
+	Model           string                        `json:"model"`
+	Input           []openAIResponsesInputMessage `json:"input"`
+	MaxOutputTokens int                           `json:"max_output_tokens,omitempty"`
+	Temperature     float64                       `json:"temperature,omitempty"`
+	Stream          bool                          `json:"stream,omitempty"`
+}
+
+func shouldUseResponsesAPI(baseURL, provider string) bool {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	switch provider {
+	case "openai-responses", "openai_responses", "openairesponses", "responses":
+		return true
+	}
+
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return false
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		normalized := strings.TrimRight(strings.ToLower(baseURL), "/")
+		return strings.HasSuffix(normalized, "/responses")
+	}
+
+	path := strings.TrimRight(strings.ToLower(parsed.Path), "/")
+	return strings.HasSuffix(path, "/responses")
+}
+
+func getResponsesEndpoint(baseURL string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(strings.ToLower(trimmed), "/responses") {
+		return trimmed
+	}
+	return trimmed + "/responses"
+}
+
+func convertToResponsesInput(messages []openai.ChatCompletionMessage) []openAIResponsesInputMessage {
+	ret := make([]openAIResponsesInputMessage, 0, len(messages))
+	for _, msg := range messages {
+		role := strings.TrimSpace(msg.Role)
+		if role == "" {
+			role = "user"
+		}
+		ret = append(ret, openAIResponsesInputMessage{
+			Role:    role,
+			Content: msg.Content,
+		})
+	}
+	return ret
+}
+
+func extractResponsesOutputText(payload []byte) (string, error) {
+	var result struct {
+		Output []struct {
+			Type    string `json:"type"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
+	}
+
+	if err := json.Unmarshal(payload, &result); err != nil {
+		return "", err
+	}
+
+	var parts []string
+	for _, item := range result.Output {
+		if item.Type != "message" && item.Type != "" {
+			continue
+		}
+		for _, content := range item.Content {
+			if content.Type == "output_text" && strings.TrimSpace(content.Text) != "" {
+				parts = append(parts, content.Text)
+			}
+		}
+	}
+
+	if len(parts) == 0 {
+		return "", fmt.Errorf("responses 返回空内容")
+	}
+
+	return strings.Join(parts, "\n"), nil
+}
+
+func openAIResponsesChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage) (string, error) {
+	reqBody := openAIResponsesRequest{
+		Model:       model,
+		Input:       convertToResponsesInput(messages),
+		Temperature: temperature,
+	}
+	if maxTokens > 0 {
+		reqBody.MaxOutputTokens = maxTokens
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("序列化 OpenAI Responses 请求失败: %v", err)
+	}
+
+	apiURL := getResponsesEndpoint(baseURL)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("创建 OpenAI Responses 请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("OpenAI Responses API 请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("读取 OpenAI Responses 响应失败: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("OpenAI Responses API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	text, err := extractResponsesOutputText(body)
+	if err != nil {
+		return "", fmt.Errorf("解析 OpenAI Responses 响应失败: %v", err)
+	}
+	return text, nil
+}
+
+func openAIResponsesStreamChat(apiKey, baseURL, model string, maxTokens int, temperature float64, messages []openai.ChatCompletionMessage, onToken func(token string) error) error {
+	reqBody := openAIResponsesRequest{
+		Model:       model,
+		Input:       convertToResponsesInput(messages),
+		Temperature: temperature,
+		Stream:      true,
+	}
+	if maxTokens > 0 {
+		reqBody.MaxOutputTokens = maxTokens
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("序列化 OpenAI Responses 流式请求失败: %v", err)
+	}
+
+	apiURL := getResponsesEndpoint(baseURL)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("创建 OpenAI Responses 流式请求失败: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "text/event-stream")
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("OpenAI Responses 流式请求失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("OpenAI Responses API 返回错误 %d: %s", resp.StatusCode, string(body))
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	emitted := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var event struct {
+			Type     string          `json:"type"`
+			Delta    string          `json:"delta"`
+			Text     string          `json:"text"`
+			Response json.RawMessage `json:"response"`
+		}
+
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		if event.Type == "response.output_text.delta" && event.Delta != "" {
+			emitted = true
+			if err := onToken(event.Delta); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if event.Type == "response.output_text.done" && !emitted && event.Text != "" {
+			emitted = true
+			if err := onToken(event.Text); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if event.Type == "response.completed" && !emitted && len(event.Response) > 0 {
+			if text, parseErr := extractResponsesOutputText(event.Response); parseErr == nil && text != "" {
+				if err := onToken(text); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("读取 OpenAI Responses SSE 流失败: %v", err)
+	}
 	return nil
 }
 
@@ -2010,8 +2281,8 @@ func generateSummaryWithAI(content string) (string, []string, error) {
 				Content: prompt,
 			},
 		},
-		MaxTokens:   2000,
-		Temperature: 0.7,
+		MaxCompletionTokens: 2000,
+		Temperature:         0.7,
 	})
 
 	if err != nil {
