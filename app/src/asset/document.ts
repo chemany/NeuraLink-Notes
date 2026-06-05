@@ -77,6 +77,11 @@ export class DocumentViewer extends Model {
         return origin + path;
     }
 
+    private makeSelectable(element: HTMLElement) {
+        element.style.userSelect = "text";
+        element.style.webkitUserSelect = "text";
+    }
+
     private render() {
         const ext = pathPosix().extname(this.path).toLowerCase().split("?")[0];
         const localUrl = this.getLocalFileUrl();
@@ -121,6 +126,7 @@ export class DocumentViewer extends Model {
         
         const content = document.createElement("div");
         content.style.cssText = "flex:1;overflow:auto;padding:16px";
+        this.makeSelectable(content);
         content.innerHTML = "<div style='text-align:center;padding:40px'><img src='/stage/loading-pure.svg' style='width:48px'></div>";
         
         container.appendChild(toolbar);
@@ -136,17 +142,20 @@ export class DocumentViewer extends Model {
                 // Markdown 文件显示为格式化的代码
                 const pre = document.createElement("pre");
                 pre.style.cssText = "margin:0;padding:16px;background:var(--b3-theme-surface);border-radius:4px;overflow:auto;font-family:var(--b3-font-family-code);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all";
+                this.makeSelectable(pre);
                 const code = document.createElement("code");
                 code.textContent = text;
                 pre.appendChild(code);
                 content.innerHTML = "";
                 const wrapper = document.createElement("div");
                 wrapper.style.cssText = "max-width:900px;margin:0 auto";
+                this.makeSelectable(wrapper);
                 wrapper.appendChild(pre);
                 content.appendChild(wrapper);
             } else {
                 const pre = document.createElement("pre");
                 pre.style.cssText = "margin:0;padding:16px;background:var(--b3-theme-surface);border-radius:4px;overflow:auto;font-family:var(--b3-font-family-code);font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all";
+                this.makeSelectable(pre);
                 const code = document.createElement("code");
                 code.textContent = text;
                 pre.appendChild(code);
@@ -189,6 +198,7 @@ export class DocumentViewer extends Model {
         
         const content = document.createElement("div");
         content.style.cssText = "flex:1;overflow:auto;padding:16px";
+        this.makeSelectable(content);
         content.innerHTML = "<div style='text-align:center;padding:40px'><img src='/stage/loading-pure.svg' style='width:48px'><p style='margin-top:16px;color:var(--b3-theme-on-surface-light)'>正在加载文档...</p></div>";
         
         container.appendChild(toolbar);
@@ -206,6 +216,7 @@ export class DocumentViewer extends Model {
                 
                 const wrapper = document.createElement("div");
                 wrapper.style.cssText = "max-width:900px;margin:0 auto;background:white;padding:32px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)";
+                this.makeSelectable(wrapper);
                 wrapper.innerHTML = result.value;
                 
                 // 添加基本样式
@@ -416,6 +427,7 @@ export class DocumentViewer extends Model {
             
             const container = document.createElement("div");
             container.className = "pptx-container";
+            this.makeSelectable(container);
             
             slides.forEach((slide, index) => {
                 const slideEl = document.createElement("div");
@@ -594,6 +606,7 @@ export class DocumentViewer extends Model {
                 const sheetDiv = document.createElement("div");
                 sheetDiv.className = "xlsx-sheet" + (index === 0 ? " active" : "");
                 sheetDiv.id = `sheet-${index}`;
+                this.makeSelectable(sheetDiv);
                 
                 const sheet = workbook.Sheets[sheetName];
                 const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");

@@ -27,6 +27,7 @@ import (
 	"github.com/88250/gulu"
 	"github.com/gin-gonic/gin"
 	"github.com/sashabaranov/go-openai"
+	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/model"
 	"github.com/siyuan-note/siyuan/kernel/util"
@@ -392,6 +393,8 @@ func setEmbeddingConfig(c *gin.Context) {
 		return
 	}
 
+	logging.LogInfof("收到向量化配置更新请求: %+v", arg)
+
 	// 更新配置
 	if model.Conf.AI.Embedding == nil {
 		model.Conf.AI.Embedding = &conf.Embedding{}
@@ -421,8 +424,19 @@ func setEmbeddingConfig(c *gin.Context) {
 		model.Conf.AI.Embedding.Enabled = enabled
 	}
 
+	logging.LogInfof("保存用户配置...")
 	model.Conf.Save()
 
+	// 同时保存到全局配置文件
+	logging.LogInfof("保存全局配置文件...")
+	if err := model.SaveGlobalEmbeddingConfig(model.Conf.AI.Embedding); err != nil {
+		logging.LogErrorf("保存全局向量化配置失败: %v", err)
+		ret.Code = -1
+		ret.Msg = fmt.Sprintf("保存全局配置失败: %v", err)
+		return
+	}
+
+	logging.LogInfof("向量化配置保存成功")
 	ret.Data = map[string]interface{}{
 		"success": true,
 		"message": "向量化配置已更新",

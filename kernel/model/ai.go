@@ -41,6 +41,7 @@ import (
 	"github.com/88250/lute/parse"
 	"github.com/sashabaranov/go-openai"
 	"github.com/siyuan-note/logging"
+	"github.com/siyuan-note/siyuan/kernel/conf"
 	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
 	"github.com/siyuan-note/siyuan/kernel/util"
@@ -215,12 +216,16 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 		contextMsgs = contextMsgs[len(contextMsgs)-Conf.AI.OpenAI.APIMaxContexts:]
 	}
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt := getEffectiveAIConfig()
 
 	// Gemini provider: 使用非流式 API 直接获取完整响应
 	if !cloud && provider == "gemini" {
 		// 构建 openai 格式的消息用于 geminiChat
 		var msgs []openai.ChatCompletionMessage
+		// 如果有 system prompt，先添加
+		if systemPrompt != "" {
+			msgs = append(msgs, openai.ChatCompletionMessage{Role: "system", Content: systemPrompt})
+		}
 		for _, ctxMsg := range contextMsgs {
 			msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: ctxMsg})
 		}
@@ -242,6 +247,10 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 	if !cloud && provider == "anthropic" {
 		// 构建 openai 格式的消息用于 anthropicChat
 		var msgs []openai.ChatCompletionMessage
+		// 如果有 system prompt，先添加
+		if systemPrompt != "" {
+			msgs = append(msgs, openai.ChatCompletionMessage{Role: "system", Content: systemPrompt})
+		}
 		for _, ctxMsg := range contextMsgs {
 			msgs = append(msgs, openai.ChatCompletionMessage{Role: "user", Content: ctxMsg})
 		}
@@ -307,21 +316,23 @@ func chatGPTContinueWrite(msg string, contextMsgs []string, cloud bool) (ret str
 }
 
 type DefaultModelConfig struct {
-	Provider    string  `json:"provider"`
-	APIKey      string  `json:"api_key"`
-	BaseURL     string  `json:"base_url"`
-	ModelName   string  `json:"model_name"`
-	Temperature float64 `json:"temperature"`
-	MaxTokens   int     `json:"max_tokens"`
+	Provider     string  `json:"provider"`
+	APIKey       string  `json:"api_key"`
+	BaseURL      string  `json:"base_url"`
+	ModelName    string  `json:"model_name"`
+	Temperature  float64 `json:"temperature"`
+	MaxTokens    int     `json:"max_tokens"`
+	SystemPrompt string  `json:"system_prompt"`
 }
 
-func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64, provider string) {
+func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64, provider string, systemPrompt string) {
 	apiKey = Conf.AI.OpenAI.APIKey
 	apiBaseURL = Conf.AI.OpenAI.APIBaseURL
 	apiModel = Conf.AI.OpenAI.APIModel
 	maxTokens = Conf.AI.OpenAI.APIMaxTokens
 	temperature = Conf.AI.OpenAI.APITemperature
 	provider = "openai" // 默认 provider
+	systemPrompt = ""   // 默认无系统提示
 
 	// 当APIKey为空、为USE_DEFAULT_CONFIG，或者APIProvider为builtin时，读取默认配置
 	needDefaultConfig := apiKey == "" || apiKey == "USE_DEFAULT_CONFIG" || apiModel == "USE_DEFAULT_CONFIG" || Conf.AI.OpenAI.APIProvider == "builtin"
@@ -356,11 +367,63 @@ func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int,
 					if targetConfig.Temperature > 0 {
 						temperature = targetConfig.Temperature
 					}
+					if targetConfig.SystemPrompt != "" {
+						systemPrompt = targetConfig.SystemPrompt
+					}
 				}
 			}
 		}
 	}
 	return
+}
+
+func applySystemPrompt(messages []openai.ChatCompletionMessage, systemPrompt string) []openai.ChatCompletionMessage {
+	if strings.TrimSpace(systemPrompt) == "" {
+		return normalizeSystemMessages(messages)
+	}
+
+	if len(messages) > 0 && messages[0].Role == "system" {
+		messages[0].Content = systemPrompt + "\n\n" + messages[0].Content
+	} else {
+		messages = append([]openai.ChatCompletionMessage{
+			{Role: "system", Content: systemPrompt},
+		}, messages...)
+	}
+
+	return normalizeSystemMessages(messages)
+}
+
+func normalizeSystemMessages(messages []openai.ChatCompletionMessage) []openai.ChatCompletionMessage {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	var systemParts []string
+	normalized := make([]openai.ChatCompletionMessage, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			content := strings.TrimSpace(msg.Content)
+			if content != "" {
+				systemParts = append(systemParts, content)
+			}
+			continue
+		}
+		normalized = append(normalized, msg)
+	}
+
+	if len(systemParts) == 0 {
+		return normalized
+	}
+
+	systemMessage := openai.ChatCompletionMessage{
+		Role:    "system",
+		Content: strings.Join(systemParts, "\n\n"),
+	}
+
+	ret := make([]openai.ChatCompletionMessage, 0, len(normalized)+1)
+	ret = append(ret, systemMessage)
+	ret = append(ret, normalized...)
+	return ret
 }
 
 // ChatWithContext 聊天（支持用户上下文）
@@ -372,7 +435,9 @@ func ChatWithContext(ctx *WorkspaceContext, messages []openai.ChatCompletionMess
 	// RAG 增强：从用户消息中提取查询，搜索相关文档
 	messages = EnhanceMessagesWithRAGContext(ctx, messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt := getEffectiveAIConfig()
+
+	messages = applySystemPrompt(messages, systemPrompt)
 
 	if provider == "gemini" {
 		// 如果有附件，读取文件并转换为 Base64
@@ -436,7 +501,9 @@ func Chat(messages []openai.ChatCompletionMessage, allowedAssets []string) (ret 
 	// RAG 增强：从用户消息中提取查询，搜索相关文档
 	messages = EnhanceMessagesWithRAG(messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt := getEffectiveAIConfig()
+
+	messages = applySystemPrompt(messages, systemPrompt)
 
 	if provider == "gemini" {
 		return geminiChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages)
@@ -479,7 +546,9 @@ func ChatStreamWithContext(ctx *WorkspaceContext, messages []openai.ChatCompleti
 	// RAG 增强
 	messages = EnhanceMessagesWithRAGContext(ctx, messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt := getEffectiveAIConfig()
+
+	messages = applySystemPrompt(messages, systemPrompt)
 
 	if provider == "gemini" {
 		// 如果有附件，读取文件并转换为 Base64
@@ -561,7 +630,9 @@ func ChatStream(messages []openai.ChatCompletionMessage, allowedAssets []string,
 	// RAG 增强
 	messages = EnhanceMessagesWithRAG(messages, allowedAssets)
 
-	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider := getEffectiveAIConfig()
+	apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt := getEffectiveAIConfig()
+
+	messages = applySystemPrompt(messages, systemPrompt)
 
 	if provider == "gemini" {
 		return geminiStreamChat(apiKey, apiBaseURL, apiModel, maxTokens, temperature, messages, onToken)
@@ -1984,6 +2055,35 @@ func loadGlobalEmbeddingConfig() *GlobalEmbeddingConfig {
 	}
 
 	return &config
+}
+
+// SaveGlobalEmbeddingConfig 保存全局向量化配置
+func SaveGlobalEmbeddingConfig(embedding *conf.Embedding) error {
+	if embedding == nil {
+		return fmt.Errorf("配置为空")
+	}
+
+	config := &GlobalEmbeddingConfig{
+		Provider:       embedding.Provider,
+		APIKey:         embedding.APIKey,
+		Model:          embedding.Model,
+		APIBaseURL:     embedding.APIBaseURL,
+		EncodingFormat: embedding.EncodingFormat,
+		Timeout:        embedding.Timeout,
+		Enabled:        embedding.Enabled,
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %v", err)
+	}
+
+	if err := os.WriteFile(globalEmbeddingConfigPath, data, 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %v", err)
+	}
+
+	logging.LogInfof("全局向量化配置已保存: provider=%s, model=%s", config.Provider, config.Model)
+	return nil
 }
 
 // NewEmbeddingService 创建向量化服务

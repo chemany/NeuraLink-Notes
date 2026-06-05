@@ -1,5 +1,5 @@
 {
-  "baseUrl": "http://127.0.0.1:8082",
+  "baseUrl": "http://127.0.0.1:8001",
   "enabled": true,
-  "description": "GLM-OCR API 配置，用于扫描版 PDF 和图片的文字识别"
+  "description": "Qwen3.5-35B 多模态 OCR，用于扫描版 PDF 和图片的文字识别"
 }
