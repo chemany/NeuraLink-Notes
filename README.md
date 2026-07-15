@@ -1,741 +1,189 @@
 <p align="center">
-<img alt="灵枢笔记" src="https://b3log.org/images/brand/siyuan-128.png">
-<br>
-<em>灵枢笔记 - 企业级多用户知识管理系统</em>
-<br><br>
-<a title="License" target="_blank" href="https://www.gnu.org/licenses/agpl-3.0.txt"><img src="http://img.shields.io/badge/license-AGPLv3-orange.svg?style=flat-square"></a>
-<a title="Go Version" target="_blank" href="https://golang.org"><img src="https://img.shields.io/badge/Go-1.21+-blue.svg?style=flat-square"></a>
-<a title="Node Version" target="_blank" href="https://nodejs.org"><img src="https://img.shields.io/badge/Node-18+-green.svg?style=flat-square"></a>
+  <img alt="灵枢笔记" src="assets/branding/ling-shu-icon-512.png" width="96">
+</p>
+
+<h1 align="center">灵枢笔记 · 智能知识中枢</h1>
+
+<p align="center">
+  自动向量化管理数据，将笔记、私有 AI 与知识工作流汇聚到一个可控空间
 </p>
 
 <p align="center">
-<a href="https://www.cheman.top">官网</a> | <a href="https://www.cheman.top/notepads/">在线体验</a> | <a href="mailto:125607565@qq.com">联系我们</a>
+  <a href="https://www.cheman.top">官网</a> ·
+  <a href="https://www.cheman.top/notepads/">在线体验</a> ·
+  <a href="https://github.com/chemany/neu-siyuan-note/issues">问题反馈</a>
 </p>
 
----
+<p align="center">
+  <a href="https://www.gnu.org/licenses/agpl-3.0.txt"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-orange.svg?style=flat-square"></a>
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.21+-00ADD8.svg?style=flat-square">
+  <img alt="Node" src="https://img.shields.io/badge/pnpm-10+-F69220.svg?style=flat-square">
+</p>
 
-## 📖 目录
+## 项目定位
 
-* [💡 项目简介](#-项目简介)
-* [🚀 核心特性](#-核心特性)
-* [⚡ 性能优势](#-性能优势)
-* [🏗️ 技术架构](#️-技术架构)
-* [🤖 AI 增强功能](#-ai-增强功能)
-* [🔐 安全与隔离](#-安全与隔离)
-* [📦 快速开始](#-快速开始)
-* [🛠️ 部署指南](#️-部署指南)
-* [📊 性能指标](#-性能指标)
-* [📚 技术文档](#-技术文档)
-* [🙏 致谢](#-致谢)
+灵枢笔记基于 [思源笔记](https://github.com/siyuan-note/siyuan) 深度定制，面向需要自主管理知识、身份与 AI 能力的团队和个人。它保留思源笔记的块编辑、Markdown、文档树与本地优先体验，并围绕 Web 多用户场景补齐以下能力：
 
----
+- 每个用户独立的工作空间、附件与配置目录；
+- 通过统一认证服务实现登录态校验和跨应用身份协同；
+- 以流式 AI 对话、RAG、附件解析和 OCR 为中心的知识工作流；
+- 面向私有部署的本地模型与 OpenAI 兼容接口接入；
+- 适合浏览器访问、反向代理和长期运维的 Web 部署模式。
 
-## 💡 项目简介
+本仓库是一个与上游思源笔记保持 AGPL-3.0 协议一致的定制分支，不是思源笔记官方发行版。生产环境中的统一认证、模型推理、OCR 和数据根目录由配套服务提供。
 
-**灵枢笔记**是基于 [思源笔记 (SiYuan)](https://github.com/siyuan-note/siyuan) 深度定制的**企业级多用户知识管理系统**。通过完整的架构重构，实现了真正的多用户并发支持、数据隔离和高性能访问。
+## 核心能力
 
-### 为什么选择灵枢笔记？
+| 能力 | 说明 |
+| --- | --- |
+| 多用户工作空间 | 请求进入内核后会建立 `WorkspaceContext`，让笔记、附件、配置、临时文件和用户身份在请求链路中保持一致。 |
+| 身份与会话 | Web 模式支持 JWT、Cookie 与统一认证服务协同，适合与同一组织内的其他应用共用登录态。 |
+| 私有 AI 对话 | 支持 OpenAI 兼容接口与流式 SSE 输出；默认模型配置可以由统一设置服务集中管理。 |
+| RAG 与附件理解 | AI 对话可读取当前文档允许的附件、已向量化内容和文档上下文，避免把无关资料混入回答。 |
+| 扫描件 OCR | 支持图片与扫描版 PDF 的 OCR，识别结果可供后续阅读、检索和 AI 分析使用。 |
+| 会议与内容整理 | 内置会议纪要、摘要、概念关联、智能问答等面向知识整理的工作流。 |
+| 思源编辑体验 | 延续块级编辑、文档树、Markdown、主题、快捷键和实时更新等核心体验。 |
 
-- 🏢 **企业级多用户支持** - 完整的多用户架构，支持数百用户并发访问
-- ⚡ **极致性能** - 100倍+吞吐量提升，充分利用多核CPU
-- 🔒 **数据隔离** - 多层次数据隔离机制，确保用户数据安全
-- 🤖 **AI 增强** - 集成私有大模型、RAG、OCR等AI能力
-- 🌐 **Web 优化** - 专为Web部署优化，支持JWT认证、单点登录
-- 📱 **响应式设计** - 完美支持桌面端和移动端
+## 适用场景
 
----
+- 团队知识库、项目笔记和个人研究资料的统一管理；
+- 需要数据留在自有环境中的文档问答与摘要生成；
+- 需要从 PDF、图片、扫描资料中提取文本并沉淀为可检索知识；
+- 已有内部账号体系，希望笔记应用与其他业务系统共享登录态；
+- 希望使用本地模型，或按需接入任意 OpenAI 兼容模型服务的组织。
 
-## 🚀 核心特性
+## 架构概览
 
-### 🏗️ 多用户架构（核心创新）
+灵枢笔记的核心是思源内核与前端应用。完整 Web 部署时，统一认证、模型推理和 OCR 服务作为独立组件运行，彼此通过清晰的 HTTP 接口协作：
 
-#### ✅ 真正的并发处理
-- **无锁并发** - 移除全局互斥锁，请求并发处理
-- **请求级隔离** - 每个请求独立的 WorkspaceContext
-- **多核利用** - CPU利用率从20%提升至90%
-- **高吞吐量** - 支持1000+ req/s并发访问
-
-#### ✅ 完整的数据隔离
-- **文件系统隔离** - 每个用户独立的workspace目录
-- **数据库隔离** - 按用户隔离的数据库连接池
-- **缓存隔离** - 按用户隔离的缓存管理器
-- **资源管理** - 自动清理，防止内存泄漏
-
-#### ✅ 企业级性能
-- **10并发用户** - 响应时间提升90%（1000ms → 100ms）
-- **100并发用户** - 响应时间提升99%（10000ms → 100ms）
-- **吞吐量** - 提升100倍+（10 req/s → 1000+ req/s）
-
-### 🤖 AI & 智能增强
-
-#### 私有大模型集成
-- **本地部署** - 支持 DeepSeek、LocalTVM 等私有模型
-- **数据隐私** - 所有数据本地处理，不上传云端
-- **智能问答** - 基于笔记内容的智能对话
-- **内容生成** - AI辅助写作和内容扩展
-
-#### RAG 检索增强生成
-- **语义搜索** - 基于向量化的语义理解搜索
-- **上下文增强** - AI自动检索相关笔记作为背景知识
-- **知识图谱** - 构建个人知识网络
-- **智能推荐** - 基于内容相似度的笔记推荐
-
-#### OCR 文字识别
-- **私有OCR服务** - 本地部署，保护隐私
-- **多格式支持** - PDF、图片、扫描件识别
-- **全文索引** - 识别结果自动进入搜索索引
-- **批量处理** - 支持批量文档识别
-
-### 🔐 Web 端认证与安全
-
-#### 多种认证方式
-- **JWT Token** - 标准JWT认证，支持多种传递方式
-- **单点登录** - 与统一设置服务集成，跨应用SSO
-- **访问码** - 兼容原有访问码认证
-- **Cookie/LocalStorage** - 灵活的Token存储方式
-
-#### 安全机制
-- **数据加密** - 敏感数据加密存储
-- **权限控制** - 细粒度的权限管理
-- **审计日志** - 完整的操作日志记录
-- **会话管理** - 自动过期和刷新机制
-
-### 📁 实时更新与同步
-
-#### 文档树实时更新
-- **新建即显示** - 创建笔记/笔记本立即显示
-- **删除即移除** - 删除操作立即反映到UI
-- **标题实时同步** - 编辑标题实时更新文档树
-- **无需刷新** - 所有操作无需手动刷新页面
-
-#### WebSocket 优化
-- **认证优化** - 支持Token参数传递
-- **连接稳定** - 自动重连机制
-- **消息推送** - 实时推送更新通知
-
-### 🎨 界面与交互优化
-
-- **顶部菜单栏** - 更便捷的操作入口
-- **快捷设置** - 一键访问系统设置
-- **响应式设计** - 完美适配各种屏幕尺寸
-- **自定义主题** - 支持多种主题切换
-- **快捷键支持** - 丰富的键盘快捷键
-
----
-
-## ⚡ 性能优势
-
-### 并发性能对比
-
-| 并发用户数 | 旧架构（串行） | 新架构（并发） | 性能提升 |
-|-----------|--------------|--------------|---------|
-| 1用户 | 100ms | 100ms | - |
-| 10用户 | 1000ms | 100ms | **90%** ⬆️ |
-| 100用户 | 10000ms | 100ms | **99%** ⬆️ |
-
-### 吞吐量对比
-
-| 指标 | 旧架构 | 新架构 | 提升倍数 |
-|------|--------|--------|---------|
-| 每秒请求数 | 10 req/s | 1000+ req/s | **100倍+** ⬆️ |
-| CPU利用率 | 10-20% | 80-90% | **4-9倍** ⬆️ |
-| 内存使用 | 稳定 | 稳定 | 无泄漏 ✅ |
-
-### 资源管理
-
-| 资源类型 | 配置 | 管理方式 |
-|---------|------|---------|
-| 数据库连接 | 最多100个 | 自动清理（30分钟空闲） |
-| 用户缓存 | 最多100个 | 自动清理（30分钟空闲） |
-| 内存占用 | 动态分配 | 自动回收，无泄漏 |
-
----
-
-## 🏗️ 技术架构
-
-### 系统架构图
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        HTTP Request                          │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   CheckWebAuth 中间件                         │
-│              创建 WorkspaceContext（无锁）                     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        API 层                                │
-│           从 Gin Context 获取 WorkspaceContext                │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                       Model 层                               │
-│            使用 WorkspaceContext 访问数据                      │
-└───────────┬─────────────────────────────────┬───────────────┘
-            │                                 │
-            ▼                                 ▼
-┌───────────────────────┐         ┌───────────────────────────┐
-│   用户缓存管理器        │         │    数据库连接池            │
-│  （按workspace隔离）    │         │  （按workspace隔离）       │
-├───────────────────────┤         ├───────────────────────────┤
-│ • blockCache          │         │ • 连接复用                 │
-│ • refCache            │         │ • 自动清理                 │
-│ • 自动清理            │         │ • 最大连接数限制           │
-└───────────────────────┘         └───────────────────────────┘
-            │                                 │
-            └─────────────┬───────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    用户数据存储                               │
-│         workspace_a/  workspace_b/  workspace_c/             │
-└─────────────────────────────────────────────────────────────┘
+```text
+浏览器
+  │
+  ▼
+Nginx / HTTPS 反向代理
+  │
+  ▼
+灵枢笔记前端与内核
+  ├── 统一设置服务：认证校验、用户设置、默认模型配置
+  ├── OpenAI 兼容模型服务：流式对话、总结、RAG 生成
+  ├── OCR 服务：图片与扫描版 PDF 文字提取
+  └── 用户数据根目录：工作空间、附件、索引与配置
 ```
 
-### BlockTree 查询系统架构
+### 多用户隔离
 
-灵枢笔记的 BlockTree 查询系统经过完整重构，实现了真正的多用户数据隔离：
+Web 请求在认证后绑定用户工作空间。工作空间负责隔离用户的笔记数据、附件、配置、历史记录和临时文件；共享索引数据通过用户标识进行范围约束。AI、OCR 与附件读取均会沿用当前请求的工作空间上下文。
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      TreeNode 层                             │
-│                   (kernel/treenode)                          │
-│                                                              │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │         BlockTree 查询函数（WithDB 版本）         │       │
-│  │                                                   │       │
-│  │  • GetBlockTreeRootByHPathWithDB()               │       │
-│  │  • GetBlockTreeRootByPathWithDB()                │       │
-│  │  • GetBlockTreeWithDB()                          │       │
-│  │  • GetBlockTreeByHPathPreferredParentIDWithDB()  │       │
-│  │  • GetBlockTreesByRootIDWithDB()                 │       │
-│  │  • UpsertBlockTreeWithDB()                       │       │
-│  └──────────────────────────────────────────────────┘       │
-│                             │                                │
-│                             ▼                                │
-│  ┌──────────────────────────────────────────────────┐       │
-│  │       BlockTreeDBManager                         │       │
-│  │       (数据库连接池管理器)                        │       │
-│  │                                                   │       │
-│  │  • GetOrCreateDB(dbPath) → *sql.DB               │       │
-│  │  • 最多 100 个连接                                │       │
-│  │  • 30 分钟空闲自动清理                            │       │
-│  │  • 线程安全（sync.RWMutex）                       │       │
-│  └──────────────────────────────────────────────────┘       │
-└─────────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    用户数据库文件                             │
-│  /root/code/MindOcean/user-data/notes/                      │
-│  ├── user_a/blocktree.db  ← 用户 A 的数据库                 │
-│  ├── user_b/blocktree.db  ← 用户 B 的数据库                 │
-│  └── user_c/blocktree.db  ← 用户 C 的数据库                 │
-└─────────────────────────────────────────────────────────────┘
-```
+这种设计的重点不是把所有服务塞进一个进程，而是在共享基础设施上维持明确的用户边界和可追溯的请求上下文。
 
-**核心特性**：
-- ✅ 每个用户独立的数据库文件
-- ✅ 数据库连接池自动管理
-- ✅ 所有查询函数支持多用户
-- ✅ 向后兼容旧代码
-- ✅ 性能监控和慢查询日志
+### AI 工作流
 
-详细架构说明请参考：[BlockTree 架构文档](BLOCKTREE_ARCHITECTURE.md)
+`/api/ai/chatStream` 由灵枢内核处理，而不是由通用配置服务直接代理。这样流式请求可以同时获得：
 
-### 核心组件
+- 当前登录用户与工作空间；
+- 当前文档及其允许附件的范围；
+- RAG 检索或已构建的向量内容；
+- 系统提示词、模型配置和 SSE 输出控制。
 
-#### 1. WorkspaceContext（请求级隔离）
-```go
-type WorkspaceContext struct {
-    WorkspaceDir string  // workspace根目录
-    DataDir      string  // 数据目录
-    ConfDir      string  // 配置目录
-    UserID       string  // 用户ID
-    Username     string  // 用户名
-}
-```
+参考部署使用本地 `llama.cpp` 提供 OpenAI 兼容接口，并可按硬件资源选择上下文长度和并发槽位。模型服务是共享基础设施，调整其上下文或并发参数时应同时评估其他调用方的响应时间。
 
-#### 2. 数据库连接池（按用户隔离）
-```go
-type DBPool struct {
-    connections map[string]*sql.DB  // workspace -> connection
-    lastAccess  map[string]time.Time
-    mutex       sync.RWMutex
-    maxIdle     time.Duration  // 30分钟
-    maxConns    int            // 100个
-}
-```
+### OCR 与文档理解
 
-#### 3. 用户缓存管理器（按用户隔离）
-```go
-type UserCacheManager struct {
-    caches    map[string]*UserCache  // workspace -> cache
-    mutex     sync.RWMutex
-    maxIdle   time.Duration  // 30分钟
-    maxCaches int            // 100个
-}
-```
+OCR 服务地址由 [`config/ocr-config.json`](config/ocr-config.json) 配置。对于 PDF，系统优先读取可提取的文本；当文本不足或文件属于扫描件时，再调用 OCR。识别结果会作为附件内容的一部分进入后续的阅读、检索和 AI 分析流程。
 
-### 技术栈
+## 组件说明
 
-| 层次 | 技术 |
-|------|------|
-| 前端 | TypeScript, Svelte, Protyle |
-| 后端 | Go 1.21+, Gin, SQLite |
-| 缓存 | Ristretto, go-cache |
-| 数据库 | SQLite（按用户隔离） |
-| AI | DeepSeek, LocalTVM, RAG |
-| OCR | 私有OCR服务 |
+| 目录或服务 | 职责 |
+| --- | --- |
+| `app/` | TypeScript 前端、编辑器界面、AI 面板与交互逻辑。 |
+| `kernel/` | Go 内核、Web API、认证中间件、工作空间上下文、AI/RAG/OCR 实现。 |
+| `config/` | OCR 等运行期功能配置。 |
+| `ecosystem.config.js` | PM2 进程定义参考；生产部署应以经验证的构建路径和进程配置为准。 |
+| 统一设置服务 | 仓库外的配套服务，负责统一认证和共享模型配置。 |
+| 模型与 OCR 服务 | 仓库外的可选推理服务，分别提供 OpenAI 兼容对话接口和 OCR 接口。 |
 
----
+## 快速开始
 
-## 🤖 AI 增强功能
+### 前置条件
 
-### RAG 检索增强生成
+- Go 1.21 或更高版本；
+- Node.js 与 Corepack；前端依赖由 `pnpm@10` 管理；
+- 使用全文检索构建内核时需要启用 CGO 和 `fts5`；
+- Web 多用户部署还需要准备用户数据根目录、统一认证服务，以及按需配置的模型和 OCR 服务。
 
-```
-用户提问 → 向量化查询
-              ↓
-         语义搜索引擎
-              ↓
-    检索相关笔记（Top-K）
-              ↓
-         构建上下文
-              ↓
-    大模型生成回答（带引用）
-```
-
-### 功能特点
-
-- **智能检索** - 基于语义理解，不依赖关键词匹配
-- **上下文增强** - 自动检索相关笔记作为背景知识
-- **引用溯源** - 回答中标注引用来源，可追溯
-- **持续学习** - 随着笔记增加，AI理解更深入
-
-### OCR 批量处理
+### 获取代码与构建
 
 ```bash
-# 批量向量化资产
-./batch-vectorize-assets.sh
-
-# 查看向量化进度
-./check-vectorize-progress.sh
-
-# 查看全局向量化状态
-./check-global-vectorize-status.sh
-```
-
----
-
-## 🔐 安全与隔离
-
-### 多层次数据隔离
-
-#### 1. 文件系统隔离
-```
-/root/code/MindOcean/user-data/notes/
-├── user_a/              # 用户A的workspace
-│   ├── 笔记本1/
-│   ├── conf/           # 配置
-│   ├── assets/         # 资源
-│   └── blocktree.db    # BlockTree 数据库
-├── user_b/              # 用户B的workspace
-│   └── ...
-└── user_c/              # 用户C的workspace
-    └── ...
-```
-
-#### 2. 数据库隔离
-- 每个用户独立的 SQLite 数据库文件
-- 通过 BlockTreeDBManager 管理连接池
-- 查询自动路由到正确的数据库
-- 支持最多 100 个并发数据库连接
-
-#### 3. 缓存隔离
-- 每个用户独立的缓存实例
-- Block缓存和Ref缓存分离
-- 自动清理过期缓存
-
-#### 4. 请求级隔离
-- 每个请求独立的 WorkspaceContext
-- Context创建后不可变
-- 无全局状态修改
-
-### BlockTree 查询系统重构
-
-灵枢笔记的 BlockTree 查询系统经过完整重构，解决了多用户环境下的数据隔离问题：
-
-**重构前的问题**：
-- ❌ 所有查询使用全局数据库变量
-- ❌ 无法支持多用户数据隔离
-- ❌ 子文档创建在错误的位置
-
-**重构后的改进**：
-- ✅ 所有查询函数支持数据库参数
-- ✅ 每个用户独立的数据库连接
-- ✅ 子文档正确创建在父文档目录下
-- ✅ 向后兼容，保留旧函数
-- ✅ 性能监控和慢查询日志
-
-**核心函数**：
-```go
-// 旧版本（向后兼容）
-func GetBlockTreeRootByHPath(boxID, hPath string) *BlockTree
-
-// 新版本（支持多用户）
-func GetBlockTreeRootByHPathWithDB(boxID, hPath string, database *sql.DB) *BlockTree
-```
-
-**使用示例**：
-```go
-// Model 层获取用户数据库
-userDB, _ := btManager.GetOrCreateDB(ctx.BlockTreeDBPath)
-
-// 使用用户数据库查询
-parent := GetBlockTreeRootByHPathWithDB("box1", "/父文档", userDB)
-
-// 在父文档下创建子文档
-child := createSubDocument(parent, "子文档")
-```
-
-详细说明请参考：[BlockTree 架构文档](BLOCKTREE_ARCHITECTURE.md)
-
-### 并发安全保证
-
-- ✅ **无数据竞争** - 通过 Go race detector 验证
-- ✅ **请求独立** - 互不影响，无阻塞
-- ✅ **资源管理** - 自动清理，防止泄漏
-- ✅ **线程安全** - 所有共享资源使用 sync.RWMutex 保护
-
----
-
-## 📦 快速开始
-
-### 环境要求
-
-- **Go**: 1.21+
-- **Node.js**: 18+
-- **pnpm**: 最新版本
-- **操作系统**: Linux / macOS / Windows
-
-### 一键安装
-
-```bash
-# 克隆项目
 git clone https://github.com/chemany/neu-siyuan-note.git
 cd neu-siyuan-note
 
-# 安装前端依赖
+corepack enable
 cd app
 pnpm install
-
-# 构建前端
 pnpm run build:desktop
 
-# 构建后端
 cd ../kernel
-go build -v -o siyuan-kernel .
-
-# 运行
-./siyuan-kernel --workspace /path/to/workspace --port 6806
+CGO_ENABLED=1 go build -v -o ./siyuan-kernel -tags "fts5" -ldflags "-s -w" .
 ```
 
-### Docker 部署（推荐）
+项目内的完整构建脚本会构建前端、同步 Web 产物、编译内核并重启服务：
 
 ```bash
-# 构建镜像
+bash rebuild-and-restart.sh
+```
+
+构建后的内核必须位于 `kernel/siyuan-kernel`。详细的构建、进程管理和故障排查说明请阅读 [构建与部署指南](BUILD_AND_DEPLOY.md)。
+
+### 容器化运行
+
+仓库提供 [`Dockerfile`](Dockerfile)，可用于构建基础镜像：
+
+```bash
 docker build -t lingshu-note .
-
-# 运行容器
-docker run -d \
-  --name lingshu-note \
-  -p 6806:6806 \
-  -v /path/to/workspace:/workspace \
-  -e SIYUAN_WEB_MODE=true \
-  lingshu-note
+docker run --rm -p 6806:6806 lingshu-note
 ```
 
----
+容器镜像只覆盖核心应用。若启用多用户 Web 模式、统一认证、AI 或 OCR，需要在部署环境中另外提供对应服务与持久化数据卷。
 
-## 🛠️ 部署指南
+## 配置要点
 
-### PM2 部署（生产环境推荐）
+| 配置项 | 用途 |
+| --- | --- |
+| `SIYUAN_WEB_MODE=true` | 启用 Web 多用户认证与工作空间上下文。 |
+| `SIYUAN_USER_DATA_ROOT` | 指定用户工作空间根目录。 |
+| `SIYUAN_PORT` | 指定内核监听端口，默认参考值为 `6806`。 |
+| `config/ocr-config.json` | 配置 OCR 服务地址及开关。 |
+| 统一设置服务的模型配置 | 为内置 AI 提供模型地址、模型名、温度、输出长度和系统提示词等默认值。 |
 
-```bash
-# 安装 PM2
-npm install -g pm2
+部署时请将密钥、JWT 密钥、数据根目录和外部服务地址放在环境变量或受控配置中，不要提交到仓库。
 
-# 启动服务
-pm2 start ecosystem.config.js
+## 开发与验证
 
-# 查看状态
-pm2 status
+- 前端源码位于 `app/src/`，后端源码位于 `kernel/`；
+- 修改 Go 代码后，优先执行相应包的测试，再重新构建内核；
+- 修改前端后，使用 `build:desktop` 生成 Web 所需产物；
+- 修改 AI、认证或多用户逻辑时，应至少验证登录态、工作空间隔离、附件访问和流式对话；
+- 运行时配置变更应先完成健康检查，再切换生产流量。
 
-# 查看日志
-pm2 logs siyuan-kernel
+提交规范与社区协作说明见 [贡献指南](.github/CONTRIBUTING_zh_CN.md)。
 
-# 重启服务
-pm2 restart siyuan-kernel
-```
+## 相关文档
 
-### Nginx 反向代理配置
+- [构建与部署指南](BUILD_AND_DEPLOY.md)
+- [BlockTree 架构说明](BLOCKTREE_ARCHITECTURE.md)
+- [子文档创建流程](SUBDOCUMENT_CREATION_FLOW.md)
+- [贡献指南](.github/CONTRIBUTING_zh_CN.md)
+- [安全策略](.github/SECURITY.md)
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
+## 致谢与许可
 
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
+灵枢笔记基于 [思源笔记](https://github.com/siyuan-note/siyuan) 构建，感谢思源笔记及其社区提供的编辑器、数据模型和开源生态。
 
-    # 主应用
-    location / {
-        proxy_pass http://127.0.0.1:6806;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    # WebSocket 支持
-    location /ws {
-        proxy_pass http://127.0.0.1:6806;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_read_timeout 86400;
-    }
-
-    # 静态资源缓存
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        proxy_pass http://127.0.0.1:6806;
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-### 环境变量配置
-
-```bash
-# Web模式（多用户）
-export SIYUAN_WEB_MODE=true
-
-# 工作目录
-export SIYUAN_WORKSPACE=/path/to/workspace
-
-# 端口
-export SIYUAN_PORT=6806
-
-# 日志级别
-export SIYUAN_LOG_LEVEL=info
-
-# AI模型配置
-export AI_MODEL_URL=http://localhost:8000
-export AI_MODEL_KEY=your-api-key
-```
-
----
-
-## 📊 性能指标
-
-### 实测数据
-
-#### 响应时间（ms）
-
-| 操作 | 单用户 | 10并发 | 100并发 |
-|------|--------|--------|---------|
-| 列出笔记本 | 50ms | 60ms | 80ms |
-| 打开文档 | 80ms | 90ms | 120ms |
-| 搜索 | 100ms | 110ms | 150ms |
-| 保存文档 | 60ms | 70ms | 100ms |
-
-#### 吞吐量
-
-- **峰值吞吐量**: 1200 req/s
-- **平均吞吐量**: 800 req/s
-- **并发用户数**: 支持100+并发用户
-
-#### 资源使用
-
-- **CPU使用率**: 60-80%（8核）
-- **内存占用**: 500MB-1GB（100用户）
-- **磁盘IO**: < 50MB/s
-
-### 性能优化建议
-
-1. **数据库优化**
-   - 定期执行 VACUUM
-   - 合理设置连接池大小
-   - 使用 SSD 存储
-
-2. **缓存优化**
-   - 调整缓存大小
-   - 合理设置过期时间
-   - 监控缓存命中率
-
-3. **网络优化**
-   - 启用 HTTP/2
-   - 配置 CDN
-   - 压缩静态资源
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码、报告问题或提出建议！
-
-### 如何贡献
-
-1. Fork 本项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-### 代码规范
-
-- Go 代码遵循 `gofmt` 格式
-- TypeScript 代码遵循 ESLint 规则
-- 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/)
-
----
-
-## 📝 更新日志
-
-### v2.0.0 (2026-01-21) - 多用户架构重构
-
-#### 🚀 重大更新
-- ✅ 完整的多用户架构重构
-- ✅ 移除全局互斥锁，实现真正并发
-- ✅ 数据库连接池（按用户隔离）
-- ✅ 用户缓存管理器（按用户隔离）
-- ✅ 性能提升100倍+
-
-#### 🎯 核心改进
-- ✅ WorkspaceContext 请求级隔离
-- ✅ 无锁并发处理
-- ✅ 多层次数据隔离
-- ✅ 自动资源管理
-
-#### 📊 性能提升
-- ✅ 10并发: 响应时间提升90%
-- ✅ 100并发: 响应时间提升99%
-- ✅ 吞吐量: 提升100倍+
-
-详见 [完整更新日志](CHANGELOG.md)
-
----
-
-## 📚 技术文档
-
-### 架构文档
-
-- **[BlockTree 查询系统架构](BLOCKTREE_ARCHITECTURE.md)** - 详细说明 BlockTree 查询系统的多用户架构设计
-- **[子文档创建流程](SUBDOCUMENT_CREATION_FLOW.md)** - 完整的子文档创建流程和数据流图
-- **[构建和部署指南](BUILD_AND_DEPLOY.md)** - 构建、部署和运维指南
-
-### 核心概念
-
-#### WorkspaceContext（请求级隔离）
-
-每个 HTTP 请求都有独立的 WorkspaceContext，包含用户的所有路径信息：
-
-```go
-type WorkspaceContext struct {
-    WorkspaceDir    string // workspace 根目录
-    DataDir         string // 数据目录
-    BlockTreeDBPath string // BlockTree 数据库路径
-    UserID          string // 用户 ID
-    Username        string // 用户名
-}
-```
-
-#### BlockTreeDBManager（数据库连接池）
-
-管理多个用户的数据库连接，实现连接复用和自动清理：
-
-```go
-// 获取或创建数据库连接
-userDB, _ := btManager.GetOrCreateDB(ctx.BlockTreeDBPath)
-
-// 使用用户数据库查询
-tree := GetBlockTreeRootByHPathWithDB("box1", "/父文档", userDB)
-```
-
-#### 查询函数设计模式
-
-所有 BlockTree 查询函数都有两个版本：
-
-```go
-// 旧版本（向后兼容）- 使用全局数据库
-func GetBlockTreeRootByHPath(boxID, hPath string) *BlockTree
-
-// 新版本（支持多用户）- 接受数据库参数
-func GetBlockTreeRootByHPathWithDB(boxID, hPath string, database *sql.DB) *BlockTree
-```
-
-### API 文档
-
-详细的 API 文档请参考：[API.md](API.md)
-
----
-
-## 🙏 致谢
-
-### 思源笔记 (SiYuan)
-
-本项目基于 [思源笔记 (SiYuan)](https://github.com/siyuan-note/siyuan) 开源项目进行深度定制和架构重构。思源笔记是一款隐私优先的个人知识管理系统，支持细粒度块级引用和 Markdown 所见即所得。
-
-**特别感谢思源笔记团队的开源贡献！**
-
-- 🔗 思源笔记官网：[https://b3log.org/siyuan](https://b3log.org/siyuan)
-- 📦 思源笔记 GitHub：[https://github.com/siyuan-note/siyuan](https://github.com/siyuan-note/siyuan)
-- 💬 思源笔记社区：[https://ld246.com](https://ld246.com)
-
-### 相关开源项目
-
-| 项目 | 描述 | 链接 |
-|------|------|------|
-| lute | 编辑器引擎 | [GitHub](https://github.com/88250/lute) |
-| dejavu | 数据仓库 | [GitHub](https://github.com/siyuan-note/dejavu) |
-| petal | 插件 API | [GitHub](https://github.com/siyuan-note/petal) |
-| ristretto | 高性能缓存 | [GitHub](https://github.com/dgraph-io/ristretto) |
-| gin | Web 框架 | [GitHub](https://github.com/gin-gonic/gin) |
-
-### 开源协议
-
-本项目遵循 [AGPLv3](https://www.gnu.org/licenses/agpl-3.0.txt) 开源协议，与思源笔记保持一致。
-
----
-
-## 📞 联系我们
-
-- 🌐 官网：[www.cheman.top](https://www.cheman.top)
-- 📧 邮箱：[125607565@qq.com](mailto:125607565@qq.com?subject=灵枢笔记咨询)
-- 💬 在线体验：[www.cheman.top/notepads/](https://www.cheman.top/notepads/)
-
----
-
-## ⭐ Star History
-
-如果这个项目对你有帮助，请给我们一个 Star ⭐
-
-[![Star History Chart](https://api.star-history.com/svg?repos=chemany/neu-siyuan-note&type=Date)](https://star-history.com/#chemany/neu-siyuan-note&Date)
+本项目遵循 [AGPL-3.0](LICENSE) 协议。使用、部署或二次分发前，请确认你对上游项目和本仓库的开源义务均已满足。
 
 ---
 
 <p align="center">
-<strong>灵枢笔记 - 企业级多用户知识管理系统</strong>
-<br>
-<em>高性能 · 数据隔离 · AI增强 · 开源免费</em>
-<br><br>
-Made with ❤️ by <a href="https://www.cheman.top">ChemAn Team</a>
+  <strong>灵枢笔记 · 智能知识中枢</strong><br>
+  多用户知识管理 · 自动向量化 · 私有 AI · 可控数据边界
 </p>
