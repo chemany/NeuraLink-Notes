@@ -19,6 +19,7 @@ interface IAIMessage {
     timestamp: number;
 }
 
+const maxAIContextLength = 256000;
 
 export class AI extends Model {
     private element: Element;
@@ -846,17 +847,6 @@ export class AI extends Model {
         // 1. 构建系统消息，包含当前文档内容
         let systemContent = `你是文档分析助手。请基于以下文档内容回答用户问题。`;
 
-        // 添加当前文档内容到系统消息
-        if (docContent && docContent.trim()) {
-            // 限制文档内容长度，避免超出 token 限制
-            const maxDocLength = 15000; // 约 5000 个汉字
-            let truncatedContent = docContent;
-            if (docContent.length > maxDocLength) {
-                truncatedContent = docContent.substring(0, maxDocLength) + "\n\n...(文档内容过长，已截断)";
-            }
-            systemContent += `\n\n【当前文档正文】\n${truncatedContent}`;
-        }
-
         // 添加附件引用提示
         if (activeAttachments && activeAttachments.length > 0) {
             systemContent += `\n\n【文档包含的附件】\n文档中包含以下附件，后端 RAG 将自动注入附件内容：`;
@@ -866,14 +856,39 @@ export class AI extends Model {
             });
         }
 
+        // 添加当前文档内容，并为当前问题和历史消息保留上下文预算。
+        if (docContent && docContent.trim()) {
+            const documentPrefix = "\n\n【当前文档正文】\n";
+            const truncationSuffix = "\n\n...(文档内容过长，已截断)";
+            const maxDocLength = Math.max(0, maxAIContextLength - systemContent.length - documentPrefix.length - question.length);
+            let truncatedContent = docContent;
+            if (docContent.length > maxDocLength) {
+                const contentLength = Math.max(0, maxDocLength - truncationSuffix.length);
+                truncatedContent = docContent.substring(0, contentLength) + (maxDocLength > truncationSuffix.length ? truncationSuffix : "");
+            }
+            systemContent += documentPrefix + truncatedContent;
+        }
+
         messages.push({
             role: "system",
             content: systemContent
         });
 
-        // 2. 添加历史消息（只保留最近4轮对话，避免超出上下文限制）
-        const history = this.messages.slice(0, -1).slice(-8); // 最多保留8条消息（4轮对话）
-        history.forEach((msg) => {
+        // 2. 添加历史消息，优先保留最新内容，并与当前文档共用 256000 字符的上下文预算。
+        const history = this.messages.slice(0, -1);
+        const historyBudget = Math.max(0, maxAIContextLength - systemContent.length - question.length);
+        const recentHistory: IAIMessage[] = [];
+        let historyLength = 0;
+        for (let i = history.length - 1; i >= 0; i--) {
+            const message = history[i];
+            if (historyLength + message.content.length > historyBudget) {
+                break;
+            }
+            recentHistory.unshift(message);
+            historyLength += message.content.length;
+        }
+
+        recentHistory.forEach((msg) => {
             let content = msg.content;
             if (msg.role === "assistant") {
                 content = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
