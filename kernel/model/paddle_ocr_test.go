@@ -6,130 +6,96 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 )
 
-func TestQueryUmiOCRResultRequestsCompleteText(t *testing.T) {
-	hit := int32(0)
+func usePaddleOCRModelConfig(t *testing.T, baseURL, modelName string) {
+	t.Helper()
+
+	configData, err := json.Marshal(map[string]map[string]interface{}{
+		PaddleOCRModelConfigKey: {
+			"base_url":   baseURL,
+			"model_name": modelName,
+			"enabled":    true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("serialize model config: %v", err)
+	}
+
+	configPath := filepath.Join(t.TempDir(), "default-models.json")
+	if err := os.WriteFile(configPath, configData, 0o600); err != nil {
+		t.Fatalf("write model config: %v", err)
+	}
+
+	originalPath := paddleOCRModelsConfigPath
+	paddleOCRModelsConfigPath = configPath
+	t.Cleanup(func() {
+		paddleOCRModelsConfigPath = originalPath
+	})
+}
+
+func TestPaddleOCRFromBase64UsesUnifiedModelConfig(t *testing.T) {
+	const modelName = "PP-OCRv5"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
-		if r.URL.Path != "/api/doc/result" {
+		if r.URL.Path != "/v1/chat/completions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		atomic.AddInt32(&hit, 1)
 
-		var req map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var request struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content []struct {
+					Type     string `json:"type"`
+					ImageURL struct {
+						URL string `json:"url"`
+					} `json:"image_url"`
+				} `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
-
-		if req["id"] != "task-1" {
-			t.Fatalf("unexpected task id: %v", req["id"])
+		if request.Model != modelName {
+			t.Fatalf("model = %q, want %q", request.Model, modelName)
 		}
-		if req["format"] != "text" {
-			t.Fatalf("unexpected format: %v", req["format"])
-		}
-		if req["is_data"] != true {
-			t.Fatalf("is_data should be true, got: %v", req["is_data"])
-		}
-		if req["is_unread"] != false {
-			t.Fatalf("is_unread should be false to fetch complete text, got: %v", req["is_unread"])
+		if len(request.Messages) != 1 || len(request.Messages[0].Content) == 0 || request.Messages[0].Content[0].ImageURL.URL != "data:image/png;base64,aGVsbG8=" {
+			t.Fatalf("unexpected image request: %#v", request.Messages)
 		}
 
-		_, _ = w.Write([]byte(`{"code":100,"is_done":true,"state":"success","data":"full ocr text","pages_count":8}`))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"PaddleOCR 识别结果"}}]}`))
 	}))
 	defer srv.Close()
+	usePaddleOCRModelConfig(t, srv.URL+"/", modelName)
 
-	done, state, text, pages, err := queryUmiOCRResult(srv.URL, "task-1")
+	result, err := PaddleOCRFromBase64("aGVsbG8=")
 	if err != nil {
-		t.Fatalf("queryUmiOCRResult returned error: %v", err)
+		t.Fatalf("PaddleOCRFromBase64 returned error: %v", err)
 	}
-	if !done || state != "success" || text != "full ocr text" || pages != 8 {
-		t.Fatalf("unexpected result: done=%v state=%s text=%q pages=%d", done, state, text, pages)
-	}
-	if atomic.LoadInt32(&hit) != 1 {
-		t.Fatalf("expected 1 request, got %d", hit)
+	if len(result.Data) != 1 || result.Data[0].Text != "PaddleOCR 识别结果" {
+		t.Fatalf("unexpected OCR result: %#v", result)
 	}
 }
 
-func TestClearUmiOCRTaskUsesTaskSpecificEndpoint(t *testing.T) {
-	var method string
-	var path string
-
+func TestPaddleOCRHealthCheckUsesHealthz(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		method = r.Method
-		path = r.URL.Path
-		_, _ = w.Write([]byte(`{"code":100,"data":"Success"}`))
-	}))
-	defer srv.Close()
-
-	clearUmiOCRTask(srv.URL, "task-xyz")
-
-	if method != http.MethodGet {
-		t.Fatalf("expected GET, got %s", method)
-	}
-	if path != "/api/doc/clear/task-xyz" {
-		t.Fatalf("unexpected path: %s", path)
-	}
-}
-
-func TestUploadPDFToUmiOCRUsesOptimizedDocOptions(t *testing.T) {
-	var gotOptions map[string]interface{}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
+		if r.Method != http.MethodGet {
 			t.Fatalf("unexpected method: %s", r.Method)
 		}
-		if r.URL.Path != "/api/doc/upload" {
+		if r.URL.Path != "/healthz" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-
-		if err := r.ParseMultipartForm(20 << 20); err != nil {
-			t.Fatalf("parse multipart form: %v", err)
-		}
-
-		cfg := r.FormValue("json")
-		if cfg == "" {
-			t.Fatalf("missing json options in multipart form")
-		}
-		if err := json.Unmarshal([]byte(cfg), &gotOptions); err != nil {
-			t.Fatalf("unmarshal options: %v", err)
-		}
-
-		_, _ = w.Write([]byte(`{"code":100,"data":"task-id"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer srv.Close()
+	usePaddleOCRModelConfig(t, srv.URL, DefaultPaddleOCRModelName)
 
-	dir := t.TempDir()
-	pdfPath := filepath.Join(dir, "test.pdf")
-	if err := os.WriteFile(pdfPath, []byte("fake pdf"), 0644); err != nil {
-		t.Fatalf("write temp pdf: %v", err)
-	}
-
-	id, err := uploadPDFToUmiOCR(srv.URL, pdfPath)
-	if err != nil {
-		t.Fatalf("uploadPDFToUmiOCR error: %v", err)
-	}
-	if id != "task-id" {
-		t.Fatalf("unexpected task id: %s", id)
-	}
-
-	if gotOptions["doc.extractionMode"] != "fullPage" {
-		t.Fatalf("unexpected extraction mode: %v", gotOptions["doc.extractionMode"])
-	}
-	if gotOptions["ocr.language"] != "models/config_chinese.txt" {
-		t.Fatalf("unexpected language: %v", gotOptions["ocr.language"])
-	}
-	if gotOptions["tbpu.parser"] != "multi_para" {
-		t.Fatalf("unexpected parser: %v", gotOptions["tbpu.parser"])
-	}
-	if gotOptions["ocr.cls"] != true {
-		t.Fatalf("unexpected ocr.cls: %v", gotOptions["ocr.cls"])
-	}
-	if sideLen, ok := gotOptions["ocr.limit_side_len"].(float64); !ok || int(sideLen) != 2880 {
-		t.Fatalf("unexpected ocr.limit_side_len: %v", gotOptions["ocr.limit_side_len"])
+	healthy, message := PaddleOCRHealthCheck()
+	if !healthy {
+		t.Fatalf("PaddleOCRHealthCheck returned false: %s", message)
 	}
 }

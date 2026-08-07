@@ -1,4 +1,5 @@
 import { updateHotkeyTip } from "../../protyle/util/compatibility";
+import { hasClosestByClassName } from "../../protyle/util/hasClosest";
 import { clearBeforeResizeTop, recordBeforeResizeTop } from "../../protyle/util/resize";
 import { Constants } from "../../constants";
 import { Layout } from "../index";

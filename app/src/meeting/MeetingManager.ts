@@ -280,14 +280,12 @@ export class MeetingManager {
             .replace(/<think>[\s\S]*/gi, "")
             .trim();
 
-        // 解析会议纪要三行内容
-        const parsedSummary = this.parseMeetingSummary(cleanSummary);
-
-        // 构建紧凑的纪要格式（仅保留核心三要素）
-        const content = `> 📌 **AI纪要主题**：${parsedSummary.theme}
-> 💬 **要点**：${parsedSummary.discussion}
-> ⚡ **后续**：${parsedSummary.actions}
-`;
+        // 解析并只保留会议要点，保留模型返回的多行内容
+        const discussion = this.parseMeetingSummary(cleanSummary);
+        const discussionLines = discussion.split('\n').filter(line => line.length > 0);
+        const content = discussionLines
+            .map((line, index) => index === 0 ? `> 💬 **要点**：${line}` : `> ${line}`)
+            .join('\n') + '\n';
 
         const event = new CustomEvent("neura-meeting-transcription", { detail: content });
         window.dispatchEvent(event);
@@ -295,19 +293,14 @@ export class MeetingManager {
     }
 
     /**
-     * 解析会议纪要三行内容为结构化数据
+     * 从模型返回内容中提取要点，兼容旧的三段式摘要
      */
-    private parseMeetingSummary(summary: string): { theme: string, discussion: string, actions: string } {
-        // 默认值
-        const result = {
-            theme: "未提取到主题",
-            discussion: "未提取到要点",
-            actions: "未提取到后续"
-        };
+    private parseMeetingSummary(summary: string): string {
+        const defaultDiscussion = "未提取到要点";
 
         if (!summary) {
             console.warn("parseMeetingSummary: summary is empty");
-            return result;
+            return defaultDiscussion;
         }
 
         console.log("parseMeetingSummary: raw summary:", JSON.stringify(summary));
@@ -315,48 +308,57 @@ export class MeetingManager {
         // 按行分割并清理
         const lines = summary.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
-        // 提取"关键词：内容"格式的值
+        const cleanLine = (line: string): string => line
+            .replace(/^\s*>+\s*/g, '')
+            .replace(/^\s*#+\s*/g, '')
+            .replace(/\*\*/g, '')
+            .trim();
+
+        const withoutListMarker = (line: string): string => line
+            .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s*)/, '')
+            .trim();
+
+        const isPointLine = (line: string): boolean => /^(?:要点|会议要点|关键要点|讨论|关键讨论)(?=\s*[:：]|\s*$)/.test(line);
+        const isOtherSectionLine = (line: string): boolean => /^(?:主题|会议主题|AI纪要主题|后续|后续事项|行动|行动项|决议|结论)(?=\s*[:：]|\s*$)/.test(line);
+
         const extractValue = (line: string): string => {
-            // 移除 markdown 标记: > ** 前缀、列表标记等
-            let cleaned = line
-                .replace(/^\s*>+\s*/g, '')           // 移除引用标记 >
-                .replace(/^\s*[-*]+\s*/g, '')         // 移除列表标记
-                .replace(/\*\*/g, '')                 // 移除所有 ** 加粗标记
-                .trim();
-            // 提取冒号后的内容
-            const colonIdx = cleaned.search(/[:：]/);
-            if (colonIdx >= 0) {
-                return cleaned.substring(colonIdx + 1).trim();
-            }
-            return cleaned;
+            const match = line.match(/^(?:要点|会议要点|关键要点|讨论|关键讨论)\s*(?:[:：]\s*)?(.*)$/);
+            return match ? match[1].trim() : line;
         };
 
-        // 解析每一行
+        const points: string[] = [];
+        let collectingPoints = false;
+        let foundPointSection = false;
+
         for (const line of lines) {
-            if (line.includes('主题') || line.includes('会议主题')) {
-                const val = extractValue(line);
-                if (val) result.theme = val;
-            } else if (line.includes('要点') || line.includes('讨论') || line.includes('关键讨论')) {
-                const val = extractValue(line);
-                if (val) result.discussion = val;
-            } else if (line.includes('后续') || line.includes('行动') || line.includes('行动项') || line.includes('决议') || line.includes('结论')) {
-                const val = extractValue(line);
-                if (val) result.actions = val;
+            const cleanedLine = cleanLine(line);
+            const labelLine = withoutListMarker(cleanedLine);
+
+            if (isPointLine(labelLine)) {
+                foundPointSection = true;
+                collectingPoints = true;
+                const val = extractValue(labelLine);
+                if (val) points.push(val);
+            } else if (isOtherSectionLine(labelLine)) {
+                collectingPoints = false;
+            } else if (collectingPoints) {
+                points.push(cleanedLine);
             }
         }
 
-        // 如果没有匹配到特定格式，按顺序分配
-        if (result.theme === "未提取到主题" && lines.length > 0) {
-            result.theme = extractValue(lines[0]) || lines[0];
-        }
-        if (result.discussion === "未提取到要点" && lines.length > 1) {
-            result.discussion = extractValue(lines[1]) || lines[1];
-        }
-        if (result.actions === "未提取到后续" && lines.length > 2) {
-            result.actions = extractValue(lines[2]) || lines[2];
+        // 新模型异常省略标题时，保留普通文本；仍过滤旧格式中的主题和后续标题
+        if (!foundPointSection) {
+            for (const line of lines) {
+                const cleanedLine = cleanLine(line);
+                const labelLine = withoutListMarker(cleanedLine);
+                if (!isOtherSectionLine(labelLine)) {
+                    points.push(cleanedLine);
+                }
+            }
         }
 
-        console.log("parseMeetingSummary: parsed result:", result);
+        const result = points.filter(line => line.length > 0).join('\n') || defaultDiscussion;
+        console.log("parseMeetingSummary: parsed discussion:", result);
         return result;
     }
 }

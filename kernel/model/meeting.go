@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -17,6 +18,11 @@ import (
 
 // ASR 配置
 var asrEndpoint = "ws://jason.cheman.top:10096/"
+
+var (
+	asrWriteTimeout  = 30 * time.Second
+	asrResultTimeout = 180 * time.Second
+)
 
 // LLM 配置
 var llmEndpoint = "http://jason.cheman.top:8001/v1"
@@ -129,11 +135,11 @@ func init() {
 	llmData, err := os.ReadFile(llmConfigPath)
 	if err == nil {
 		var models map[string]struct {
-			BaseURL      string  `json:"base_url"`
-			APIKey       string  `json:"api_key"`
-			ModelName    string  `json:"model_name"`
-			Temperature  float64 `json:"temperature"`
-			MaxTokens    int     `json:"max_tokens"`
+			BaseURL     string  `json:"base_url"`
+			APIKey      string  `json:"api_key"`
+			ModelName   string  `json:"model_name"`
+			Temperature float64 `json:"temperature"`
+			MaxTokens   int     `json:"max_tokens"`
 		}
 		if json.Unmarshal(llmData, &models) == nil {
 			// 优先使用 meeting 专用模型，其次是 siyuan 模型
@@ -467,15 +473,15 @@ func cleanASRTags(text string) string {
 	if text == "" {
 		return text
 	}
-	
+
 	// 使用正则表达式移除所有 <|...|> 格式的标签
 	// 匹配 <| 和 |> 之间的任何内容
 	re := regexp.MustCompile(`<\|[^|]*\|>`)
 	cleaned := re.ReplaceAllString(text, "")
-	
+
 	// 清理多余的空格
 	cleaned = strings.TrimSpace(cleaned)
-	
+
 	return cleaned
 }
 
@@ -506,7 +512,7 @@ func (s *MeetingService) callASR(audioData []byte) (string, error) {
 			numChannels := int(audioData[22]) | int(audioData[23])<<8
 			sampleRate := int(audioData[24]) | int(audioData[25])<<8 | int(audioData[26])<<16 | int(audioData[27])<<24
 			bitsPerSample := int(audioData[34]) | int(audioData[35])<<8
-			logging.LogInfof("ASR: WAV header - format=%d, channels=%d, sampleRate=%d, bitsPerSample=%d", 
+			logging.LogInfof("ASR: WAV header - format=%d, channels=%d, sampleRate=%d, bitsPerSample=%d",
 				audioFormat, numChannels, sampleRate, bitsPerSample)
 		}
 		logging.LogDebugf("ASR: Detected WAV header, stripping first 44 bytes.")
@@ -549,87 +555,51 @@ func (s *MeetingService) callASR(audioData []byte) (string, error) {
 	// 暂存最新的流式中间结果，防止最后一句因未 finalize 而丢失
 	var latestPartialText string
 
-	// 用于同步发送端状态的通道
-	sendErrChan := make(chan error, 1)
-
-	// 3. 启动协程并发发送音频数据
-	go func() {
-		defer close(sendErrChan)
-
-		logging.LogDebugf("ASR: Start sending PCM data (%d bytes)...", len(pcmData))
-
-		// 直接批量发送，无需延迟
-		// 分块大小：使用较大的 chunk 以减少网络开销，但不超过 64KB
-		const chunkSize = 64000
-
-		for i := 0; i < len(pcmData); i += chunkSize {
-			end := i + chunkSize
-			if end > len(pcmData) {
-				end = len(pcmData)
-			}
-
-			if err := conn.WriteMessage(websocket.BinaryMessage, pcmData[i:end]); err != nil {
-				sendErrChan <- fmt.Errorf("failed to send audio chunk: %v", err)
-				return
-			}
+	// 3. 发送音频数据及结束信号。当前 FunASR 服务会在收到结束信号后再返回结果，
+	// 因此顺序发送可避免写入协程错误被阻塞读取掩盖。
+	logging.LogDebugf("ASR: Start sending PCM data (%d bytes)...", len(pcmData))
+	if err := conn.SetWriteDeadline(time.Now().Add(asrWriteTimeout)); err != nil {
+		return "", fmt.Errorf("设置 ASR 写入超时失败: %w", err)
+	}
+	const chunkSize = 64000
+	for i := 0; i < len(pcmData); i += chunkSize {
+		end := i + chunkSize
+		if end > len(pcmData) {
+			end = len(pcmData)
 		}
-
-		logging.LogDebugf("ASR: Audio data sent, sending end signal...")
-
-		// 4. 发送结束信号 (is_speaking 为 false)
-		endConfig := map[string]interface{}{
-			"is_speaking": false,
+		if err := conn.WriteMessage(websocket.BinaryMessage, pcmData[i:end]); err != nil {
+			return "", fmt.Errorf("发送 ASR 音频分片失败: %w", err)
 		}
-		if err := conn.WriteJSON(endConfig); err != nil {
-			sendErrChan <- fmt.Errorf("failed to send end signal: %v", err)
-			return
-		}
-		logging.LogDebugf("ASR: End signal sent.")
-	}()
+	}
 
-	// 5. 主协程循环读取识别结果
-	// 读取循环会在 socket 关闭或出错时退出
+	logging.LogDebugf("ASR: Audio data sent, sending end signal...")
+	if err := conn.WriteJSON(map[string]interface{}{"is_speaking": false}); err != nil {
+		return "", fmt.Errorf("发送 ASR 结束信号失败: %w", err)
+	}
+	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
+		return "", fmt.Errorf("清除 ASR 写入超时失败: %w", err)
+	}
+	logging.LogDebugf("ASR: End signal sent.")
+
+	// 4. 主协程循环读取识别结果。必须给底层连接设置读取 deadline，
+	// 否则 ReadMessage 会阻塞，循环外的计时器无法打断它。
+	if err := conn.SetReadDeadline(time.Now().Add(asrResultTimeout)); err != nil {
+		return "", fmt.Errorf("设置 ASR 读取超时失败: %w", err)
+	}
 
 	messageCount := 0
-	timeout := time.After(180 * time.Second) // 延长超时到180秒
 	logging.LogDebugf("ASR: Waiting for recognition results...")
 
 	for {
-		// 检查发送端是否有错误
-		select {
-		case err := <-sendErrChan:
-			if err != nil {
-				// 发送失败直接返回目前已识别的内容+错误
-				if latestPartialText != "" {
-					fullTranscriptBuilder.WriteString(latestPartialText)
-				}
-				return fullTranscriptBuilder.String(), err
-			}
-		case <-timeout:
-			logging.LogWarnf("ASR: Timeout waiting for result.")
-			// 超时返回当前结果
-			if latestPartialText != "" {
-				fullTranscriptBuilder.WriteString(latestPartialText)
-			}
-			return fullTranscriptBuilder.String(), nil
-		default:
-		}
-
-		// 设置读取超时，防止服务端假死
-		// conn.SetReadDeadline(time.Now().Add(10 * time.Second)) // Removed as per instruction
 		_, message, err := conn.ReadMessage()
 		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				logging.LogWarnf("ASR: Timeout waiting for result after %s.", asrResultTimeout)
+				return "", fmt.Errorf("ASR 识别超时（%s）", asrResultTimeout)
+			}
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure) || err == io.EOF {
 				logging.LogDebugf("ASR connection closed normally.")
 			} else {
-				// 忽略 ReadDeadline 产生的超时错误，这在流式传输间隙是正常的吗？
-				// 不，对于 continuous streaming，read 应该 block 直到有数据。
-				// 但如果对方一直不发数据（比如 VAD silence），可能会超时。
-				// 这里我们需要区分是网络断了还是只是静音。
-				// 简单起见，如果超时且发送端还没结束，我们继续等待?
-				// 上面使用了 SetReadDeadline，如果超时会返回 error。
-				// 为了稳妥，这里如果只是读超时，我们不退出的逻辑比较复杂。
-				// 暂时去掉 SetReadDeadline，依赖外层总 timeout 和 socket close。
 				logging.LogDebugf("ASR connection read stop: %v", err)
 			}
 
@@ -666,7 +636,7 @@ func (s *MeetingService) callASR(audioData []byte) (string, error) {
 			logging.LogDebugf("ASR: 2pass-offline result: '%s'", result.Text)
 			fullTranscriptBuilder.WriteString(result.Text)
 			latestPartialText = ""
-			
+
 			// 如果 is_final 为 true，说明识别完成，立即返回
 			if result.IsFinal {
 				logging.LogDebugf("ASR: Recognition completed with is_final=true")
@@ -688,7 +658,7 @@ func (s *MeetingService) callASR(audioData []byte) (string, error) {
 			latestPartialText = result.Text
 		}
 	}
-	
+
 	rawText := fullTranscriptBuilder.String()
 	cleanedText := cleanASRTags(rawText)
 	return cleanedText, nil
@@ -703,26 +673,24 @@ func (s *MeetingService) GenerateSummary(text string) (string, error) {
 
 	logging.LogInfof("GenerateSummary: 使用模型 %s, endpoint %s, max_tokens %d", cfg.ModelName, baseURL, cfg.MaxTokens)
 
-	prompt := fmt.Sprintf(`请将以下内容整理成简洁的三点摘要。
+	prompt := fmt.Sprintf(`请将以下内容整理成一份准确、自然的内容摘要。
 
 ### 输出格式（必须严格遵循）：
-主题：[一句话概括核心主题]
-要点：[2-3句话概述关键内容]
-后续：[建议的下一步行动或结论]
+要点：[用几句话概括原文实际讲到的内容]
 
 ### 待整理内容：
 %s
 
 ### 要求：
-1. 直接输出三行，不要任何开场白或解释
-2. 禁止输出思考过程、分析步骤、标签等内容
-3. 即使内容不是会议形式，也要提取关键信息整理成这三点
-4. 每行必须以"主题："、"要点："、"后续："开头`, text)
+1. 只输出以“要点：”开头的摘要，不要输出主题、后续、行动项等其他区块
+2. 只总结原文实际讲到的内容，按照原文的讨论主线自然组织，不要强行分类
+3. 保留原文中的重要人物、事件、数据、进展和观点，不要补充、推断或编造原文没有提到的信息
+4. 不要为了凑条数扩展内容，不要输出开场白、解释、分析步骤、标签或思考过程`, text)
 
 	payload := map[string]interface{}{
 		"model": cfg.ModelName,
 		"messages": []map[string]string{
-			{"role": "system", "content": "你是专业的会议纪要生成器。严格规则：\n1. 只输出三行：主题、要点、后续\n2. 禁止使用<think>标签或展示思考过程\n3. 不要解释、不要分析步骤、不要开场白\n4. 每行格式：主题：xxx / 要点：xxx / 后续：xxx"},
+			{"role": "system", "content": "你是专业的会议内容摘要助手。请按照原文的讨论主线，准确概括实际讲到的内容。只输出以“要点：”开头的摘要，不要强行分类、扩写或推断，不要输出主题、后续或行动项等其他区块，禁止使用<think>标签或展示思考过程，不要解释或添加开场白。"},
 			{"role": "user", "content": prompt},
 		},
 		"stream":      false,

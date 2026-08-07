@@ -299,9 +299,9 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/asset/getDocImageAssets", model.CheckWebAuth, getDocImageAssets)
 	ginServer.Handle("POST", "/api/asset/getDocAssets", model.CheckWebAuth, getDocAssets)
 	ginServer.Handle("POST", "/api/asset/renameAsset", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, renameAsset)
-	// [OCR 功能已禁用] ginServer.Handle("POST", "/api/asset/getImageOCRText", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, getImageOCRText)
-	// [OCR 功能已禁用] ginServer.Handle("POST", "/api/asset/setImageOCRText", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setImageOCRText)
-	// [OCR 功能已禁用] ginServer.Handle("POST", "/api/asset/ocr", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, ocr)
+	ginServer.Handle("POST", "/api/asset/getImageOCRText", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, getImageOCRText)
+	ginServer.Handle("POST", "/api/asset/setImageOCRText", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, setImageOCRText)
+	ginServer.Handle("POST", "/api/asset/ocr", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, ocr)
 	ginServer.Handle("POST", "/api/asset/fullReindexAssetContent", model.CheckWebAuth, model.CheckAdminRole, model.CheckReadonly, fullReindexAssetContent)
 	ginServer.Handle("POST", "/api/asset/statAsset", model.CheckWebAuth, model.CheckAdminRole, statAsset)
 
@@ -482,7 +482,7 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/ai/getVectorizedAssets", model.CheckWebAuth, getVectorizedAssets)
 	ginServer.Handle("POST", "/api/ai/batchVectorizeAllAssets", model.CheckWebAuth, model.CheckAdminRole, batchVectorizeAllAssets)
 	ginServer.Handle("GET", "/api/ai/getVectorizeProgress", model.CheckWebAuth, getVectorizeProgress)
-	
+
 	// 内部 API（仅 localhost 可访问，无需认证）
 	ginServer.Handle("POST", "/api/internal/batchVectorizeAllAssets", model.CheckLocalhost, batchVectorizeAllAssets)
 	ginServer.Handle("GET", "/api/internal/getVectorizeProgress", model.CheckLocalhost, getVectorizeProgress)

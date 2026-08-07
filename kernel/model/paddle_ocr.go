@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 
 	"os"
@@ -22,43 +21,37 @@ import (
 	"github.com/siyuan-note/logging"
 )
 
-// NewMultipartWriter 创建 multipart writer 的包装函数
-func NewMultipartWriter(w io.Writer) *multipart.Writer {
-	return multipart.NewWriter(w)
-}
-
 // PaddleOCR 配置
 const (
-	DefaultPaddleOCRBaseURL = "http://127.0.0.1:8082"
-	PaddleOCRTimeout        = 120 * time.Second
-	// GLM-OCR 配置
-	GLMOCRModel = "glm-ocr"
+	DefaultPaddleOCRBaseURL   = "http://127.0.0.1:8081"
+	DefaultPaddleOCRModelName = "PP-OCRv5"
+	PaddleOCRModelConfigKey   = "builtin_paddleocr"
+	PaddleOCRTimeout          = 120 * time.Second
 )
+
+var paddleOCRModelsConfigPath = "/root/code/unified-settings-service/config/default-models.json"
 
 // PaddleOCRConfig OCR 服务配置
 type PaddleOCRConfig struct {
-	BaseURL string `json:"baseUrl"`
-	Enabled bool   `json:"enabled"`
+	BaseURL   string
+	ModelName string
+	Enabled   bool
 }
 
-// PaddleOCRRequest OCR 请求结构 (适配 Umi-OCR)
-type PaddleOCRRequest struct {
-	Base64 string `json:"base64"`
+type paddleOCRModelConfig struct {
+	BaseURL   string `json:"base_url"`
+	ModelName string `json:"model_name"`
+	Enabled   *bool  `json:"enabled"`
 }
 
-// PaddleOCRURLRequest URL OCR 请求结构
-type PaddleOCRURLRequest struct {
-	URL string `json:"url"`
-}
-
-// PaddleOCRResult OCR 识别结果 (适配 Umi-OCR)
+// PaddleOCRResult OCR 识别结果。
 type PaddleOCRResult struct {
 	Text       string      `json:"text"`
 	Confidence float64     `json:"score"`
 	Position   [][]float64 `json:"box"`
 }
 
-// PaddleOCRResponse OCR 响应结构 (适配 Umi-OCR)
+// PaddleOCRResponse OCR 响应结构。
 type PaddleOCRResponse struct {
 	Code    int               `json:"code"`
 	Data    []PaddleOCRResult `json:"data"`
@@ -77,23 +70,38 @@ type OCRAssetResult struct {
 	UpdatedAt  time.Time         `json:"updatedAt"`
 }
 
-// getPaddleOCRConfig 获取 PaddleOCR 配置
+// getPaddleOCRConfig 从统一模型配置中获取 PaddleOCR 配置。
 func getPaddleOCRConfig() *PaddleOCRConfig {
-	// 从配置文件读取，如果不存在则使用默认配置
-	configPath := "/root/code/neu-siyuan-note/config/ocr-config.json"
-	data, err := os.ReadFile(configPath)
-	if err == nil {
-		var config PaddleOCRConfig
-		if err := json.Unmarshal(data, &config); err == nil && config.BaseURL != "" {
-			return &config
-		}
+	config := &PaddleOCRConfig{
+		BaseURL:   DefaultPaddleOCRBaseURL,
+		ModelName: DefaultPaddleOCRModelName,
+		Enabled:   true,
 	}
 
-	// 默认配置
-	return &PaddleOCRConfig{
-		BaseURL: DefaultPaddleOCRBaseURL,
-		Enabled: true,
+	data, err := os.ReadFile(paddleOCRModelsConfigPath)
+	if err != nil {
+		return config
 	}
+
+	var models map[string]paddleOCRModelConfig
+	if err := json.Unmarshal(data, &models); err != nil {
+		return config
+	}
+
+	modelConfig, ok := models[PaddleOCRModelConfigKey]
+	if !ok {
+		return config
+	}
+	if modelConfig.BaseURL != "" {
+		config.BaseURL = strings.TrimRight(modelConfig.BaseURL, "/")
+	}
+	if modelConfig.ModelName != "" {
+		config.ModelName = modelConfig.ModelName
+	}
+	if modelConfig.Enabled != nil {
+		config.Enabled = *modelConfig.Enabled
+	}
+	return config
 }
 
 // PaddleOCRHealthCheck 检查 PaddleOCR 服务状态
@@ -103,16 +111,13 @@ func PaddleOCRHealthCheck() (bool, string) {
 		return false, "OCR 服务未启用"
 	}
 
-	// Umi-OCR 没有 /health 端点，改为检查根路径
-	// 增加超时时间到 30 秒，因为 OCR 服务可能正在处理其他请求
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(config.BaseURL + "/")
+	resp, err := client.Get(config.BaseURL + "/healthz")
 	if err != nil {
 		return false, fmt.Sprintf("OCR 服务连接失败: %v", err)
 	}
 	defer resp.Body.Close()
 
-	// 只要能连接上就认为服务正常（Umi-OCR 根路径返回版本信息）
 	if resp.StatusCode == http.StatusOK {
 		return true, "OCR 服务正常"
 	}
@@ -120,16 +125,16 @@ func PaddleOCRHealthCheck() (bool, string) {
 	return false, fmt.Sprintf("OCR 服务状态异常: %d", resp.StatusCode)
 }
 
-// PaddleOCRFromBase64 使用 base64 图片进行 OCR (适配 GLM-OCR)
+// PaddleOCRFromBase64 使用 PaddleOCR OpenAI 兼容接口进行图片识别。
 func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 	config := getPaddleOCRConfig()
 	if !config.Enabled {
 		return nil, fmt.Errorf("OCR 服务未启用")
 	}
 
-	// 构建 GLM-OCR 请求 (OpenAI 格式)
+	// PaddleOCR 服务使用 OpenAI 兼容的多模态请求格式。
 	reqBody := map[string]interface{}{
-		"model": GLMOCRModel,
+		"model": config.ModelName,
 		"messages": []map[string]interface{}{
 			{
 				"role": "user",
@@ -177,8 +182,8 @@ func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 		return nil, fmt.Errorf("OCR 请求返回 HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	// 解析 GLM-OCR 响应 (OpenAI 格式)
-	var glmResp struct {
+	// 解析 PaddleOCR OpenAI 兼容响应。
+	var paddleResponse struct {
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
@@ -186,21 +191,21 @@ func PaddleOCRFromBase64(base64Image string) (*PaddleOCRResponse, error) {
 		} `json:"choices"`
 	}
 
-	if err := json.Unmarshal(body, &glmResp); err != nil {
+	if err := json.Unmarshal(body, &paddleResponse); err != nil {
 		return nil, fmt.Errorf("解析响应失败: %v, body: %s", err, string(body))
 	}
 
-	if len(glmResp.Choices) == 0 {
+	if len(paddleResponse.Choices) == 0 {
 		return nil, fmt.Errorf("OCR 返回空结果, body: %s", string(body[:min(len(body), 500)]))
 	}
 
-	// 将 GLM-OCR 响应转换为 PaddleOCR 格式
+	// 转换为灵枢内部 OCR 结果格式。
 	ocrResp := &PaddleOCRResponse{
 		Code:    100,
 		Message: "成功",
 		Data: []PaddleOCRResult{
 			{
-				Text:       glmResp.Choices[0].Message.Content,
+				Text:       paddleResponse.Choices[0].Message.Content,
 				Confidence: 0.95,
 				Position:   [][]float64{},
 			},
@@ -493,14 +498,14 @@ func OCRAsset(assetPath string) (*OCRAssetResult, error) {
 }
 
 // ocrPDFFile 对 PDF 文件进行 OCR
-// 将 PDF 转换为图片后使用 GLM-OCR 识别
+// 将 PDF 转换为图片后使用 PaddleOCR 识别
 func ocrPDFFile(pdfPath string) ([]PaddleOCRResult, string, int, error) {
 	config := getPaddleOCRConfig()
 	if !config.Enabled {
 		return nil, "", 0, fmt.Errorf("OCR 服务未启用")
 	}
 
-	logging.LogInfof("开始 OCR PDF 文件 (GLM-OCR): %s", pdfPath)
+	logging.LogInfof("开始 OCR PDF 文件 (PaddleOCR): %s", pdfPath)
 
 	// 使用 pdftoppm 将 PDF 转换为图片
 	tempDir, err := os.MkdirTemp("", "pdf2img-*")
@@ -509,7 +514,7 @@ func ocrPDFFile(pdfPath string) ([]PaddleOCRResult, string, int, error) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// 转换 PDF 为图片 (150 DPI，适配 GLM-OCR 编码器缓存限制 3721 tokens)
+	// 转换 PDF 为图片后逐页识别。
 	cmd := exec.Command("pdftoppm", "-png", "-r", "150", pdfPath, filepath.Join(tempDir, "page"))
 	if err := cmd.Run(); err != nil {
 		return nil, "", 0, fmt.Errorf("PDF 转换失败: %v", err)
@@ -563,12 +568,6 @@ func ocrPDFFile(pdfPath string) ([]PaddleOCRResult, string, int, error) {
 
 	return allResults, fullTextBuilder.String(), len(imageFiles), nil
 }
-
-// uploadPDFToUmiOCR 上传 PDF 文件到 Umi-OCR
-
-// queryUmiOCRResult 查询 Umi-OCR 任务结果
-
-// clearUmiOCRTask 清理 Umi-OCR 任务
 
 // newCommand 创建命令（跨平台兼容）
 func newCommand(cmd string) *exec.Cmd {

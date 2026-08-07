@@ -325,6 +325,31 @@ type DefaultModelConfig struct {
 	SystemPrompt string  `json:"system_prompt"`
 }
 
+func mergeDefaultAIConfig(apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64, provider, systemPrompt string, targetConfig DefaultModelConfig) (string, string, string, int, float64, string, string) {
+	if targetConfig.APIKey != "" {
+		apiKey = targetConfig.APIKey
+	}
+	if targetConfig.BaseURL != "" {
+		apiBaseURL = targetConfig.BaseURL
+	}
+	if targetConfig.ModelName != "" {
+		apiModel = targetConfig.ModelName
+	}
+	if targetConfig.Provider != "" {
+		provider = targetConfig.Provider
+	}
+	if targetConfig.MaxTokens > 0 {
+		maxTokens = targetConfig.MaxTokens
+	}
+	if targetConfig.Temperature > 0 {
+		temperature = targetConfig.Temperature
+	}
+	if targetConfig.SystemPrompt != "" {
+		systemPrompt = targetConfig.SystemPrompt
+	}
+	return apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt
+}
+
 func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int, temperature float64, provider string, systemPrompt string) {
 	apiKey = Conf.AI.OpenAI.APIKey
 	apiBaseURL = Conf.AI.OpenAI.APIBaseURL
@@ -354,23 +379,16 @@ func getEffectiveAIConfig() (apiKey, apiBaseURL, apiModel string, maxTokens int,
 					targetConfig = val
 				}
 
-				if targetConfig.APIKey != "" {
-					apiKey = targetConfig.APIKey
-					apiBaseURL = targetConfig.BaseURL
-					apiModel = targetConfig.ModelName
-					if targetConfig.Provider != "" {
-						provider = targetConfig.Provider
-					}
-					if targetConfig.MaxTokens > 0 {
-						maxTokens = targetConfig.MaxTokens
-					}
-					if targetConfig.Temperature > 0 {
-						temperature = targetConfig.Temperature
-					}
-					if targetConfig.SystemPrompt != "" {
-						systemPrompt = targetConfig.SystemPrompt
-					}
-				}
+				apiKey, apiBaseURL, apiModel, maxTokens, temperature, provider, systemPrompt = mergeDefaultAIConfig(
+					apiKey,
+					apiBaseURL,
+					apiModel,
+					maxTokens,
+					temperature,
+					provider,
+					systemPrompt,
+					targetConfig,
+				)
 			}
 		}
 	}

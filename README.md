@@ -89,7 +89,7 @@ Web 请求在认证后绑定用户工作空间。工作空间负责隔离用户�
 
 ### OCR 与文档理解
 
-OCR 服务地址由 [`config/ocr-config.json`](config/ocr-config.json) 配置。对于 PDF，系统优先读取可提取的文本；当文本不足或文件属于扫描件时，再调用 OCR。识别结果会作为附件内容的一部分进入后续的阅读、检索和 AI 分析流程。
+OCR 与大语言模型共用统一设置服务的 [`default-models.json`](../unified-settings-service/config/default-models.json) 配置文件。其中 `builtin_paddleocr` 指向本机 PaddleOCR OpenAI 兼容服务；对于 PDF，系统优先读取可提取的文本，文本不足或文件属于扫描件时再调用 OCR。识别结果会作为附件内容的一部分进入后续的阅读、检索和 AI 分析流程。
 
 ## 组件说明
 
@@ -97,9 +97,8 @@ OCR 服务地址由 [`config/ocr-config.json`](config/ocr-config.json) 配置。
 | --- | --- |
 | `app/` | TypeScript 前端、编辑器界面、AI 面板与交互逻辑。 |
 | `kernel/` | Go 内核、Web API、认证中间件、工作空间上下文、AI/RAG/OCR 实现。 |
-| `config/` | OCR 等运行期功能配置。 |
 | `ecosystem.config.js` | PM2 进程定义参考；生产部署应以经验证的构建路径和进程配置为准。 |
-| 统一设置服务 | 仓库外的配套服务，负责统一认证和共享模型配置。 |
+| 统一设置服务 | 仓库外的配套服务，负责统一认证和共享的 LLM、图像生成与 OCR 模型配置。 |
 | 模型与 OCR 服务 | 仓库外的可选推理服务，分别提供 OpenAI 兼容对话接口和 OCR 接口。 |
 
 ## 快速开始
@@ -152,8 +151,7 @@ docker run --rm -p 6806:6806 lingshu-note
 | `SIYUAN_WEB_MODE=true` | 启用 Web 多用户认证与工作空间上下文。 |
 | `SIYUAN_USER_DATA_ROOT` | 指定用户工作空间根目录。 |
 | `SIYUAN_PORT` | 指定内核监听端口，默认参考值为 `6806`。 |
-| `config/ocr-config.json` | 配置 OCR 服务地址及开关。 |
-| 统一设置服务的模型配置 | 为内置 AI 提供模型地址、模型名、温度、输出长度和系统提示词等默认值。 |
+| 统一设置服务的 [`default-models.json`](../unified-settings-service/config/default-models.json) | 配置 DeepSeek 等内置 AI 以及 `builtin_paddleocr` 的服务地址、模型名和开关。 |
 
 部署时请将密钥、JWT 密钥、数据根目录和外部服务地址放在环境变量或受控配置中，不要提交到仓库。
 

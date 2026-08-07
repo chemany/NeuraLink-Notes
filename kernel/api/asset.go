@@ -30,7 +30,7 @@ import (
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/model"
-	_ "github.com/siyuan-note/siyuan/kernel/sql" // [OCR 功能已禁用] 保留 import
+	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
@@ -114,36 +114,6 @@ func fullReindexAssetContent(c *gin.Context) {
 	}
 }
 
-// [OCR 功能已禁用] getImageOCRText 返回空文本
-func getImageOCRText(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	// OCR 功能已禁用，始终返回空文本
-	ret.Data = map[string]interface{}{
-		"text": "",
-	}
-}
-
-// [OCR 功能已禁用] setImageOCRText 不执行任何操作
-func setImageOCRText(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-	// OCR 功能已禁用，不执行任何操作
-}
-
-// [OCR 功能已禁用] ocr 返回 OCR 功能已禁用的错误
-func ocr(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	ret.Code = -1
-	ret.Msg = "OCR 功能已禁用 / OCR feature is disabled"
-	ret.Data = map[string]interface{}{"closeTimeout": 3000}
-}
-
-/*
-// 原始 OCR 函数实现（已禁用）
 func getImageOCRText(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
@@ -153,16 +123,7 @@ func getImageOCRText(c *gin.Context) {
 		return
 	}
 
-	var path string
-	if nil == arg["path"] {
-		ret.Data = map[string]interface{}{
-			"text": "",
-		}
-		return
-	} else {
-		path = arg["path"].(string)
-	}
-
+	path, _ := arg["path"].(string)
 	ret.Data = map[string]interface{}{
 		"text": util.GetAssetText(path),
 	}
@@ -177,11 +138,14 @@ func setImageOCRText(c *gin.Context) {
 		return
 	}
 
-	path := arg["path"].(string)
-	text := arg["text"].(string)
+	path, ok := arg["path"].(string)
+	if !ok || path == "" {
+		return
+	}
+
+	text, _ := arg["text"].(string)
 	util.SetAssetText(path, text)
 
-	// 刷新 OCR 结果到数据库
 	util.NodeOCRQueueLock.Lock()
 	defer util.NodeOCRQueueLock.Unlock()
 	for _, id := range util.NodeOCRQueue {
@@ -199,22 +163,50 @@ func ocr(c *gin.Context) {
 		return
 	}
 
-	path := arg["path"].(string)
+	path, ok := arg["path"].(string)
+	if !ok || path == "" {
+		ret.Code = -1
+		ret.Msg = "缺少资源文件路径参数"
+		return
+	}
 
-	ocrJSON, err := util.OcrAsset(path)
-	if nil != err {
+	fullPath, err := resolveOCRAssetPath(path)
+	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
 		ret.Data = map[string]interface{}{"closeTimeout": 7000}
 		return
 	}
 
+	result, err := model.OCRAsset(fullPath)
+	if err != nil {
+		ret.Code = -1
+		ret.Msg = err.Error()
+		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		return
+	}
+
+	util.SetAssetText(path, result.FullText)
+
 	ret.Data = map[string]interface{}{
-		"text":    util.GetOcrJsonText(ocrJSON),
-		"ocrJSON": ocrJSON,
+		"text": result.FullText,
+		"ocrJSON": []map[string]interface{}{
+			{
+				"text": result.FullText,
+			},
+		},
 	}
 }
-*/
+
+func resolveOCRAssetPath(path string) (string, error) {
+	if strings.HasPrefix(path, "assets/") {
+		return model.GetAssetAbsPath(path)
+	}
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	return model.GetAssetAbsPath(filepath.Join("assets", path))
+}
 
 func renameAsset(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
